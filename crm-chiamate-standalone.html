@@ -167,6 +167,16 @@ h2{color:var(--accent);font-weight:800;}
 .contact-item.active{border-left-color:var(--brand-yellow);}
 .call-item{border-left-color:var(--accent);}
 .week-nav .week-label,.sidebar-today-title,.month-header .label{font-weight:700;}
+/* Multi-utente (solo versione Firebase): utente collegato, azioni account, avvisi */
+.user-line{font-size:12px;color:var(--muted);margin:-8px 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.head-actions{display:flex;gap:6px;margin-top:6px;}
+.head-actions .btn{flex:1;font-size:11px;padding:6px;}
+.notice-bar{flex-shrink:0;padding:12px 18px;background:var(--accent-soft);border-bottom:1px solid var(--border-strong);font-size:14px;line-height:1.45;}
+.notice-bar .notice-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.notice-bar input{margin-top:8px;font-family:var(--mono);font-size:12.5px;}
+.notice-hint{font-size:13px;color:var(--muted);margin-top:4px;}
+.gate .link-row{margin-top:14px;font-size:13px;}
+.gate .ok{color:var(--accent);font-size:13px;margin-top:8px;}
 .topbar,.drawer-backdrop,.drawer-close{display:none;}/* Schermi stretti: barra in alto con menu a tendina laterale al posto della colonna fissa */
 @media (max-width:720px){
   .topbar{display:flex;align-items:center;gap:12px;flex-shrink:0;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);}
@@ -221,13 +231,19 @@ h2{color:var(--accent);font-weight:800;}
     <div class="topbar-title" id="topbarTitle">Oggi</div>
   </div>
   <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <div class="notice-bar hidden" id="noticeBar"></div>
   <div class="app">
     <div class="sidebar" id="sidebar">
       <div class="sidebar-head">
         <button class="drawer-close" id="drawerClose" aria-label="Chiudi menu">&times;</button>
         <h1>Registro</h1>
         <div class="brand-sub">Contatti &amp; chiamate</div>
+        <div class="user-line" id="userLine"></div>
         <button class="btn secondary block" id="notifBtn" style="margin-top:10px;font-size:11px;padding:6px;">Attiva notifiche</button>
+        <div class="head-actions">
+          <button class="btn secondary" id="calLinkBtn">Link calendario</button>
+          <button class="btn secondary" id="logoutBtn">Esci</button>
+        </div>
       </div>
       <div class="nav">
         <button id="navAgenda" class="active">Oggi</button>
@@ -279,47 +295,186 @@ function renderConfigGate(err){
   });
 }
 
-function renderLoginGate(err){
+function renderLoginGate(err, info, emailValue){
   showGate(`
     <h2>Accedi</h2>
-    <p>Accedi con l'account creato nella sezione Authentication del tuo progetto Firebase.</p>
-    <label>Email</label><input id="loginEmail" type="email">
+    <p>Accedi con l'email e la password del tuo account.</p>
+    <label>Email</label><input id="loginEmail" type="email" autocomplete="username" value="${esc(emailValue||'')}">
     <div style="margin-top:10px;"></div>
-    <label>Password</label><input id="loginPass" type="password">
+    <label>Password</label><input id="loginPass" type="password" autocomplete="current-password">
     <button class="btn block" id="loginBtn" style="margin-top:14px;">Accedi</button>
     ${err?`<div class="err">${esc(err)}</div>`:''}
-    <p style="margin-top:18px;font-size:12px;">Configurazione errata? <a href="#" id="resetCfgLink" style="color:var(--accent);">Cambia progetto Firebase</a></p>
+    ${info?`<div class="ok">${esc(info)}</div>`:''}
+    <div class="link-row"><a href="#" id="resetPassLink" style="color:var(--accent);">Password dimenticata?</a></div>
+    ${FIREBASE_CONFIG?'':`<p style="margin-top:18px;font-size:12px;">Configurazione errata? <a href="#" id="resetCfgLink" style="color:var(--accent);">Cambia progetto Firebase</a></p>`}
   `);
-  document.getElementById('loginBtn').addEventListener('click', async ()=>{
+  const doLogin = async ()=>{
     const email = document.getElementById('loginEmail').value.trim();
     const pass = document.getElementById('loginPass').value;
     try{ await firebase.auth().signInWithEmailAndPassword(email, pass); }
-    catch(e){ renderLoginGate('Accesso non riuscito: '+(e.message||e.code||'')); }
+    catch(e){ renderLoginGate('Accesso non riuscito: email o password non corrette.', '', email); }
+  };
+  document.getElementById('loginBtn').addEventListener('click', doLogin);
+  document.getElementById('loginPass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+  document.getElementById('resetPassLink').addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim();
+    if(!email){ renderLoginGate('Scrivi prima la tua email nel campo qui sopra.'); return; }
+    try{ await firebase.auth().sendPasswordResetEmail(email); }catch(err){}
+    // Messaggio neutro: non rivela se l'email esiste tra gli account.
+    renderLoginGate('', 'Se l\'email corrisponde a un account, riceverai a breve un messaggio per reimpostare la password (controlla anche lo spam).', email);
   });
-  document.getElementById('resetCfgLink').addEventListener('click', (e)=>{ e.preventDefault(); localStorage.removeItem('firebaseConfig'); renderConfigGate(); });
+  document.getElementById('resetCfgLink')?.addEventListener('click', (e)=>{ e.preventDefault(); localStorage.removeItem('firebaseConfig'); renderConfigGate(); });
 }
 
-function firestoreAdapter(){
+// Configurazione del progetto Firebase (non è un segreto: la protezione dei dati è
+// affidata al login e alle regole di Firestore). Se è impostata qui, i colleghi non
+// devono incollare nulla al primo accesso; se è null si usa quella salvata nel browser.
+const FIREBASE_CONFIG = null;
+
+// Ogni utente legge e scrive solo nel proprio archivio: users/<uid>/contacts e
+// users/<uid>/calls (le regole di Firestore impediscono l'accesso a quello degli altri).
+function firestoreAdapter(uid){
   const fs = firebase.firestore();
+  const base = fs.collection('users').doc(uid);
   return {
-    collection(path){ return fs.collection(path); },
-    doc(path){ return fs.doc(path); }
+    collection(path){ return base.collection(path); },
+    doc(path){ return fs.doc(`users/${uid}/${path}`); }
   };
 }
 
 function boot(){
-  const raw = localStorage.getItem('firebaseConfig');
-  if(!raw){ renderConfigGate(); return; }
-  let cfg;
-  try{ cfg = JSON.parse(raw); }catch(e){ localStorage.removeItem('firebaseConfig'); renderConfigGate(); return; }
+  let cfg = FIREBASE_CONFIG;
+  if(!cfg){
+    const raw = localStorage.getItem('firebaseConfig');
+    if(!raw){ renderConfigGate(); return; }
+    try{ cfg = JSON.parse(raw); }catch(e){ localStorage.removeItem('firebaseConfig'); renderConfigGate(); return; }
+  }
   try{
     if(!firebase.apps.length) firebase.initializeApp(cfg);
   }catch(e){ renderConfigGate('Errore di inizializzazione: '+(e.message||'')); return; }
   firebase.auth().onAuthStateChanged(user=>{
-    if(!user){ stopListeners(); renderLoginGate(); return; }
+    if(!user){ stopListeners(); resetSession(); renderLoginGate(); return; }
     hideGate();
-    startApp();
+    document.getElementById('userLine').textContent = user.email || '';
+    startApp(user.uid);
+    checkLegacyMigration(user.uid);
   });
+}
+
+// All'uscita non deve restare nulla dei dati dell'utente precedente.
+function resetSession(){
+  contacts = []; calls = []; db = null;
+  selectedId = null; view = 'agenda'; callStep = 'pick'; tableDetailCallId = null; editingCallId = null;
+  confirmDeleteId = null; confirmDeleteCallId = null; dashboardDrilldown = null; contactsSearchQuery = '';
+  notifiedFollowUps.clear(); notifiedAppts.clear();
+  document.getElementById('main').innerHTML = '';
+  document.getElementById('userLine').textContent = '';
+  hideNotice();
+  setActiveTab('navAgenda');
+  setDrawer(false);
+}
+
+function showNotice(html){
+  const n = document.getElementById('noticeBar');
+  n.innerHTML = html;
+  n.classList.remove('hidden');
+  document.getElementById('noticeClose')?.addEventListener('click', hideNotice);
+}
+function hideNotice(){
+  const n = document.getElementById('noticeBar');
+  n.classList.add('hidden');
+  n.innerHTML = '';
+}
+
+// Importazione dall'archivio condiviso della versione mono-utente (collezioni
+// "contacts" e "calls" alla radice). Si propone solo se l'archivio personale è
+// vuoto e quello vecchio è leggibile; la copia mantiene gli stessi ID dei documenti
+// (così le chiamate restano collegate ai contatti) e non modifica l'originale.
+async function checkLegacyMigration(uid){
+  const fs = firebase.firestore();
+  let legacyC, legacyK;
+  try{
+    const mine = await fs.collection('users').doc(uid).collection('contacts').limit(1).get();
+    if(!mine.empty) return;
+    [legacyC, legacyK] = await Promise.all([fs.collection('contacts').get(), fs.collection('calls').get()]);
+  }catch(e){ return; } // archivio vecchio non accessibile (regole): niente da importare
+  if(legacyC.empty && legacyK.empty) return;
+  showNotice(`<strong>Archivio precedente trovato:</strong> ${legacyC.size} contatti e ${legacyK.size} chiamate.
+    <div class="notice-hint">Vuoi copiarli nel tuo archivio personale? L'archivio precedente non viene modificato né cancellato.</div>
+    <div class="notice-actions"><button class="btn small" id="migrateBtn">Copia nel mio archivio</button><button class="btn secondary small" id="noticeClose">Non ora</button></div>`);
+  document.getElementById('migrateBtn').addEventListener('click', ()=>migrateLegacy(uid, legacyC, legacyK));
+}
+async function migrateLegacy(uid, legacyC, legacyK){
+  const fs = firebase.firestore();
+  const base = fs.collection('users').doc(uid);
+  showNotice('Copia in corso, non chiudere l\'app…');
+  try{
+    const ops = [];
+    legacyC.forEach(d=>ops.push([base.collection('contacts').doc(d.id), d.data()]));
+    legacyK.forEach(d=>ops.push([base.collection('calls').doc(d.id), d.data()]));
+    for(let i=0; i<ops.length; i+=400){
+      const batch = fs.batch();
+      ops.slice(i, i+400).forEach(([ref, data])=>batch.set(ref, data));
+      await batch.commit();
+    }
+    const [c2, k2] = await Promise.all([base.collection('contacts').get(), base.collection('calls').get()]);
+    if(c2.size >= legacyC.size && k2.size >= legacyK.size){
+      showNotice(`<strong>Copia completata:</strong> ${c2.size} contatti e ${k2.size} chiamate sono ora nel tuo archivio personale.
+        <div class="notice-actions"><button class="btn small" id="noticeClose">Chiudi</button></div>`);
+    }else{
+      showNotice(`<strong>Copia incompleta:</strong> ${c2.size} contatti su ${legacyC.size} e ${k2.size} chiamate su ${legacyK.size}.
+        <div class="notice-actions"><button class="btn small" id="migrateRetryBtn">Riprova</button></div>`);
+      document.getElementById('migrateRetryBtn').addEventListener('click', ()=>migrateLegacy(uid, legacyC, legacyK));
+    }
+  }catch(e){
+    showNotice(`<strong>Errore durante la copia</strong> (${esc(e.code||e.message||'')}). Nessun dato è stato perso: l'archivio precedente è intatto.
+      <div class="notice-actions"><button class="btn small" id="migrateRetryBtn">Riprova</button></div>`);
+    document.getElementById('migrateRetryBtn').addEventListener('click', ()=>migrateLegacy(uid, legacyC, legacyK));
+  }
+}
+
+// Link al feed calendario personale: il token è salvato in users/<uid>.calendarToken
+// e la function "calendar" lo usa per trovare l'utente.
+function randomToken(){
+  return Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function showCalendarLink(regenerate){
+  const user = firebase.auth().currentUser;
+  if(!user) return;
+  const ref = firebase.firestore().collection('users').doc(user.uid);
+  showNotice('Preparazione del link…');
+  try{
+    let token = (await ref.get()).data()?.calendarToken;
+    if(!token || regenerate){
+      token = randomToken();
+      await ref.set({ calendarToken: token, email: user.email||'' }, { merge: true });
+    }
+    const url = `${location.origin}/.netlify/functions/calendar?token=${token}`;
+    showNotice(`<strong>Il tuo calendario personale</strong>
+      <div class="notice-hint">Aggiungilo come calendario in abbonamento (iPhone: Impostazioni → Calendario → Account → Aggiungi account → Altro → Aggiungi calendario in abbonamento). Non condividerlo: chi ha il link vede i tuoi appuntamenti.</div>
+      <input id="calLinkInput" readonly value="${esc(url)}">
+      <div class="notice-actions">
+        <button class="btn small" id="calCopyBtn">Copia link</button>
+        <button class="btn secondary small" id="calRegenBtn">Genera nuovo link</button>
+        <button class="btn secondary small" id="noticeClose">Chiudi</button>
+      </div>`);
+    const input = document.getElementById('calLinkInput');
+    input.addEventListener('focus', ()=>input.select());
+    document.getElementById('calCopyBtn').addEventListener('click', async (e)=>{
+      try{ await navigator.clipboard.writeText(url); e.target.textContent = 'Copiato'; }
+      catch(err){ input.focus(); input.select(); }
+    });
+    const regen = document.getElementById('calRegenBtn');
+    regen.addEventListener('click', ()=>{
+      if(regen.dataset.confirm){ showCalendarLink(true); return; }
+      regen.dataset.confirm = '1';
+      regen.textContent = 'Conferma: il link attuale smetterà di funzionare';
+    });
+  }catch(e){
+    showNotice(`Impossibile preparare il link del calendario (${esc(e.code||e.message||'')}).
+      <div class="notice-actions"><button class="btn secondary small" id="noticeClose">Chiudi</button></div>`);
+  }
 }
 
 let unsubscribers = [];
@@ -332,9 +487,9 @@ function showDataError(err){
   document.getElementById('main').innerHTML = `<div class="empty">Impossibile leggere i dati (${esc(code)}). ${hint}</div>`;
 }
 
-function startApp(){
+function startApp(uid){
   stopListeners();
-  db = firestoreAdapter();
+  db = firestoreAdapter(uid);
   renderFooter();
   renderSidebarToday();
   unsubscribers.push(db.collection('contacts').onSnapshot(snap=>{
@@ -1605,6 +1760,9 @@ document.getElementById('sidebar').addEventListener('click', e=>{
 });
 narrowScreen.addEventListener('change', placeBottomCal);
 placeBottomCal();
+
+document.getElementById('calLinkBtn').addEventListener('click', ()=>{ setDrawer(false); showCalendarLink(false); });
+document.getElementById('logoutBtn').addEventListener('click', ()=>{ firebase.auth().signOut(); });
 document.getElementById('navAgenda').addEventListener('click', ()=>{
   view='agenda'; tableDetailCallId=null;
   setActiveTab('navAgenda');

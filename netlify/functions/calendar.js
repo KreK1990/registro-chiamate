@@ -78,18 +78,29 @@ function tokenOk(given) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+// Trova l'archivio a cui appartiene il token:
+// - token personale (generato dall'app, salvato in users/<uid>.calendarToken)
+//   -> archivio di quell'utente, users/<uid>/contacts e users/<uid>/calls;
+// - token storico CALENDAR_TOKEN (variabile d'ambiente Netlify) -> archivio
+//   condiviso della versione mono-utente, finché esiste.
+async function resolveArchive(token) {
+  if (token.length >= 32) {
+    const snap = await db.collection('users').where('calendarToken', '==', token).limit(1).get();
+    if (!snap.empty) return snap.docs[0].ref;
+  }
+  if (tokenOk(token)) return db;
+  return null;
+}
+
 exports.handler = async function (event) {
-  // Il feed contiene dati personali dei clienti: accesso solo con il token
-  // segreto (?token=...) impostato nella variabile d'ambiente CALENDAR_TOKEN.
-  if (!(process.env.CALENDAR_TOKEN || '').trim()) {
-    return { statusCode: 500, body: 'CALENDAR_TOKEN non configurato su Netlify.' };
-  }
-  const token = event && event.queryStringParameters && event.queryStringParameters.token;
-  if (!tokenOk(token)) {
-    return { statusCode: 403, body: 'Accesso negato.' };
-  }
+  // Il feed contiene dati personali dei clienti: accesso solo con un token valido.
+  const token = String((event && event.queryStringParameters && event.queryStringParameters.token) || '').trim();
 
   try {
+    const archive = await resolveArchive(token);
+    if (!archive) {
+      return { statusCode: 403, body: 'Accesso negato.' };
+    }
     if (event && event.httpMethod === 'HEAD') {
       return {
         statusCode: 200,
@@ -98,8 +109,8 @@ exports.handler = async function (event) {
       };
     }
     const [contactsSnap, callsSnap] = await Promise.all([
-      db.collection('contacts').get(),
-      db.collection('calls').get(),
+      archive.collection('contacts').get(),
+      archive.collection('calls').get(),
     ]);
 
     const contactsById = {};

@@ -33,6 +33,12 @@
   force = true
 
 [[redirects]]
+  from = "/firestore.rules"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
   from = "/netlify.toml"
   to = "/404"
   status = 404

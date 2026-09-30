@@ -37,8 +37,23 @@ l'autenticazione/hosting, che è specifica della versione standalone).
 
 ## Persistenza dati
 
-Due collection Firestore: `contacts` e `calls` (stesso schema logico sia nella versione
-Claude sia in quella Firebase). Campi principali:
+Due collection: `contacts` e `calls` (stesso schema logico sia nella versione Claude sia
+in quella Firebase).
+
+**Versione Firebase = multi-utente** (dal 2026-10-01): ogni account ha un archivio
+personale in `users/<uid>/contacts` e `users/<uid>/calls`; il documento `users/<uid>`
+contiene `calendarToken` ed `email`. Tutto l'accesso ai dati passa da
+`firestoreAdapter(uid)`, che applica il prefisso `users/<uid>/`: il resto del codice usa
+`db.collection('contacts'|'calls')` come prima e non va modificato per questo. L'isolamento
+tra utenti è garantito dalle regole Firestore (`firestore.rules`, da pubblicare a mano
+nella console Firebase), non dall'app. Le collection `contacts`/`calls` alla radice sono
+l'archivio della vecchia versione mono-utente: l'app propone una volta di copiarle
+nell'archivio personale (stessi ID documento), senza modificarle. Account creati a mano
+dall'utente nella console Firebase (niente registrazione libera); nell'app ci sono login,
+"Password dimenticata?" ed "Esci". `FIREBASE_CONFIG` in testa allo script, se valorizzato,
+evita ai colleghi di incollare la configurazione al primo accesso.
+
+Campi principali:
 - **contacts**: nome, cognome, professione, azienda, via, citta, telefono, email,
   followUp (datetime ISO "YYYY-MM-DDTHH:MM"), tag, note.
 - **calls**: contactId, data (YYYY-MM-DD), esito, progetto, note, appuntamento (datetime
@@ -53,18 +68,22 @@ Claude sia in quella Firebase). Campi principali:
   d'ambiente impostate su Netlify (Site configuration → Environment variables):
   `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (credenziali di
   un service account Firebase, usate dalla function `calendar.js`) e `CALENDAR_TOKEN`
-  (segreto richiesto come `?token=` per leggere il feed calendario).
-- **Firebase**: Firestore (modalità produzione, regole che richiedono
-  `request.auth != null`) + Authentication Email/Password (un solo utente).
+  (token storico del feed calendario sull'archivio mono-utente; facoltativo).
+- **Firebase**: Firestore (modalità produzione, regole in `firestore.rules`) +
+  Authentication Email/Password (account creati dall'utente per sé e per i colleghi).
 - **PWA su iPhone**: installata via Safari → "Aggiungi a Home". Service worker con
   strategia network-first per l'HTML (cache solo di fallback offline) così gli
   aggiornamenti si vedono subito al prossimo avvio, senza bisogno di reinstallare l'icona.
 
 ## Sottoscrizione calendario (.ics)
 
-URL della function: `https://<sito>.netlify.app/.netlify/functions/calendar?token=<CALENDAR_TOKEN>`
-(senza token valido risponde 403: il feed contiene nomi, indirizzi e note dei clienti, e
-la function usa l'Admin SDK che scavalca le regole Firestore). Gli orari sono emessi con
+URL della function: `https://<sito>.netlify.app/.netlify/functions/calendar?token=<token>`.
+Ogni utente ottiene il proprio link dal pulsante "Link calendario" nell'app: il token
+(48 caratteri esadecimali) è salvato in `users/<uid>.calendarToken` e la function cerca
+l'utente con quel token e legge solo il suo archivio. Il vecchio `CALENDAR_TOKEN` punta
+ancora all'archivio mono-utente alla radice. Senza token valido risponde 403: il feed
+contiene nomi, indirizzi e note dei clienti, e la function usa l'Admin SDK che scavalca
+le regole Firestore. Gli orari sono emessi con
 `TZID=Europe/Rome` + `VTIMEZONE`, sia nel feed sia nell'export manuale. È pensato
 per essere aggiunto come "calendario in abbonamento" (webcal) su iPhone/Google
 Calendar/iCloud, così il Calendario si aggiorna da solo periodicamente. La sottoscrizione
