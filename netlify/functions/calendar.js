@@ -70,9 +70,10 @@ function foldLine(line) {
   return out;
 }
 function tokenOk(given) {
-  const expected = process.env.CALENDAR_TOKEN || '';
+  // trim: un copia-incolla può portarsi dietro spazi o a capo invisibili.
+  const expected = (process.env.CALENDAR_TOKEN || '').trim();
   if (!expected || typeof given !== 'string') return false;
-  const a = Buffer.from(given);
+  const a = Buffer.from(given.trim());
   const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
@@ -80,7 +81,7 @@ function tokenOk(given) {
 exports.handler = async function (event) {
   // Il feed contiene dati personali dei clienti: accesso solo con il token
   // segreto (?token=...) impostato nella variabile d'ambiente CALENDAR_TOKEN.
-  if (!process.env.CALENDAR_TOKEN) {
+  if (!(process.env.CALENDAR_TOKEN || '').trim()) {
     return { statusCode: 500, body: 'CALENDAR_TOKEN non configurato su Netlify.' };
   }
   const token = event && event.queryStringParameters && event.queryStringParameters.token;
