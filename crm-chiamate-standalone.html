@@ -330,7 +330,7 @@ function renderLoginGate(err, info, emailValue){
 // Configurazione del progetto Firebase (non è un segreto: la protezione dei dati è
 // affidata al login e alle regole di Firestore). Se è impostata qui, i colleghi non
 // devono incollare nulla al primo accesso; se è null si usa quella salvata nel browser.
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {"apiKey":"AIzaSyBOA1oZUMLONDDAddWQ5P3tWEZz5GLdmWI","authDomain":"registro-chiamate.firebaseapp.com","projectId":"registro-chiamate","storageBucket":"registro-chiamate.firebasestorage.app","messagingSenderId":"457672432964","appId":"1:457672432964:web:574fbc366261aa3f0acb11"};
 
 // Ogni utente legge e scrive solo nel proprio archivio: users/<uid>/contacts e
 // users/<uid>/calls (le regole di Firestore impediscono l'accesso a quello degli altri).
