@@ -151,23 +151,47 @@ table.calls-table tbody tr.row-appt:hover{background:var(--accent-soft);}
 .gate textarea{min-height:120px;font-family:var(--mono);font-size:12px;}
 .gate .err{color:var(--danger);font-size:13px;margin-top:8px;}
 .hidden{display:none !important;}
+.topbar,.drawer-backdrop,.drawer-close{display:none;}
+/* Schermi stretti: barra in alto con menu a tendina laterale al posto della colonna fissa */
 @media (max-width:720px){
+  .topbar{display:flex;align-items:center;gap:12px;flex-shrink:0;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);}
+  .menu-btn{position:relative;display:flex;flex-direction:column;justify-content:center;gap:5px;width:42px;height:42px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:transparent;cursor:pointer;}
+  .menu-btn .bar{display:block;height:2px;border-radius:1px;background:var(--text);}
+  .menu-btn .nav-badge{top:-6px;right:-6px;}
+  .topbar-title{font-family:var(--serif);font-style:italic;font-weight:500;font-size:19px;}
   .app{flex-direction:column;}
-  .sidebar{width:100%;max-height:32vh;border-right:none;border-bottom:1px solid var(--border);overflow-y:auto;}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:50;width:min(86vw,340px);min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);transform:translateX(-100%);transition:transform .25s ease;box-shadow:0 0 24px rgba(0,0,0,.18);}
+  body.drawer-open .sidebar{transform:none;}
+  .drawer-backdrop{display:block;position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.38);opacity:0;pointer-events:none;transition:opacity .25s ease;}
+  body.drawer-open .drawer-backdrop{opacity:1;pointer-events:auto;}
+  .sidebar-head{position:relative;}
+  .drawer-close{display:block;position:absolute;top:12px;right:10px;width:38px;height:38px;border:none;background:transparent;color:var(--muted);font-size:28px;line-height:1;cursor:pointer;}
+  .nav{flex-direction:column;flex-wrap:nowrap;gap:0;padding:6px 0;}
+  .nav button{flex:none;text-align:left;padding:13px 18px;font-size:15px;margin:0;border-bottom:none;border-left:3px solid transparent;}
+  .nav button.active{border-left-color:var(--accent);background:var(--accent-soft);}
+  .nav button .nav-badge{top:50%;right:16px;transform:translateY(-50%);}
+  .sidebar-today{flex:none;overflow:visible;}
+  .sidebar .bottom-cal{max-height:none;overflow:visible;padding:14px 16px 18px;}
+  .bottom-cal-left{width:100%;}
+  .bottom-cal-right{border-left:none;padding-left:0;max-width:none;flex-basis:100%;}
   .field-row{grid-template-columns:1fr;}
-  .main{padding:20px 16px;}
-  .bottom-cal{max-height:26vh;padding:8px 16px 10px;}
-  .nav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;}
-  .nav button{flex:0 0 auto;padding:9px 13px;}
+  .main{padding:18px 16px 28px;}
+  input,textarea,select{font-size:16px;}
 }
 </style>
 </head>
 <body>
 <div id="gateScreen"></div>
 <div class="layout hidden" id="layoutRoot">
+  <div class="topbar">
+    <button class="menu-btn" id="menuBtn" aria-label="Apri menu" aria-expanded="false" aria-controls="sidebar"><span class="bar"></span><span class="bar"></span><span class="bar"></span><span id="menuBadge" class="nav-badge hidden"></span></button>
+    <div class="topbar-title" id="topbarTitle">Oggi</div>
+  </div>
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
   <div class="app">
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
       <div class="sidebar-head">
+        <button class="drawer-close" id="drawerClose" aria-label="Chiudi menu">&times;</button>
         <h1>Registro</h1>
         <div class="brand-sub">Contatti &amp; chiamate</div>
         <button class="btn secondary block" id="notifBtn" style="margin-top:10px;font-size:11px;padding:6px;">Attiva notifiche</button>
@@ -1488,8 +1512,12 @@ function updateNavBadges(){
   const overdue = contacts.filter(c=>c.followUp && new Date(c.followUp) <= now).length;
   const badge = document.getElementById('fuBadge');
   if(!badge) return;
-  if(overdue>0){ badge.textContent = overdue>99?'99+':overdue; badge.classList.remove('hidden'); }
-  else{ badge.classList.add('hidden'); }
+  const menuBadge = document.getElementById('menuBadge');
+  [badge, menuBadge].forEach(b=>{
+    if(!b) return;
+    if(overdue>0){ b.textContent = overdue>99?'99+':overdue; b.classList.remove('hidden'); }
+    else{ b.classList.add('hidden'); }
+  });
 }
 function followUpBadge(dateStr, big){
   if(!dateStr) return '';
@@ -1501,7 +1529,34 @@ function followUpBadge(dateStr, big){
 const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navTable','navDashboard'];
 function setActiveTab(id){
   NAV_TABS.forEach(t=>document.getElementById(t).classList.toggle('active', t===id));
+  const title = document.getElementById('topbarTitle');
+  if(title) title.textContent = document.getElementById(id).firstChild.textContent.trim();
 }
+
+// Menu a tendina: attivo solo su schermi stretti (vedi @media max-width:720px).
+// Lì anche il calendario del mese viene spostato dentro la tendina, così il
+// contenuto principale occupa tutto lo schermo.
+const narrowScreen = window.matchMedia('(max-width:720px)');
+function setDrawer(open){
+  document.body.classList.toggle('drawer-open', open);
+  document.getElementById('menuBtn').setAttribute('aria-expanded', open?'true':'false');
+}
+function placeBottomCal(){
+  const cal = document.getElementById('bottomCal');
+  if(narrowScreen.matches){ document.getElementById('sidebar').appendChild(cal); }
+  else{ document.querySelector('.layout').appendChild(cal); setDrawer(false); }
+}
+document.getElementById('menuBtn').addEventListener('click', ()=>setDrawer(!document.body.classList.contains('drawer-open')));
+document.getElementById('drawerBackdrop').addEventListener('click', ()=>setDrawer(false));
+document.getElementById('drawerClose').addEventListener('click', ()=>setDrawer(false));
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') setDrawer(false); });
+// Scegliere una sezione, un appuntamento o un follow-up dalla tendina la chiude.
+document.getElementById('sidebar').addEventListener('click', e=>{
+  if(e.target.closest('.addr-link')) return;
+  if(e.target.closest('.nav button, [data-appt-call-id], [data-fu-id]')) setDrawer(false);
+});
+narrowScreen.addEventListener('change', placeBottomCal);
+placeBottomCal();
 document.getElementById('navAgenda').addEventListener('click', ()=>{
   view='agenda'; tableDetailCallId=null;
   setActiveTab('navAgenda');
