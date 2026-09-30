@@ -175,7 +175,14 @@ table.calls-table tbody tr.row-appt:hover{background:var(--accent-soft);}
   .bottom-cal-left{width:100%;}
   .bottom-cal-right{border-left:none;padding-left:0;max-width:none;flex-basis:100%;}
   .field-row{grid-template-columns:1fr;}
-  .main{padding:18px 16px 28px;}
+  .main{padding:12px 12px 24px;}
+  /* Spaziature compatte: piu' contenuto per schermata */
+  #main h2{font-size:21px;margin-bottom:10px !important;}
+  .card{padding:11px 14px;margin-bottom:8px;row-gap:6px !important;column-gap:12px !important;}
+  .card > .followup{margin-top:0;}
+  .day-group{margin-bottom:16px;}
+  .subnav{margin-bottom:12px;flex-wrap:wrap;}
+  .top-actions{margin-bottom:8px;}
   /* Settimana appuntamenti: un giorno per riga invece di 7 colonne */
   .calendar-grid{grid-template-columns:1fr;min-width:0;}
   .calendar-day{min-height:0;display:flex;align-items:flex-start;gap:12px;padding:10px 12px;}
