@@ -78,9 +78,16 @@ Il file `.ics` esportabile manualmente (sezione Appuntamenti) resta un fallback.
 
 ## Note di stile/architettura da preservare
 
-- Palette e tipografia: variabili CSS (--bg, --panel, --border, --text, --muted, --accent,
-  --danger), serif "Fraunces" per i titoli, sans "IBM Plex Sans" per il resto — identità
-  grafica "registro professionale", niente emoji nell'interfaccia.
+- Identità grafica Schöck Italia (l'utente lavora per Schöck; riferimento
+  https://www.schoeck.com/it): blu istituzionale `--accent:#00487E`, fondo grigio chiaro
+  `#EEEEEE`, riquadri bianchi con bordi azzurro-grigi (`--border`, `--border-strong`), accento
+  giallo `--brand-yellow:#DC9D00` usato solo per indicatori (voce di menu attiva, quadratino
+  accanto a "Registro"), mai per testo. Angoli squadrati (2px), titoli in "Fira Sans
+  Condensed" grassetto non corsivo (`--serif`, il nome della variabile è storico), testo in
+  "Fira Sans": sostituti liberi del font aziendale Corpid, che è a licenza e non va usato.
+  Tema scuro con le stesse variabili. Niente emoji nell'interfaccia; non riprodurre il logo
+  aziendale. Le regole di stile Schöck sono raccolte in un blocco commentato subito prima
+  del `@media (max-width:720px)`. Icone PWA: "R" bianca su blu con quadratino giallo.
 - Niente `confirm()`/`alert()` nativi per conferme critiche (bloccati nell'ambiente
   Claude Artifact): le conferme di eliminazione sono implementate come UI inline nella
   pagina stessa (pattern già presente per contatti e chiamate — riusarlo per nuove

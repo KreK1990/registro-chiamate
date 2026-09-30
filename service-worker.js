@@ -1,6 +1,6 @@
 // Service worker: keeps the app installable and available offline,
 // but always prefers the freshest version when online.
-const CACHE_NAME = 'registro-chiamate-v3';
+const CACHE_NAME = 'registro-chiamate-v4';
 const APP_SHELL = [
   './crm-chiamate-standalone.html',
   './manifest.json',
