@@ -1,0 +1,1678 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Registro Chiamate</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#212C36">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Registro">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --bg:#EEE8D6; --panel:#FBF8F1; --border:#D8CDAF; --text:#212C36; --muted:#6C7680;
+  --accent:#8A5A2B; --accent-soft:#E7D9BC; --danger:#95402C;
+  --serif:"Fraunces","Iowan Old Style",Georgia,serif;
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161209; --panel:#211B12; --border:#3C3220; --text:#ECE4D2; --muted:#A79C86;
+    --accent:#D9A25C; --accent-soft:#392C1B; --danger:#D98B78;
+  }
+  :root:not([data-theme="light"]) .followup.due{background:#40261C;}
+}
+:root[data-theme="dark"]{
+  --bg:#161209; --panel:#211B12; --border:#3C3220; --text:#ECE4D2; --muted:#A79C86;
+  --accent:#D9A25C; --accent-soft:#392C1B; --danger:#D98B78;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);height:100%;-webkit-font-smoothing:antialiased;}
+html,body{height:100%;}
+.layout{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+.app{display:flex;flex:1;min-height:0;}
+.bottom-cal{flex-shrink:0;border-top:1px solid var(--border);background:var(--panel);padding:9px 26px 11px;max-height:30vh;overflow-y:auto;}
+.sidebar{width:320px;min-width:260px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--panel);}
+.main{flex:1;overflow-y:auto;padding:28px 32px;}
+.sidebar-head{padding:20px 18px 14px;border-bottom:1px solid var(--border);}
+.sidebar-head h1{font-family:var(--serif);font-style:italic;font-weight:500;font-size:23px;letter-spacing:.2px;margin:0 0 2px;color:var(--text);}
+.brand-sub{font-size:11.5px;color:var(--muted);letter-spacing:.3px;margin:0 0 14px;}
+input,textarea,select{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font-size:14px;font-family:var(--sans);transition:border-color .15s;}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);}
+textarea{resize:vertical;min-height:60px;}
+.btn{cursor:pointer;border:1px solid var(--text);border-radius:5px;padding:9px 15px;font-size:13.5px;font-weight:500;font-family:var(--sans);background:var(--text);color:var(--bg);letter-spacing:.1px;transition:opacity .15s;}
+.btn:hover{opacity:.85;}
+.btn.secondary{background:transparent;color:var(--text);border-color:var(--border);}
+.btn.small{padding:6px 11px;font-size:12.5px;}
+.btn.block{width:100%;margin-top:8px;}
+.contact-list{overflow-y:auto;flex:1;}
+.contact-item{padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid transparent;transition:background .1s,border-color .1s;}
+.contact-item:hover{background:var(--accent-soft);}
+.contact-item.active{background:var(--accent-soft);border-left-color:var(--accent);}
+.contact-item .name{font-weight:600;font-size:14px;}
+.contact-item .sub{font-size:12px;color:var(--muted);margin-top:2px;}
+.empty{color:var(--muted);padding:16px;font-size:14px;font-style:italic;}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:20px;margin-bottom:18px;}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:4px;letter-spacing:.2px;}
+h2{font-family:var(--serif);font-weight:500;margin:0 0 4px;font-size:24px;}
+h3{font-family:var(--serif);font-weight:500;font-style:italic;font-size:17px;margin:0 0 12px;color:var(--text);}
+.call-item{border-left:2px solid var(--accent);padding:8px 0 8px 12px;margin-bottom:10px;}
+.call-item .date{font-size:12px;color:var(--muted);font-family:var(--mono);}
+.call-item .esito{display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px;}
+.call-item .note{font-size:14px;margin-top:4px;white-space:pre-wrap;}
+.top-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px;}
+.followup{display:inline-block;font-size:11.5px;font-weight:500;padding:3px 9px;border-radius:4px;margin-top:8px;border:1px solid transparent;}
+.followup.ok{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);}
+.followup.due{background:#F1DCD4;color:var(--danger);border-color:var(--danger);}
+:root[data-theme="dark"] .followup.due{background:#40261C;}
+.custom-row{margin-top:6px;}
+.nav{display:flex;flex-wrap:wrap;gap:4px;padding:2px 18px 0;border-bottom:1px solid var(--border);}
+.nav button{flex:1 1 30%;padding:10px 4px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-size:12px;font-family:var(--sans);cursor:pointer;font-weight:500;letter-spacing:.1px;margin-bottom:-1px;transition:color .15s,border-color .15s;white-space:nowrap;}
+.nav button{position:relative;}
+.nav-badge{position:absolute;top:2px;right:4px;min-width:15px;height:15px;padding:0 3px;border-radius:999px;background:var(--danger);color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;font-family:var(--sans);}
+.nav button:hover{color:var(--text);}
+.nav button.active{color:var(--accent);border-bottom-color:var(--accent);}
+.day-group{margin-bottom:24px;}
+.day-title{font-family:var(--serif);font-style:italic;font-size:16px;font-weight:500;color:var(--text);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+table.calls-table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+table.calls-table th,table.calls-table td{text-align:left;padding:9px 12px;font-size:13px;border-bottom:1px solid var(--border);}
+table.calls-table th{color:var(--muted);font-weight:600;background:var(--accent-soft);font-size:11.5px;letter-spacing:.2px;}
+table.calls-table tr:last-child td{border-bottom:none;}
+table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
+.table-wrap{overflow-x:auto;}
+.subnav{display:flex;gap:8px;margin-bottom:16px;}
+.subnav button{padding:6px 13px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12.5px;font-family:var(--sans);cursor:pointer;font-weight:500;}
+.subnav button.active{background:var(--text);color:var(--bg);border-color:var(--text);}
+.week-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;}
+.week-nav .week-label{font-family:var(--serif);font-style:italic;font-size:16px;}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.calendar-day{background:var(--panel);padding:10px;min-height:130px;}
+.calendar-day-head{font-size:11.5px;color:var(--muted);margin-bottom:8px;font-weight:600;letter-spacing:.2px;}
+.calendar-day-head.today{color:var(--accent);}
+.appt-chip{background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:5px 7px;font-size:12px;margin-bottom:5px;cursor:pointer;line-height:1.35;}
+.appt-chip .t{font-family:var(--mono);font-weight:500;}
+.appt-chip:hover{opacity:.8;}
+.bar-clickable:hover{opacity:.78;}
+.sidebar-today{flex:1;overflow-y:auto;padding:16px;border-top:1px solid var(--border);min-height:0;}
+.sidebar-today-title{font-family:var(--serif);font-style:italic;font-size:15px;margin-bottom:2px;}
+.sidebar-today-date{font-size:11px;color:var(--muted);margin-bottom:14px;}
+.mini-section-label{font-size:10px;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;margin:14px 0 6px;}
+.mini-section-label:first-of-type{margin-top:0;}
+.mini-row{font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;line-height:1.4;}
+.mini-row:hover{color:var(--accent);}
+.mini-row:last-of-type{border-bottom:none;}
+.mini-time{font-family:var(--mono);color:var(--accent);margin-right:4px;}
+.mini-empty{font-size:11.5px;color:var(--muted);font-style:italic;padding:2px 0;}
+.addr-link{color:var(--accent);text-decoration:none;}
+.addr-link:hover{text-decoration:underline;}
+.tag-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:500;margin:4px 4px 0 0;}
+.esito-tag{display:inline-block;padding:2px 9px;border-radius:4px;font-size:12px;font-weight:500;}
+.esito-tag.appt{background:var(--accent);color:var(--panel);font-weight:600;}
+table.calls-table tbody tr.row-appt{background:color-mix(in srgb, var(--accent-soft) 55%, transparent);}
+table.calls-table tbody tr.row-appt:hover{background:var(--accent-soft);}
+.bottom-cal-inner{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap;}
+.bottom-cal-left{flex:0 0 auto;}
+.bottom-cal-right{flex:1 1 220px;min-width:200px;max-width:320px;border-left:1px solid var(--border);padding-left:24px;}
+.bottom-cal-right h4{font-family:var(--serif);font-style:italic;font-weight:500;font-size:14.5px;margin:0 0 10px;}
+.month-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;max-width:640px;}
+.month-header .label{font-family:var(--serif);font-style:italic;font-size:14.5px;min-width:150px;text-align:center;}
+.month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:6px;overflow:hidden;max-width:640px;}
+.month-grid .dow{background:var(--accent-soft);color:var(--muted);font-size:9.5px;font-weight:600;text-align:center;padding:2px 0;letter-spacing:.3px;}
+.month-cell{background:var(--panel);min-height:27px;padding:2px 5px;}
+.month-cell.other-month{opacity:.35;}
+.month-cell.today .daynum{color:var(--accent);font-weight:700;}
+.month-cell.has-appt{cursor:pointer;}
+.month-cell.has-appt:hover{background:var(--accent-soft);}
+.month-cell.selected{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent);}
+.month-cell .daynum{font-size:10.5px;line-height:1.2;}
+.month-cell .dots{display:flex;gap:2px;margin-top:1px;flex-wrap:wrap;}
+.month-cell .dot{width:5px;height:5px;border-radius:50%;background:var(--accent);}
+.day-appts-strip{display:flex;flex-direction:column;gap:6px;}
+.day-appt-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;font-size:13px;cursor:pointer;}
+.day-appt-row:hover{background:var(--accent-soft);}
+.gate{max-width:420px;margin:10vh auto;padding:0 20px;}
+.gate h2{margin-bottom:6px;}
+.gate p{color:var(--muted);font-size:13.5px;line-height:1.5;margin:0 0 16px;}
+.gate textarea{min-height:120px;font-family:var(--mono);font-size:12px;}
+.gate .err{color:var(--danger);font-size:13px;margin-top:8px;}
+.hidden{display:none !important;}
+@media (max-width:720px){
+  .app{flex-direction:column;}
+  .sidebar{width:100%;max-height:32vh;border-right:none;border-bottom:1px solid var(--border);overflow-y:auto;}
+  .field-row{grid-template-columns:1fr;}
+  .main{padding:20px 16px;}
+  .bottom-cal{max-height:26vh;padding:8px 16px 10px;}
+  .nav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;}
+  .nav button{flex:0 0 auto;padding:9px 13px;}
+}
+</style>
+</head>
+<body>
+<div id="gateScreen"></div>
+<div class="layout hidden" id="layoutRoot">
+  <div class="app">
+    <div class="sidebar">
+      <div class="sidebar-head">
+        <h1>Registro</h1>
+        <div class="brand-sub">Contatti &amp; chiamate</div>
+        <button class="btn secondary block" id="notifBtn" style="margin-top:10px;font-size:11px;padding:6px;">🔔 Attiva notifiche</button>
+      </div>
+      <div class="nav">
+        <button id="navAgenda" class="active">Oggi</button>
+        <button id="navContacts">Contatti</button>
+        <button id="navCall">Chiamata</button>
+        <button id="navFollowup">Follow-up<span id="fuBadge" class="nav-badge hidden"></span></button>
+        <button id="navAppt">Appuntamenti</button>
+        <button id="navTable">Tabella chiamate</button>
+        <button id="navDashboard">Dashboard</button>
+      </div>
+      <div class="sidebar-today" id="sidebarToday"></div>
+    </div>
+    <div class="main" id="main"></div>
+  </div>
+  <div class="bottom-cal" id="bottomCal"></div>
+</div>
+
+<script>
+let db=null, contacts=[], calls=[], selectedId=null, view='agenda', sortField='cognome', callStep='pick', confirmDeleteId=null, tableDetailCallId=null, clearFollowUpOnEntry=false, apptSubView='list', apptWeekOffset=0, footerCalDate=new Date(), footerSelectedDay=null, editingCallId=null, confirmDeleteCallId=null, dashboardDrilldown=null, dashboardSubView='weekly', tableFilters={search:'',esito:'',professione:''}, contactsSearchQuery=''; // view: agenda|contactsList|new|detail|table|call|followup|appt|dashboard
+
+function showGate(html){
+  document.getElementById('layoutRoot').classList.add('hidden');
+  const g = document.getElementById('gateScreen');
+  g.classList.remove('hidden');
+  g.innerHTML = `<div class="gate">${html}</div>`;
+}
+
+function hideGate(){
+  document.getElementById('gateScreen').classList.add('hidden');
+  document.getElementById('layoutRoot').classList.remove('hidden');
+}
+
+function renderConfigGate(err){
+  showGate(`
+    <h2>Configurazione</h2>
+    <p>Incolla qui sotto la configurazione del tuo progetto Firebase (da Console Firebase → Impostazioni progetto → Le tue app → SDK setup and configuration → oggetto "firebaseConfig"). Va fatto una sola volta per dispositivo/browser.</p>
+    <textarea id="cfgInput" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'></textarea>
+    <button class="btn block" id="cfgSaveBtn">Salva e continua</button>
+    ${err?`<div class="err">${esc(err)}</div>`:''}
+  `);
+  document.getElementById('cfgSaveBtn').addEventListener('click', ()=>{
+    const raw = document.getElementById('cfgInput').value.trim();
+    try{
+      const cfg = JSON.parse(raw);
+      if(!cfg.apiKey || !cfg.projectId) throw new Error('Config incompleta');
+      localStorage.setItem('firebaseConfig', JSON.stringify(cfg));
+      boot();
+    }catch(e){ renderConfigGate('Configurazione non valida: incolla l\'oggetto JSON completo copiato da Firebase.'); }
+  });
+}
+
+function renderLoginGate(err){
+  showGate(`
+    <h2>Accedi</h2>
+    <p>Accedi con l'account creato nella sezione Authentication del tuo progetto Firebase.</p>
+    <label>Email</label><input id="loginEmail" type="email">
+    <div style="margin-top:10px;"></div>
+    <label>Password</label><input id="loginPass" type="password">
+    <button class="btn block" id="loginBtn" style="margin-top:14px;">Accedi</button>
+    ${err?`<div class="err">${esc(err)}</div>`:''}
+    <p style="margin-top:18px;font-size:12px;">Configurazione errata? <a href="#" id="resetCfgLink" style="color:var(--accent);">Cambia progetto Firebase</a></p>
+  `);
+  document.getElementById('loginBtn').addEventListener('click', async ()=>{
+    const email = document.getElementById('loginEmail').value.trim();
+    const pass = document.getElementById('loginPass').value;
+    try{ await firebase.auth().signInWithEmailAndPassword(email, pass); }
+    catch(e){ renderLoginGate('Accesso non riuscito: '+(e.message||e.code||'')); }
+  });
+  document.getElementById('resetCfgLink').addEventListener('click', (e)=>{ e.preventDefault(); localStorage.removeItem('firebaseConfig'); renderConfigGate(); });
+}
+
+function firestoreAdapter(){
+  const fs = firebase.firestore();
+  return {
+    collection(path){ return fs.collection(path); },
+    doc(path){ return fs.doc(path); }
+  };
+}
+
+function boot(){
+  const raw = localStorage.getItem('firebaseConfig');
+  if(!raw){ renderConfigGate(); return; }
+  let cfg;
+  try{ cfg = JSON.parse(raw); }catch(e){ localStorage.removeItem('firebaseConfig'); renderConfigGate(); return; }
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(cfg);
+  }catch(e){ renderConfigGate('Errore di inizializzazione: '+(e.message||'')); return; }
+  firebase.auth().onAuthStateChanged(user=>{
+    if(!user){ renderLoginGate(); return; }
+    hideGate();
+    startApp();
+  });
+}
+
+function startApp(){
+  db = firestoreAdapter();
+  renderFooter();
+  renderSidebarToday();
+  db.collection('contacts').onSnapshot(snap=>{
+    contacts = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(view!=='new' && !(view==='call' && callStep==='entry')) renderMain();
+    renderFooter();
+    renderSidebarToday();
+    updateNavBadges();
+  });
+  db.collection('calls').onSnapshot(snap=>{
+    calls = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    if(view!=='new' && !(view==='call' && callStep==='entry')) renderMain();
+    renderFooter();
+    renderSidebarToday();
+  });
+}
+
+function init(){ boot(); }
+
+function contactsListView(){
+  const q = contactsSearchQuery.trim().toLowerCase();
+  const filtered = contacts.filter(c=>!q || (c.nome||'').toLowerCase().includes(q) || (c.cognome||'').toLowerCase().includes(q) || (c.azienda||'').toLowerCase().includes(q) || (c.telefono||'').includes(q) || (c.tag||'').toLowerCase().includes(q));
+  filtered.sort((a,b)=>{
+    const ka = (sortField==='cognome' ? (a.cognome||a.nome||'') : (a.nome||''));
+    const kb = (sortField==='cognome' ? (b.cognome||b.nome||'') : (b.nome||''));
+    return ka.localeCompare(kb);
+  });
+  const toolbar = `<div class="card" style="padding:14px 16px;">
+    <div class="field-row" style="grid-template-columns:2fr 1fr;">
+      <div><label>Cerca</label><input id="contactsSearch" value="${esc(contactsSearchQuery)}" placeholder="Nome, cognome, azienda, tag..."></div>
+      <div><label>Ordina per</label><select id="contactsSortSelect">
+        <option value="cognome" ${sortField==='cognome'?'selected':''}>Cognome</option>
+        <option value="nome" ${sortField==='nome'?'selected':''}>Nome</option>
+      </select></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn" id="newContactBtn">+ Nuovo contatto</button>
+      <button class="btn secondary" id="exportCsvBtn">⬇ Esporta backup (CSV)</button>
+    </div>
+  </div>`;
+  const listHtml = filtered.length===0 ? '<div class="empty">Nessun contatto trovato.</div>' : filtered.map(c=>{
+    const n = calls.filter(k=>k.contactId===c.id).length;
+    const fu = followUpBadge(c.followUp);
+    return `<div class="card" data-contact-id="${c.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}${(c.professione||c.azienda)?' · ':''}${n} chiamat${n===1?'a':'e'}</div>
+        ${c.tag?`<div style="margin-top:4px;">${tagPills(c.tag)}</div>`:''}
+      </div>
+      ${fu}
+    </div>`;
+  }).join('');
+  return `<h2 style="margin-bottom:16px;">Contatti (${contacts.length})</h2>${toolbar}${listHtml}`;
+}
+
+function renderMain(){
+  const main = document.getElementById('main');
+  if(tableDetailCallId){ main.innerHTML = tableDetailView(); bindTableDetail(); return; }
+  if(view==='call'){ renderCallFlow(); return; }
+  if(view==='agenda'){
+    main.innerHTML = agendaView();
+    main.querySelectorAll('[data-appt-call-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{ tableDetailCallId=el.dataset.apptCallId; renderMain(); });
+    });
+    main.querySelectorAll('[data-fu-id]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        selectedId=btn.dataset.fuId; clearFollowUpOnEntry=true; view='call'; callStep='entry';
+        setActiveTab('navCall');
+        renderMain();
+      });
+    });
+    return;
+  }
+  if(view==='followup'){
+    main.innerHTML = followupView();
+    main.querySelectorAll('[data-fu-id]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        selectedId=btn.dataset.fuId; clearFollowUpOnEntry=true; view='call'; callStep='entry';
+        document.getElementById('navCall').classList.add('active');
+        document.getElementById('navFollowup').classList.remove('active');
+        renderMain();
+      });
+    });
+    return;
+  }
+  if(view==='appt'){
+    main.innerHTML = apptView();
+    const icsBtn = document.getElementById('exportIcsBtn');
+    if(icsBtn) icsBtn.addEventListener('click', exportICS);
+    document.getElementById('apptListBtn').addEventListener('click', ()=>{ apptSubView='list'; renderMain(); });
+    document.getElementById('apptCalBtn').addEventListener('click', ()=>{ apptSubView='calendar'; renderMain(); });
+    document.getElementById('apptDoneBtn').addEventListener('click', ()=>{ apptSubView='done'; renderMain(); });
+    if(apptSubView==='calendar'){
+      document.getElementById('weekPrevBtn').addEventListener('click', ()=>{ apptWeekOffset--; renderMain(); });
+      document.getElementById('weekNextBtn').addEventListener('click', ()=>{ apptWeekOffset++; renderMain(); });
+      document.getElementById('weekTodayBtn').addEventListener('click', ()=>{ apptWeekOffset=0; renderMain(); });
+    }
+    main.querySelectorAll('[data-appt-call-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{ tableDetailCallId=el.dataset.apptCallId; renderMain(); });
+    });
+    return;
+  }
+  if(view==='table'){
+    main.innerHTML = tableView();
+    main.querySelectorAll('tr[data-call-id]').forEach(tr=>{
+      tr.addEventListener('click', ()=>{ tableDetailCallId=tr.dataset.callId; renderMain(); });
+    });
+    const tSearch = document.getElementById('tableSearchInput');
+    if(tSearch){
+      tSearch.addEventListener('input', e=>{ tableFilters.search=e.target.value; renderMain(); });
+      tSearch.focus();
+      tSearch.setSelectionRange(tSearch.value.length, tSearch.value.length);
+    }
+    const tEsito = document.getElementById('tableEsitoFilter');
+    if(tEsito) tEsito.addEventListener('change', e=>{ tableFilters.esito=e.target.value; renderMain(); });
+    const tProf = document.getElementById('tableProfFilter');
+    if(tProf) tProf.addEventListener('change', e=>{ tableFilters.professione=e.target.value; renderMain(); });
+    return;
+  }
+  if(view==='dashboard'){
+    main.innerHTML = dashboardView();
+    const dw = document.getElementById('dashWeekBtn');
+    if(dw) dw.addEventListener('click', ()=>{ dashboardSubView='weekly'; renderMain(); });
+    const dm = document.getElementById('dashMonthBtn');
+    if(dm) dm.addEventListener('click', ()=>{ dashboardSubView='monthly'; renderMain(); });
+    const dy = document.getElementById('dashYearBtn');
+    if(dy) dy.addEventListener('click', ()=>{ dashboardSubView='yearly'; renderMain(); });
+    main.querySelectorAll('.bar-clickable').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        if(el.dataset.day){ dashboardDrilldown.day = el.dataset.day; }
+        else{ dashboardDrilldown = { weekStart: el.dataset.weekStart, type: el.dataset.chartType, day: null }; }
+        renderMain();
+      });
+    });
+    main.querySelectorAll('[data-appt-call-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{ tableDetailCallId=el.dataset.apptCallId; renderMain(); });
+    });
+    const backBtn = document.getElementById('backToDashboardBtn');
+    if(backBtn) backBtn.addEventListener('click', ()=>{ dashboardDrilldown=null; renderMain(); });
+    const backWeekBtn = document.getElementById('backToWeekBtn');
+    if(backWeekBtn) backWeekBtn.addEventListener('click', ()=>{ dashboardDrilldown.day=null; renderMain(); });
+    return;
+  }
+  if(view==='contactsList'){
+    main.innerHTML = contactsListView();
+    main.querySelectorAll('[data-contact-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; view='detail'; confirmDeleteId=null; tableDetailCallId=null; renderMain(); });
+    });
+    const newBtn = document.getElementById('newContactBtn');
+    if(newBtn) newBtn.addEventListener('click', ()=>{ window.__editing=null; view='new'; tableDetailCallId=null; renderMain(); });
+    const exportBtn = document.getElementById('exportCsvBtn');
+    if(exportBtn) exportBtn.addEventListener('click', exportBackupCSV);
+    const cSearch = document.getElementById('contactsSearch');
+    if(cSearch){
+      cSearch.addEventListener('input', e=>{ contactsSearchQuery=e.target.value; renderMain(); });
+      cSearch.focus();
+      cSearch.setSelectionRange(cSearch.value.length, cSearch.value.length);
+    }
+    const cSort = document.getElementById('contactsSortSelect');
+    if(cSort) cSort.addEventListener('change', e=>{ sortField=e.target.value; renderMain(); });
+    return;
+  }
+  if(view==='new'){ main.innerHTML = newContactForm(); bindNewForm(); return; }
+  if(view==='detail' && selectedId){
+    const c = contacts.find(x=>x.id===selectedId);
+    if(!c){ view='contactsList'; return renderMain(); }
+    const myCalls = calls.filter(k=>k.contactId===selectedId);
+    main.innerHTML = `
+      <div class="top-actions" style="justify-content:space-between;">
+        <button class="btn secondary small" id="backToContactsBtn">← Torna ai contatti</button>
+        <div style="display:flex;gap:8px;">
+          ${confirmDeleteId===c.id ? `
+            <span style="color:var(--danger);font-size:13px;font-weight:600;align-self:center;">Eliminare definitivamente ${esc(fullName(c))}?</span>
+            <button class="btn small" id="confirmDeleteBtn" style="background:var(--danger);color:#fff;">Sì, elimina</button>
+            <button class="btn secondary small" id="cancelDeleteBtn">Annulla</button>
+          ` : `
+            <button class="btn secondary small" id="editBtn">Modifica contatto</button>
+            <button class="btn small" id="deleteBtn" style="background:var(--danger);color:#fff;">Elimina contatto</button>
+          `}
+        </div>
+      </div>
+      <div class="card">
+        <h2>${esc(fullName(c))}</h2>
+        <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
+        <div style="margin-top:8px;font-size:14px;">${c.telefono?('Tel '+esc(formatPhone(c.telefono))+'  '):''}${c.email?(esc(c.email)):''}</div>
+        ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
+        ${c.tag?`<div style="margin-top:8px;">${tagPills(c.tag)}</div>`:''}
+        ${c.note?`<div style="margin-top:8px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(c.note)}</div>`:''}
+        ${followUpBadge(c.followUp,true)}
+      </div>
+      <div class="card">
+        <h3>Storico chiamate (${myCalls.length})</h3>
+        ${myCalls.length? `<div class="table-wrap"><table class="calls-table">
+          <thead><tr><th>Data</th><th>Esito</th><th>Progetto</th><th>Note</th></tr></thead>
+          <tbody>${myCalls.map(k=>`<tr data-call-id="${k.id}" class="${isApptCall(k)?'row-appt':''}" style="cursor:pointer;">
+            <td>${fmtDate(k.data)}</td>
+            <td>${esitoCell(k)}</td>
+            <td>${esc(k.progetto||'—')}</td>
+            <td>${esc(k.note||'—')}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>` : '<div class="empty">Nessuna chiamata registrata.</div>'}
+      </div>
+      <div class="card">
+        <h3>Registra una nuova chiamata</h3>
+        <div class="field-row">
+          <div><label>Data</label><input type="date" id="callDate" value="${todayISO()}"></div>
+          <div><label>Esito</label><select id="callEsito">
+            <option>Interessato</option><option>Da richiamare</option><option>Appuntamento fissato</option>
+            <option>Non interessato</option><option>Nessuna risposta</option><option>Altro</option>
+          </select></div>
+        </div>
+        <label>Note sulla chiamata</label>
+        <textarea id="callNote" placeholder="Cosa vi siete detti..."></textarea>
+        <label>Progetto / argomento trattato</label>
+        <input id="callProgetto" placeholder="Es. Ristrutturazione Via Roma 12">
+        <label style="display:flex;align-items:center;gap:7px;margin-top:12px;cursor:pointer;"><input type="checkbox" id="callApptCheck" style="width:auto;">Appuntamento fissato</label>
+        <div id="callApptWrap" class="hidden" style="margin-top:6px;">
+          <div class="field-row">
+            <div><label>Data</label><input type="date" id="callApptDate"></div>
+            <div><label>Ora</label><select id="callApptTime">${timeOptions('')}</select></div>
+          </div>
+        </div>
+        <label style="margin-top:10px;">Prossimo follow-up (opzionale)</label>
+        <div class="field-row">
+          <div><label>Data</label><input type="date" id="callFollowUpDate" value="${splitDT(c.followUp).date}"></div>
+          <div><label>Ora</label><select id="callFollowUpTime">${timeOptions(splitDT(c.followUp).time)}</select></div>
+        </div>
+        <button class="btn block" id="saveCallBtn">Salva chiamata</button>
+      </div>`;
+    document.getElementById('saveCallBtn').addEventListener('click', saveCall);
+    main.querySelectorAll('tr[data-call-id]').forEach(tr=>{
+      tr.addEventListener('click', ()=>{ tableDetailCallId=tr.dataset.callId; renderMain(); });
+    });
+    document.getElementById('callApptCheck').addEventListener('change', e=>{
+      document.getElementById('callApptWrap').classList.toggle('hidden', !e.target.checked);
+    });
+    document.getElementById('backToContactsBtn').addEventListener('click', ()=>{ view='contactsList'; selectedId=null; renderMain(); });
+    if(confirmDeleteId===c.id){
+      document.getElementById('confirmDeleteBtn').addEventListener('click', ()=>deleteContact(c));
+      document.getElementById('cancelDeleteBtn').addEventListener('click', ()=>{ confirmDeleteId=null; renderMain(); });
+    } else {
+      document.getElementById('editBtn').addEventListener('click', ()=>{ view='new'; window.__editing=c; renderMain(); });
+      document.getElementById('deleteBtn').addEventListener('click', ()=>{ confirmDeleteId=c.id; renderMain(); });
+    }
+    return;
+  }
+  main.innerHTML = '<div class="empty">Seleziona un contatto dall\'elenco oppure crea un nuovo contatto per iniziare.</div>';
+}
+
+async function deleteContact(c){
+  try{
+    const related = calls.filter(k=>k.contactId===c.id);
+    for(const k of related){ await db.collection('calls').doc(k.id).delete(); }
+    await db.collection('contacts').doc(c.id).delete();
+    confirmDeleteId=null; selectedId=null; view='contactsList'; renderMain();
+  }catch(e){ alert('Errore durante l\'eliminazione: '+(e.message||e.code||'')); }
+}
+
+function renderSidebarToday(){
+  const el = document.getElementById('sidebarToday');
+  if(!el) return;
+  const now = new Date();
+  const todayStr = now.toDateString();
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const dayNames=['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+  const monthNames=['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+  const dateLabel = `${dayNames[now.getDay()]} ${now.getDate()} ${monthNames[now.getMonth()]}`;
+  const todayAppts = apptCalls().filter(k=> new Date(k.appuntamento).toDateString()===todayStr).sort((a,b)=>a.appuntamento.localeCompare(b.appuntamento));
+  const dueFU = contacts.filter(c=>c.followUp && new Date(c.followUp)<=now);
+  const todayFU = contacts.filter(c=>c.followUp && new Date(c.followUp)>now && new Date(c.followUp).toDateString()===todayStr);
+  const fuList = [...dueFU, ...todayFU].sort((a,b)=>a.followUp.localeCompare(b.followUp));
+
+  const apptHtml = todayAppts.length ? todayAppts.map(k=>{
+    const c = byId[k.contactId]||{};
+    const t = new Date(k.appuntamento);
+    const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
+    return `<div class="mini-row" data-appt-call-id="${k.id}"><span class="mini-time">${hh}:${mm}</span>${esc(fullName(c))}</div>`;
+  }).join('') : '<div class="mini-empty">Nessun appuntamento</div>';
+
+  const fuHtml = fuList.length ? fuList.map(c=>{
+    const due = new Date(c.followUp)<=now;
+    const fuDate = new Date(c.followUp);
+    const dtLabel = `${String(fuDate.getDate()).padStart(2,'0')}/${String(fuDate.getMonth()+1).padStart(2,'0')} ${String(fuDate.getHours()).padStart(2,'0')}:${String(fuDate.getMinutes()).padStart(2,'0')}`;
+    return `<div class="mini-row" data-fu-id="${c.id}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><span>${esc(fullName(c))}</span><span class="mini-time">${due?'<span style="color:var(--danger);">● </span>':''}${dtLabel}</span></div>`;
+  }).join('') : '<div class="mini-empty">Nessun follow-up</div>';
+
+  el.innerHTML = `
+    <div class="sidebar-today-title">Oggi</div>
+    <div class="sidebar-today-date">${dateLabel}</div>
+    <div class="mini-section-label">Appuntamenti (${todayAppts.length})</div>
+    ${apptHtml}
+    <div class="mini-section-label">Follow-up (${fuList.length})</div>
+    ${fuHtml}
+  `;
+  el.querySelectorAll('[data-appt-call-id]').forEach(row=>{
+    row.addEventListener('click', ()=>{ tableDetailCallId=row.dataset.apptCallId; renderMain(); });
+  });
+  el.querySelectorAll('[data-fu-id]').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      selectedId=row.dataset.fuId; clearFollowUpOnEntry=true; view='call'; callStep='entry';
+      setActiveTab('navCall');
+      renderMain();
+    });
+  });
+}
+
+const PROFESSIONI = ['Ingegnere','Geometra','Architetto','Avvocato','Notaio','Commercialista','Consulente','Altro'];
+function renderFooter(){
+  const el = document.getElementById('bottomCal');
+  if(!el) return;
+  const y = footerCalDate.getFullYear(), m = footerCalDate.getMonth();
+  const monthNames = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const dow = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+  const first = new Date(y,m,1);
+  const startOffset = (first.getDay()+6)%7;
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const prevDaysInMonth = new Date(y,m,0).getDate();
+  const cells = [];
+  for(let i=0;i<startOffset;i++){ const dnum=prevDaysInMonth-startOffset+i+1; cells.push({d:dnum, other:true, dateObj:new Date(y,m-1,dnum)}); }
+  for(let d=1; d<=daysInMonth; d++){ cells.push({d, other:false, dateObj:new Date(y,m,d)}); }
+  let nextD=1;
+  while(cells.length<42){ cells.push({d:nextD, other:true, dateObj:new Date(y,m+1,nextD)}); nextD++; }
+  const todayStr = new Date().toDateString();
+  const list = apptCalls();
+  const byDateCount = {};
+  list.forEach(k=>{ const ds = new Date(k.appuntamento).toDateString(); byDateCount[ds]=(byDateCount[ds]||0)+1; });
+  const grid = cells.map(c=>{
+    const ds = c.dateObj.toDateString();
+    const count = byDateCount[ds]||0;
+    return `<div class="month-cell ${c.other?'other-month':''} ${ds===todayStr?'today':''} ${count?'has-appt':''} ${footerSelectedDay===ds?'selected':''}" data-daystr="${ds}">
+      <div class="daynum">${c.d}</div>
+      ${count?`<div class="dots">${Array.from({length:Math.min(count,4)}).map(()=>'<span class="dot"></span>').join('')}</div>`:''}
+    </div>`;
+  }).join('');
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const dayList = footerSelectedDay ? list.filter(k=>new Date(k.appuntamento).toDateString()===footerSelectedDay) : [];
+  el.innerHTML = `
+    <div class="bottom-cal-inner">
+      <div class="bottom-cal-left">
+        <div class="month-header">
+          <button class="btn secondary small" id="monthPrevBtn">←</button>
+          <div class="label">${monthNames[m]} ${y}</div>
+          <button class="btn secondary small" id="monthNextBtn">→</button>
+        </div>
+        <div class="month-grid">
+          ${dow.map(d=>`<div class="dow">${d}</div>`).join('')}
+          ${grid}
+        </div>
+      </div>
+      ${footerSelectedDay ? `<div class="bottom-cal-right">
+        <h4>${fmtLongDate(footerSelectedDay)}</h4>
+        <div class="day-appts-strip">
+          ${dayList.length? dayList.map(k=>{ const c=byId[k.contactId]||{}; const t=new Date(k.appuntamento); const hh=String(t.getHours()).padStart(2,'0'),mm=String(t.getMinutes()).padStart(2,'0');
+            return `<div class="day-appt-row" data-appt-call-id="${k.id}" style="flex-direction:column;align-items:stretch;">
+          <span>${hh}:${mm} — ${esc(fullName(c))}${k.progetto?' · '+esc(k.progetto):''}</span>
+          ${fullAddress(c)?`<a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(fullAddress(c))} · Indicazioni</a>`:''}
+        </div>`;
+          }).join('') : `<div class="empty" style="padding:0;">Nessun appuntamento in questo giorno.</div>`}
+        </div>
+      </div>` : ''}
+    </div>`;
+  document.getElementById('monthPrevBtn').addEventListener('click', ()=>{ footerCalDate=new Date(y,m-1,1); footerSelectedDay=null; renderFooter(); });
+  document.getElementById('monthNextBtn').addEventListener('click', ()=>{ footerCalDate=new Date(y,m+1,1); footerSelectedDay=null; renderFooter(); });
+  el.querySelectorAll('.month-cell.has-appt').forEach(cell=>{
+    cell.addEventListener('click', ()=>{ footerSelectedDay = footerSelectedDay===cell.dataset.daystr ? null : cell.dataset.daystr; renderFooter(); });
+  });
+  el.querySelectorAll('[data-appt-call-id]').forEach(row=>{
+    row.addEventListener('click', ()=>{ tableDetailCallId=row.dataset.apptCallId; renderMain(); });
+  });
+}
+
+function apptCalls(){
+  return calls.filter(k=>k.appuntamento).sort((a,b)=>a.appuntamento.localeCompare(b.appuntamento));
+}
+
+function apptView(){
+  const header = `<div class="top-actions" style="justify-content:space-between;">
+    <div class="subnav" style="margin-bottom:0;">
+      <button id="apptListBtn" class="${apptSubView==='list'?'active':''}">Elenco</button>
+      <button id="apptCalBtn" class="${apptSubView==='calendar'?'active':''}">Calendario settimanale</button>
+      <button id="apptDoneBtn" class="${apptSubView==='done'?'active':''}">Svolti</button>
+    </div>
+    <button class="btn secondary small" id="exportIcsBtn">⬇ Esporta calendario (.ics)</button>
+  </div>`;
+  const body = apptSubView==='calendar' ? apptCalendarView() : apptSubView==='done' ? apptDoneView() : apptListView();
+  return header + body;
+}
+
+function apptDoneView(){
+  const now = new Date();
+  const list = apptCalls().filter(k=> new Date(k.appuntamento) <= now).sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento));
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  if(list.length===0) return '<div class="empty">Nessun incontro ancora svolto.</div>';
+  return list.map(k=>{
+    const c = byId[k.contactId] || {};
+    const hasNote = !!(k.noteIncontro && k.noteIncontro.trim());
+    return `<div class="card" data-appt-call-id="${k.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}${k.progetto?' · '+esc(k.progetto):''}</div>
+        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
+        ${hasNote ? `<div style="font-size:13px;margin-top:6px;white-space:pre-wrap;">${esc(k.noteIncontro)}</div>` : `<div style="font-size:12.5px;margin-top:6px;color:var(--accent);">+ Aggiungi note sull'incontro</div>`}
+      </div>
+      <div class="followup ok">${fmtDateTime(k.appuntamento)}</div>
+    </div>`;
+  }).join('');
+}
+
+function apptListView(){
+  const now = new Date();
+  const list = apptCalls().filter(k=> new Date(k.appuntamento) > now);
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  if(list.length===0) return '<div class="empty">Nessun appuntamento in programma.</div>';
+  return list.map(k=>{
+    const c = byId[k.contactId] || {};
+    return `<div class="card" data-appt-call-id="${k.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}${k.progetto?' · '+esc(k.progetto):''}</div>
+        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
+      </div>
+      <div class="followup ok">${fmtDateTime(k.appuntamento)}</div>
+    </div>`;
+  }).join('');
+}
+
+function startOfWeek(d){
+  const dt = new Date(d);
+  const day = (dt.getDay()+6)%7; // Monday=0
+  dt.setHours(0,0,0,0);
+  dt.setDate(dt.getDate()-day);
+  return dt;
+}
+
+function weeklyBuckets(predicate, weeksBack){
+  const thisMonday = startOfWeek(new Date());
+  const buckets = [];
+  for(let i=weeksBack-1;i>=0;i--){
+    const start = new Date(thisMonday); start.setDate(start.getDate()-i*7);
+    const end = new Date(start); end.setDate(end.getDate()+7);
+    buckets.push({start, end, count:0});
+  }
+  calls.forEach(k=>{
+    if(!k.data) return;
+    if(predicate && !predicate(k)) return;
+    const d = new Date(k.data+'T00:00:00');
+    const b = buckets.find(b=> d>=b.start && d<b.end);
+    if(b) b.count++;
+  });
+  return buckets;
+}
+
+function weekLabel(d){ return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; }
+
+function barChartSVG(buckets, color, chartType){
+  const w=640, h=190, padL=8, padR=8, padT=18, padB=26;
+  const innerW=w-padL-padR, innerH=h-padT-padB;
+  const max = Math.max(1, ...buckets.map(b=>b.count));
+  const n = buckets.length;
+  const gap = innerW/n;
+  const bw = Math.min(34, gap*0.55);
+  let bars='';
+  buckets.forEach((b,i)=>{
+    const bh = (b.count/max)*innerH;
+    const x = padL + i*gap + (gap-bw)/2;
+    const y = padT + innerH - bh;
+    const clickAttrs = chartType ? ` class="bar-clickable" data-week-start="${b.start.toISOString()}" data-chart-type="${chartType}" style="cursor:pointer;"` : '';
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${color}"${clickAttrs}></rect>`;
+    if(b.count>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--text)" font-family="var(--sans)" style="pointer-events:none;">${b.count}</text>`;
+    bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${weekLabel(b.start)}</text>`;
+  });
+  const baseline = `<line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="var(--border)" stroke-width="1"/>`;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;max-width:640px;">${baseline}${bars}</svg>`;
+}
+
+function dailyBucketsForWeek(weekStart, predicate){
+  const dayNames=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+  const buckets = [...Array(7)].map((_,i)=>{ const d=new Date(weekStart); d.setDate(d.getDate()+i); return {date:d, count:0, label:dayNames[i]}; });
+  calls.forEach(k=>{
+    if(!k.data) return;
+    if(predicate && !predicate(k)) return;
+    const d = new Date(k.data+'T00:00:00');
+    const b = buckets.find(bb=>bb.date.toDateString()===d.toDateString());
+    if(b) b.count++;
+  });
+  return buckets;
+}
+
+function dayBarChartSVG(buckets, color){
+  const w=640, h=190, padL=8, padR=8, padT=18, padB=34;
+  const innerW=w-padL-padR, innerH=h-padT-padB;
+  const max = Math.max(1, ...buckets.map(b=>b.count));
+  const n = buckets.length;
+  const gap = innerW/n;
+  const bw = Math.min(46, gap*0.55);
+  let bars='';
+  buckets.forEach((b,i)=>{
+    const bh = (b.count/max)*innerH;
+    const x = padL + i*gap + (gap-bw)/2;
+    const y = padT + innerH - bh;
+    const clickAttrs = ` class="bar-clickable" data-day="${b.date.toDateString()}" style="cursor:pointer;"`;
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${color}"${clickAttrs}></rect>`;
+    if(b.count>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--text)" font-family="var(--sans)" style="pointer-events:none;">${b.count}</text>`;
+    bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-20}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${b.label}</text>`;
+    bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${weekLabel(b.date)}</text>`;
+  });
+  const baseline = `<line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="var(--border)" stroke-width="1"/>`;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;max-width:640px;">${baseline}${bars}</svg>`;
+}
+
+function dashboardView(){
+  if(dashboardDrilldown) return dashboardDrilldownView();
+  const header = `<div class="subnav">
+    <button id="dashWeekBtn" class="${dashboardSubView==='weekly'?'active':''}">Settimanale</button>
+    <button id="dashMonthBtn" class="${dashboardSubView==='monthly'?'active':''}">Mensile</button>
+    <button id="dashYearBtn" class="${dashboardSubView==='yearly'?'active':''}">Annuale</button>
+  </div>`;
+  const body = dashboardSubView==='monthly' ? dashboardMonthlyView() : dashboardSubView==='yearly' ? dashboardYearlyView() : dashboardWeeklyView();
+  return `<h2 style="margin-bottom:16px;">Dashboard attività</h2>${header}${body}`;
+}
+
+function dashboardWeeklyView(){
+  const weeksBack = 8;
+  const callBuckets = weeklyBuckets(null, weeksBack);
+  const apptBuckets = weeklyBuckets(isApptCall, weeksBack);
+  const totalCalls = callBuckets.reduce((s,b)=>s+b.count,0);
+  const totalAppts = apptBuckets.reduce((s,b)=>s+b.count,0);
+  const avgCalls = (totalCalls/weeksBack).toFixed(1);
+  const avgAppts = (totalAppts/weeksBack).toFixed(1);
+  return `
+    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultime ${weeksBack} settimane, dalla più vecchia alla più recente · clicca una colonna per il dettaglio giornaliero</div>
+    <div class="card">
+      <h3>Chiamate per settimana</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls} · media ${avgCalls} a settimana</div>
+      ${barChartSVG(callBuckets, 'var(--accent)', 'calls')}
+    </div>
+    <div class="card">
+      <h3>Appuntamenti fissati per settimana</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalAppts} · media ${avgAppts} a settimana</div>
+      ${barChartSVG(apptBuckets, 'var(--text)', 'appt')}
+    </div>`;
+}
+
+function monthlyBuckets(predicate, monthsBack){
+  const now = new Date();
+  const buckets = [];
+  for(let i=monthsBack-1;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    buckets.push({year:d.getFullYear(), month:d.getMonth(), count:0});
+  }
+  calls.forEach(k=>{
+    if(!k.data) return;
+    if(predicate && !predicate(k)) return;
+    const d = new Date(k.data+'T00:00:00');
+    const b = buckets.find(bb=>bb.year===d.getFullYear() && bb.month===d.getMonth());
+    if(b) b.count++;
+  });
+  return buckets;
+}
+
+function yearlyBuckets(predicate, yearsBack){
+  const now = new Date();
+  const buckets = [];
+  for(let i=yearsBack-1;i>=0;i--){ buckets.push({year: now.getFullYear()-i, count:0}); }
+  calls.forEach(k=>{
+    if(!k.data) return;
+    if(predicate && !predicate(k)) return;
+    const y = parseInt(k.data.slice(0,4),10);
+    const b = buckets.find(bb=>bb.year===y);
+    if(b) b.count++;
+  });
+  return buckets;
+}
+
+function simpleBarChartSVG(buckets, color, labelFn){
+  const w=640, h=190, padL=8, padR=8, padT=18, padB=26;
+  const innerW=w-padL-padR, innerH=h-padT-padB;
+  const max = Math.max(1, ...buckets.map(b=>b.count));
+  const n = buckets.length;
+  const gap = innerW/n;
+  const bw = Math.min(42, gap*0.55);
+  let bars='';
+  buckets.forEach((b,i)=>{
+    const bh = (b.count/max)*innerH;
+    const x = padL + i*gap + (gap-bw)/2;
+    const y = padT + innerH - bh;
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${color}"></rect>`;
+    if(b.count>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--text)" font-family="var(--sans)">${b.count}</text>`;
+    bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)">${labelFn(b)}</text>`;
+  });
+  const baseline = `<line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="var(--border)" stroke-width="1"/>`;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;max-width:640px;">${baseline}${bars}</svg>`;
+}
+
+function dashboardMonthlyView(){
+  const monthsBack = 12;
+  const callBuckets = monthlyBuckets(null, monthsBack);
+  const apptBuckets = monthlyBuckets(isApptCall, monthsBack);
+  const totalCalls = callBuckets.reduce((s,b)=>s+b.count,0);
+  const totalAppts = apptBuckets.reduce((s,b)=>s+b.count,0);
+  const monthNamesShort=['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+  const labelFn = b=>`${monthNamesShort[b.month]} '${String(b.year).slice(2)}`;
+  return `
+    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultimi ${monthsBack} mesi</div>
+    <div class="card">
+      <h3>Chiamate per mese</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls}</div>
+      ${simpleBarChartSVG(callBuckets, 'var(--accent)', labelFn)}
+    </div>
+    <div class="card">
+      <h3>Appuntamenti fissati per mese</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalAppts}</div>
+      ${simpleBarChartSVG(apptBuckets, 'var(--text)', labelFn)}
+    </div>`;
+}
+
+function dashboardYearlyView(){
+  const yearsBack = 5;
+  const callBuckets = yearlyBuckets(null, yearsBack);
+  const apptBuckets = yearlyBuckets(isApptCall, yearsBack);
+  const totalCalls = callBuckets.reduce((s,b)=>s+b.count,0);
+  const totalAppts = apptBuckets.reduce((s,b)=>s+b.count,0);
+  const labelFn = b=>String(b.year);
+  return `
+    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultimi ${yearsBack} anni</div>
+    <div class="card">
+      <h3>Chiamate per anno</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls}</div>
+      ${simpleBarChartSVG(callBuckets, 'var(--accent)', labelFn)}
+    </div>
+    <div class="card">
+      <h3>Appuntamenti fissati per anno</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalAppts}</div>
+      ${simpleBarChartSVG(apptBuckets, 'var(--text)', labelFn)}
+    </div>`;
+}
+
+function dashboardDrilldownView(){
+  if(dashboardDrilldown.day) return dashboardDayListView();
+  const weekStart = new Date(dashboardDrilldown.weekStart);
+  const weekEndDisplay = new Date(weekStart); weekEndDisplay.setDate(weekEndDisplay.getDate()+6);
+  const isAppt = dashboardDrilldown.type==='appt';
+  const dayBuckets = dailyBucketsForWeek(weekStart, isAppt ? isApptCall : null);
+  const total = dayBuckets.reduce((s,b)=>s+b.count,0);
+  const title = isAppt ? 'Appuntamenti fissati' : 'Chiamate effettuate';
+  return `
+    <div class="top-actions"><button class="btn secondary small" id="backToDashboardBtn">← Torna alla dashboard</button></div>
+    <div class="card">
+      <h3>${title} — settimana ${weekLabel(weekStart)} – ${weekLabel(weekEndDisplay)}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${total} in questa settimana · clicca un giorno per l'elenco</div>
+      ${dayBarChartSVG(dayBuckets, isAppt ? 'var(--text)' : 'var(--accent)')}
+    </div>`;
+}
+
+function dashboardDayListView(){
+  const isAppt = dashboardDrilldown.type==='appt';
+  const dayDate = new Date(dashboardDrilldown.day);
+  const dayCalls = calls.filter(k=>{
+    if(!k.data) return false;
+    if(isAppt && !isApptCall(k)) return false;
+    return new Date(k.data+'T00:00:00').toDateString()===dayDate.toDateString();
+  });
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const title = isAppt ? 'Appuntamenti fissati' : 'Chiamate effettuate';
+  return `
+    <div class="top-actions"><button class="btn secondary small" id="backToWeekBtn">← Torna alla settimana</button></div>
+    <div class="card">
+      <h3>${title} — ${fmtLongDate(dashboardDrilldown.day)}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${dayCalls.length} in totale</div>
+      ${dayCalls.length? dayCalls.map(k=>{
+        const c = byId[k.contactId]||{};
+        return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
+          <span class="date">${fmtDate(k.data)}</span> ${esitoCell(k)}
+          <div style="font-weight:600;font-size:14px;margin-top:4px;">${esc(fullName(c))}</div>
+          ${k.progetto?`<div style="font-size:13px;color:var(--muted);">${esc(k.progetto)}</div>`:''}
+        </div>`;
+      }).join('') : '<div class="empty">Nessuna chiamata in questo giorno.</div>'}
+    </div>`;
+}
+
+function apptCalendarView(){
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const base = new Date();
+  base.setDate(base.getDate() + apptWeekOffset*7);
+  const monday = startOfWeek(base);
+  const days = [...Array(7)].map((_,i)=>{ const d=new Date(monday); d.setDate(d.getDate()+i); return d; });
+  const todayStr = new Date().toDateString();
+  const dayNames = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+  const list = apptCalls();
+  const fmtRange = `${String(days[0].getDate()).padStart(2,'0')}/${String(days[0].getMonth()+1).padStart(2,'0')} – ${String(days[6].getDate()).padStart(2,'0')}/${String(days[6].getMonth()+1).padStart(2,'0')}/${days[6].getFullYear()}`;
+  const cols = days.map((d,i)=>{
+    const dayAppts = list.filter(k=>{ const kd=new Date(k.appuntamento); return kd.toDateString()===d.toDateString(); });
+    return `<div class="calendar-day">
+      <div class="calendar-day-head ${d.toDateString()===todayStr?'today':''}">${dayNames[i]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</div>
+      ${dayAppts.map(k=>{ const c=byId[k.contactId]||{}; const t=new Date(k.appuntamento); const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
+        return `<div class="appt-chip" data-appt-call-id="${k.id}"><span class="t">${hh}:${mm}</span> ${esc(fullName(c))}</div>`;
+      }).join('') || ''}
+    </div>`;
+  }).join('');
+  return `
+    <div class="week-nav">
+      <button class="btn secondary small" id="weekPrevBtn">← Settimana prec.</button>
+      <div class="week-label">${fmtRange}</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn secondary small" id="weekTodayBtn">Oggi</button>
+        <button class="btn secondary small" id="weekNextBtn">Settimana succ. →</button>
+      </div>
+    </div>
+    <div class="table-wrap"><div class="calendar-grid">${cols}</div></div>`;
+}
+
+function agendaView(){
+  const now = new Date();
+  const todayStr = now.toDateString();
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const todayAppts = apptCalls().filter(k=> new Date(k.appuntamento).toDateString()===todayStr).sort((a,b)=>a.appuntamento.localeCompare(b.appuntamento));
+  const dueFU = contacts.filter(c=>c.followUp && new Date(c.followUp)<=now).sort((a,b)=>a.followUp.localeCompare(b.followUp));
+  const todayFU = contacts.filter(c=>c.followUp && new Date(c.followUp)>now && new Date(c.followUp).toDateString()===todayStr).sort((a,b)=>a.followUp.localeCompare(b.followUp));
+  const fuList = [...dueFU, ...todayFU];
+  const dayNames=['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+  const monthNames=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+  const todayLabel = `${dayNames[now.getDay()]} ${now.getDate()} ${monthNames[now.getMonth()]}`;
+
+  const apptHtml = todayAppts.length ? todayAppts.map(k=>{
+    const c = byId[k.contactId]||{};
+    const t = new Date(k.appuntamento);
+    const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
+    return `<div class="day-appt-row" data-appt-call-id="${k.id}" style="flex-direction:column;align-items:stretch;margin-bottom:8px;">
+      <span><span style="font-family:var(--mono);">${hh}:${mm}</span> — ${esc(fullName(c))}${k.progetto?' · '+esc(k.progetto):''}</span>
+      ${fullAddress(c)?`<a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(fullAddress(c))} · Indicazioni</a>`:''}
+    </div>`;
+  }).join('') : '<div class="empty">Nessun appuntamento oggi.</div>';
+
+  const fuHtml = fuList.length ? fuList.map(c=>{
+    const due = new Date(c.followUp) <= now;
+    const time = (c.followUp.split('T')[1]||'').slice(0,5);
+    return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:8px;">
+      <div>
+        <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="followup ${due?'due':'ok'}">${time}${due && (new Date(c.followUp)).toDateString()!==todayStr?' · scaduto':''}</span>
+        <button class="btn small" data-fu-id="${c.id}">Follow-up effettuato</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">Nessun follow-up per oggi.</div>';
+
+  return `
+    <h2 style="margin-bottom:4px;">Agenda</h2>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">${todayLabel}</div>
+    <div class="card">
+      <h3>Appuntamenti di oggi (${todayAppts.length})</h3>
+      ${apptHtml}
+    </div>
+    <div class="card">
+      <h3>Follow-up da fare${dueFU.length?` (${dueFU.length} scaduti)`:''}</h3>
+      ${fuHtml}
+    </div>`;
+}
+
+function followupView(){
+  const withFU = contacts.filter(c=>c.followUp).sort((a,b)=>a.followUp.localeCompare(b.followUp));
+  if(withFU.length===0) return '<div class="empty">Nessun follow-up programmato al momento.</div>';
+  const groups = {};
+  withFU.forEach(c=>{
+    const day = c.followUp.split('T')[0];
+    (groups[day]=groups[day]||[]).push(c);
+  });
+  const days = Object.keys(groups).sort();
+  const todayStr = todayISO();
+  const dayGroupsHtml = days.map(day=>{
+    const isPast = day < todayStr;
+    const isToday = day === todayStr;
+    const rows = groups[day].map(c=>{
+      const due = new Date(c.followUp) <= new Date();
+      const time = (c.followUp.split('T')[1]||'').slice(0,5);
+      return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="followup ${due?'due':'ok'}">${time}</span>
+          <button class="btn small" data-fu-id="${c.id}">Follow-up effettuato</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="day-group">
+      <div class="day-title" style="${isPast?'color:var(--danger);':''}">${fmtLongDate(day)}${isToday?' · oggi':''}${isPast?' · scaduto':''}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+  return `<h2 style="margin-bottom:16px;">Follow-up da effettuare (${withFU.length})</h2>${dayGroupsHtml}`;
+}
+
+function renderCallFlow(){
+  const main = document.getElementById('main');
+  if(!selectedId || callStep==='pick'){
+    const q = (document.getElementById('callPickSearch')?.value || '').trim().toLowerCase();
+    const list = contacts.filter(c=>!q || fullName(c).toLowerCase().includes(q) || (c.azienda||'').toLowerCase().includes(q))
+      .sort((a,b)=>(a.cognome||a.nome||'').localeCompare(b.cognome||b.nome||''));
+    main.innerHTML = `
+      <div class="card">
+        <h3>Chi hai chiamato?</h3>
+        <input id="callPickSearch" placeholder="Cerca contatto..." value="${esc(q)}">
+        <button class="btn block secondary" id="callNewContactBtn">+ Nuovo contatto</button>
+      </div>
+      <div class="card" style="padding:0;">
+        ${list.length? list.map(c=>`<div class="contact-item" data-id="${c.id}" style="border-bottom:1px solid var(--border);">
+            <div class="name">${esc(fullName(c))}</div>
+            <div class="sub">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
+          </div>`).join('') : '<div class="empty">Nessun contatto trovato.</div>'}
+      </div>`;
+    document.getElementById('callPickSearch').addEventListener('input', renderCallFlow);
+    const searchEl = document.getElementById('callPickSearch');
+    searchEl.focus();
+    searchEl.setSelectionRange(searchEl.value.length, searchEl.value.length);
+    document.getElementById('callNewContactBtn').addEventListener('click', ()=>{ window.__returnToCall=true; window.__editing=null; view='new'; renderMain(); });
+    main.querySelectorAll('.contact-item').forEach(el=>{
+      el.addEventListener('click', ()=>{ selectedId=el.dataset.id; callStep='entry'; renderCallFlow(); });
+    });
+    return;
+  }
+  const c = contacts.find(x=>x.id===selectedId);
+  if(!c){ callStep='pick'; return renderCallFlow(); }
+  const qcHistory = calls.filter(k=>k.contactId===selectedId);
+  main.innerHTML = `
+    <div class="card">
+      <div class="top-actions" style="margin-bottom:4px;"><button class="btn secondary small" id="changeContactBtn">Cambia contatto</button></div>
+      <h3>Chiamata con ${esc(fullName(c))}</h3>
+      <div class="field-row">
+        <div><label>Data</label><input type="date" id="qcData" value="${todayISO()}"></div>
+        <div><label>Esito</label><select id="qcEsito">
+          <option value="">—</option>
+          <option>Interessato</option><option>Da richiamare</option><option>Appuntamento fissato</option>
+          <option>Non interessato</option><option>Nessuna risposta</option><option>Altro</option>
+        </select></div>
+      </div>
+      <label>Progetto / argomento trattato</label>
+      <input id="qcProgetto" placeholder="Es. Ristrutturazione Via Roma 12">
+      <div style="margin-top:10px;"></div>
+      <label>Note</label>
+      <textarea id="qcNote" placeholder="Cosa vi siete detti..."></textarea>
+      <div style="margin-top:10px;"></div>
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;"><input type="checkbox" id="qcApptCheck" style="width:auto;">Appuntamento fissato</label>
+      <div id="qcApptWrap" class="hidden" style="margin-top:6px;">
+        <div class="field-row">
+          <div><label>Data</label><input type="date" id="qcApptDate"></div>
+          <div><label>Ora</label><select id="qcApptTime">${timeOptions('')}</select></div>
+        </div>
+      </div>
+      <div style="margin-top:10px;"></div>
+      <label>Follow up</label>
+      <div class="field-row">
+        <div><label>Data</label><input type="date" id="qcFollowUpDate" value="${splitDT(clearFollowUpOnEntry?'':(c.followUp||'')).date}"></div>
+        <div><label>Ora</label><select id="qcFollowUpTime">${timeOptions(splitDT(clearFollowUpOnEntry?'':(c.followUp||'')).time)}</select></div>
+      </div>
+      <button class="btn block" id="saveQcBtn">Salva chiamata</button>
+    </div>
+    <div class="card">
+      <h3>Storico chiamate con ${esc(fullName(c))} (${qcHistory.length})</h3>
+      ${qcHistory.length? `<div class="table-wrap"><table class="calls-table">
+        <thead><tr><th>Data</th><th>Esito</th><th>Progetto</th><th>Note</th></tr></thead>
+        <tbody>${qcHistory.map(k=>`<tr data-call-id="${k.id}" class="${isApptCall(k)?'row-appt':''}" style="cursor:pointer;">
+          <td>${fmtDate(k.data)}</td>
+          <td>${esitoCell(k)}</td>
+          <td>${esc(k.progetto||'—')}</td>
+          <td>${esc(k.note||'—')}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<div class="empty">Nessuna chiamata precedente con questo contatto — nessun rischio di doppio inserimento.</div>'}
+    </div>`;
+  clearFollowUpOnEntry=false;
+  document.getElementById('changeContactBtn').addEventListener('click', ()=>{ selectedId=null; callStep='pick'; renderCallFlow(); });
+  document.getElementById('qcApptCheck').addEventListener('change', e=>{
+    document.getElementById('qcApptWrap').classList.toggle('hidden', !e.target.checked);
+  });
+  document.getElementById('saveQcBtn').addEventListener('click', saveQuickCall);
+  main.querySelectorAll('tr[data-call-id]').forEach(tr=>{
+    tr.addEventListener('click', ()=>{ tableDetailCallId=tr.dataset.callId; renderMain(); });
+  });
+}
+
+async function saveQuickCall(){
+  const data = document.getElementById('qcData').value;
+  const esito = document.getElementById('qcEsito').value;
+  const progetto = document.getElementById('qcProgetto').value.trim();
+  const note = document.getElementById('qcNote').value.trim();
+  const appuntamento = document.getElementById('qcApptCheck').checked ? combineDT(document.getElementById('qcApptDate').value, document.getElementById('qcApptTime').value) : '';
+  const followUp = combineDT(document.getElementById('qcFollowUpDate').value, document.getElementById('qcFollowUpTime').value);
+  if(!data){ alert('Inserisci la data.'); return; }
+  try{
+    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, createdAt: Date.now() });
+    await db.collection('contacts').doc(selectedId).update({ followUp: followUp||'' });
+    selectedId=null; callStep='pick'; renderCallFlow();
+  }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+
+const ESITO_OPTS = ['Interessato','Da richiamare','Appuntamento fissato','Non interessato','Nessuna risposta','Altro'];
+function tableFilterBar(byId){
+  const professioni = [...new Set(contacts.map(c=>c.professione).filter(Boolean))].sort();
+  return `<div class="card" style="padding:14px 16px;">
+    <div class="field-row" style="grid-template-columns:2fr 1fr 1fr;">
+      <div><label>Cerca in note, progetto o cliente</label><input id="tableSearchInput" value="${esc(tableFilters.search)}" placeholder="Es. preventivo, cucina..."></div>
+      <div><label>Esito</label><select id="tableEsitoFilter">
+        <option value="">Tutti</option>
+        ${ESITO_OPTS.map(o=>`<option value="${o}" ${tableFilters.esito===o?'selected':''}>${o}</option>`).join('')}
+      </select></div>
+      <div><label>Professione</label><select id="tableProfFilter">
+        <option value="">Tutte</option>
+        ${professioni.map(p=>`<option value="${esc(p)}" ${tableFilters.professione===p?'selected':''}>${esc(p)}</option>`).join('')}
+      </select></div>
+    </div>
+  </div>`;
+}
+function tableView(){
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const filterBar = tableFilterBar(byId);
+  if(calls.length===0) return `<h2>Tabella chiamate</h2>${filterBar}<div class="empty">Nessuna chiamata registrata.</div>`;
+  const q = tableFilters.search.trim().toLowerCase();
+  const filtered = calls.filter(k=>{
+    const c = byId[k.contactId] || {};
+    if(tableFilters.esito && k.esito!==tableFilters.esito) return false;
+    if(tableFilters.professione && c.professione!==tableFilters.professione) return false;
+    if(q){
+      const hay = `${k.note||''} ${k.progetto||''} ${fullName(c)}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if(filtered.length===0) return `<h2>Tabella chiamate</h2>${filterBar}<div class="empty">Nessuna chiamata trovata con questi filtri.</div>`;
+  const groups = {};
+  filtered.forEach(k=>{ (groups[k.data]=groups[k.data]||[]).push(k); });
+  const days = Object.keys(groups).sort((a,b)=>b.localeCompare(a));
+  return `<h2>Tabella chiamate</h2>${filterBar}` + days.map(d=>{
+    const rows = groups[d].map(k=>{
+      const c = byId[k.contactId] || {};
+      return `<tr data-call-id="${k.id}" class="${isApptCall(k)?'row-appt':''}" style="cursor:pointer;">
+        <td>${esc(fullName(c))}</td>
+        <td>${esc(c.professione||'—')}</td>
+        <td>${esc(c.azienda||'—')}</td>
+        <td>${esc(c.via||'—')}</td>
+        <td>${esc(c.citta||'—')}</td>
+        <td>${esc(k.progetto||'—')}</td>
+        <td>${esitoCell(k)}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="day-group">
+      <div class="day-title">${fmtDate(d)}</div>
+      <div class="table-wrap"><table class="calls-table">
+        <thead><tr><th>Contatto</th><th>Professione</th><th>Studio</th><th>Via</th><th>Città</th><th>Progetto</th><th>Esito</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+  }).join('');
+}
+function tableDetailView(){
+  const k = calls.find(x=>x.id===tableDetailCallId);
+  if(!k) return '<div class="empty">Chiamata non trovata.</div>';
+  const c = contacts.find(x=>x.id===k.contactId) || {};
+  if(editingCallId===k.id) return callEditView(k,c);
+  return `
+    <div class="top-actions" style="justify-content:space-between;">
+      <button class="btn secondary small" id="backToTableBtn">← Torna indietro</button>
+      <div style="display:flex;gap:8px;">
+        ${confirmDeleteCallId===k.id ? `
+          <span style="color:var(--danger);font-size:13px;font-weight:600;align-self:center;">Eliminare questa chiamata?</span>
+          <button class="btn small" id="confirmDeleteCallBtn" style="background:var(--danger);color:#fff;">Sì, elimina</button>
+          <button class="btn secondary small" id="cancelDeleteCallBtn">Annulla</button>
+        ` : `
+          <button class="btn secondary small" id="editCallBtn">Modifica</button>
+          <button class="btn small" id="deleteCallBtn" style="background:var(--danger);color:#fff;">Elimina</button>
+        `}
+      </div>
+    </div>
+    <div class="card">
+      <h2>${esc(fullName(c))}</h2>
+      <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
+      ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
+      <div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
+        <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}</div></div>
+        ${k.esito?`<div><label>Esito</label><div style="font-size:14px;">${esc(k.esito)}</div></div>`:''}
+        ${k.progetto?`<div><label>Progetto</label><div style="font-size:14px;">${esc(k.progetto)}</div></div>`:''}
+        ${k.appuntamento?`<div><label>Appuntamento</label><div style="font-size:14px;">${fmtDateTime(k.appuntamento)}</div></div>`:''}
+      </div>
+      <div style="margin-top:14px;">
+        <label>${k.appuntamento?'Note della chiamata':'Note'}</label>
+        <div style="font-size:14px;white-space:pre-wrap;">${esc(k.note)||'<span style="color:var(--muted);">Nessuna nota.</span>'}</div>
+      </div>
+      ${k.appuntamento?`<div style="margin-top:14px;">
+        <label>Note dell'incontro</label>
+        <div style="font-size:14px;white-space:pre-wrap;">${esc(k.noteIncontro)||'<span style="color:var(--muted);">Nessuna nota sull\'incontro.</span>'}</div>
+      </div>`:''}
+    </div>`;
+}
+
+function callEditView(k,c){
+  const esitoOpts = ['','Interessato','Da richiamare','Appuntamento fissato','Non interessato','Nessuna risposta','Altro'];
+  return `
+    <div class="top-actions"><button class="btn secondary small" id="cancelEditCallBtn">Annulla modifica</button></div>
+    <div class="card">
+      <h3>Modifica chiamata — ${esc(fullName(c))}</h3>
+      <div class="field-row">
+        <div><label>Data</label><input type="date" id="ecData" value="${esc(k.data||'')}"></div>
+        <div><label>Esito</label><select id="ecEsito">${esitoOpts.map(o=>`<option ${k.esito===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      </div>
+      <label>Progetto / argomento trattato</label>
+      <input id="ecProgetto" value="${esc(k.progetto||'')}">
+      <label style="margin-top:10px;">Note</label>
+      <textarea id="ecNote">${esc(k.note||'')}</textarea>
+      <label style="display:flex;align-items:center;gap:7px;margin-top:12px;cursor:pointer;"><input type="checkbox" id="ecApptCheck" style="width:auto;" ${k.appuntamento?'checked':''}>Appuntamento fissato</label>
+      <div id="ecApptWrap" class="${k.appuntamento?'':'hidden'}" style="margin-top:6px;">
+        <div class="field-row">
+          <div><label>Data</label><input type="date" id="ecApptDate" value="${splitDT(k.appuntamento).date}"></div>
+          <div><label>Ora</label><select id="ecApptTime">${timeOptions(splitDT(k.appuntamento).time)}</select></div>
+        </div>
+        <label style="margin-top:10px;">Note dell'incontro</label>
+        <textarea id="ecNoteIncontro" placeholder="Come è andato l'incontro...">${esc(k.noteIncontro||'')}</textarea>
+      </div>
+      <button class="btn block" id="saveEditCallBtn" style="margin-top:14px;">Salva modifiche</button>
+    </div>`;
+}
+
+function bindTableDetail(){
+  if(editingCallId===tableDetailCallId){
+    document.getElementById('cancelEditCallBtn').addEventListener('click', ()=>{ editingCallId=null; renderMain(); });
+    document.getElementById('ecApptCheck').addEventListener('change', e=>{
+      document.getElementById('ecApptWrap').classList.toggle('hidden', !e.target.checked);
+    });
+    document.getElementById('saveEditCallBtn').addEventListener('click', saveCallEdit);
+    return;
+  }
+  document.getElementById('backToTableBtn').addEventListener('click', ()=>{ tableDetailCallId=null; confirmDeleteCallId=null; renderMain(); });
+  if(confirmDeleteCallId===tableDetailCallId){
+    document.getElementById('confirmDeleteCallBtn').addEventListener('click', deleteCall);
+    document.getElementById('cancelDeleteCallBtn').addEventListener('click', ()=>{ confirmDeleteCallId=null; renderMain(); });
+  } else {
+    document.getElementById('editCallBtn').addEventListener('click', ()=>{ editingCallId=tableDetailCallId; renderMain(); });
+    document.getElementById('deleteCallBtn').addEventListener('click', ()=>{ confirmDeleteCallId=tableDetailCallId; renderMain(); });
+  }
+}
+
+async function saveCallEdit(){
+  const data = document.getElementById('ecData').value;
+  const esito = document.getElementById('ecEsito').value;
+  const progetto = document.getElementById('ecProgetto').value.trim();
+  const note = document.getElementById('ecNote').value.trim();
+  const appuntamento = document.getElementById('ecApptCheck').checked ? combineDT(document.getElementById('ecApptDate').value, document.getElementById('ecApptTime').value) : '';
+  const noteIncontro = document.getElementById('ecNoteIncontro').value.trim();
+  if(!data){ alert('Inserisci la data.'); return; }
+  try{
+    await db.collection('calls').doc(tableDetailCallId).update({ data, esito, progetto, note, appuntamento, noteIncontro });
+    editingCallId=null; renderMain();
+  }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+
+async function deleteCall(){
+  try{
+    await db.collection('calls').doc(tableDetailCallId).delete();
+    tableDetailCallId=null; confirmDeleteCallId=null; renderMain();
+  }catch(e){ alert('Errore durante l\'eliminazione: '+(e.message||e.code||'')); }
+}
+function newContactForm(){
+  const c = window.__editing || {};
+  const isCustom = c.professione && !PROFESSIONI.slice(0,-1).includes(c.professione);
+  return `
+    <div class="card">
+      <h3>${c.id? 'Modifica contatto':'Nuovo contatto'}</h3>
+      <div class="field-row">
+        <div><label>Nome *</label><input id="fNome" value="${esc(c.nome||'')}"></div>
+        <div><label>Cognome *</label><input id="fCognome" value="${esc(c.cognome||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Professione</label>
+          <select id="fProf">${PROFESSIONI.map(p=>`<option ${((isCustom&&p==='Altro')||c.professione===p)?'selected':''}>${p}</option>`).join('')}</select>
+        </div>
+        <div></div>
+      </div>
+      <div class="custom-row ${isCustom?'':'hidden'}" id="fProfAltroWrap">
+        <label>Specifica professione</label><input id="fProfAltro" value="${isCustom?esc(c.professione):''}">
+      </div>
+      <div class="field-row">
+        <div><label>Studio / Azienda presso cui lavora</label><input id="fAzienda" value="${esc(c.azienda||'')}"></div>
+        <div><label>Telefono</label><input id="fTel" value="${esc(c.telefono||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Via dello studio</label><input id="fVia" value="${esc(c.via||'')}"></div>
+        <div><label>Città</label><input id="fCitta" value="${esc(c.citta||'')}"></div>
+      </div>
+      <div style="margin-top:10px;"></div>
+      <div class="field-row">
+        <div><label>Email</label><input id="fEmail" value="${esc(c.email||'')}"></div>
+        <div><label>Prossimo follow-up</label>
+          <div style="display:flex;gap:6px;">
+            <input type="date" id="fFollowUpDate" value="${splitDT(c.followUp).date}" style="flex:1;">
+            <select id="fFollowUpTime" style="flex:1;">${timeOptions(splitDT(c.followUp).time)}</select>
+          </div>
+        </div>
+      </div>
+      <label>Tag</label>
+      <input id="fTag" value="${esc(c.tag||'')}" placeholder="Es. cliente caldo, da richiamare a settembre">
+      <div style="margin-top:10px;"></div>
+      <label>Note generali</label>
+      <textarea id="fNote">${esc(c.note||'')}</textarea>
+      <div id="dupWarning"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn" id="saveContactBtn">Salva</button>
+        <button class="btn secondary" id="cancelBtn">Annulla</button>
+      </div>
+    </div>`;
+}
+function formatPhone(v){
+  const digits = String(v||'').replace(/\D/g,'');
+  return digits.length<=3 ? digits : digits.slice(0,3)+' '+digits.slice(3);
+}
+function bindNewForm(){
+  window.__dupConfirmed = false;
+  document.getElementById('fProf').addEventListener('change', e=>{
+    document.getElementById('fProfAltroWrap').classList.toggle('hidden', e.target.value!=='Altro');
+  });
+  document.getElementById('fTel').addEventListener('input', e=>{
+    const pos = e.target.selectionStart, before = e.target.value.length;
+    e.target.value = formatPhone(e.target.value);
+    const diff = e.target.value.length - before;
+    e.target.setSelectionRange(pos+diff, pos+diff);
+  });
+  document.getElementById('saveContactBtn').addEventListener('click', saveContact);
+  document.getElementById('cancelBtn').addEventListener('click', ()=>{
+    window.__editing=null;
+    if(window.__returnToCall){ window.__returnToCall=false; view='call'; callStep='pick'; }
+    else{ view=selectedId?'detail':'contactsList'; }
+    renderMain();
+  });
+}
+
+async function saveContact(){
+  const nome = document.getElementById('fNome').value.trim();
+  const cognome = document.getElementById('fCognome').value.trim();
+  if(!nome || !cognome){ alert('Nome e cognome sono obbligatori.'); return; }
+  const editing = window.__editing;
+  const telefono = formatPhone(document.getElementById('fTel').value);
+  if(!(editing && editing.id) && !window.__dupConfirmed){
+    const telNorm = telefono.replace(/\s+/g,'');
+    const dup = contacts.find(c=>{
+      if(telNorm && (c.telefono||'').replace(/\s+/g,'')===telNorm) return true;
+      if(c.nome && c.cognome && c.nome.toLowerCase()===nome.toLowerCase() && c.cognome.toLowerCase()===cognome.toLowerCase()) return true;
+      return false;
+    });
+    if(dup){
+      window.__dupConfirmed = true;
+      document.getElementById('dupWarning').innerHTML = `<div style="margin-top:10px;padding:10px 12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;font-size:13px;">Esiste già un contatto simile: <strong>${esc(fullName(dup))}</strong>${dup.telefono?' · '+esc(dup.telefono):''}. Premi di nuovo "Salva" per crearlo comunque.</div>`;
+      document.getElementById('saveContactBtn').textContent = 'Salva comunque';
+      return;
+    }
+  }
+  const profSel = document.getElementById('fProf').value;
+  const professione = profSel==='Altro' ? document.getElementById('fProfAltro').value.trim() : profSel;
+  const data = {
+    nome, cognome, professione,
+    azienda: document.getElementById('fAzienda').value.trim(),
+    via: document.getElementById('fVia').value.trim(),
+    citta: document.getElementById('fCitta').value.trim(),
+    telefono,
+    email: document.getElementById('fEmail').value.trim(),
+    followUp: combineDT(document.getElementById('fFollowUpDate').value, document.getElementById('fFollowUpTime').value),
+    tag: document.getElementById('fTag').value.trim(),
+    note: document.getElementById('fNote').value.trim()
+  };
+  try{
+    if(editing && editing.id){ await db.collection('contacts').doc(editing.id).update(data); selectedId = editing.id; }
+    else { const ref = await db.collection('contacts').add({...data, createdAt: Date.now()}); selectedId = ref.id; }
+    window.__editing=null;
+    if(window.__returnToCall){ window.__returnToCall=false; view='call'; callStep='entry'; }
+    else{ view='detail'; }
+    renderMain();
+  }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+
+async function saveCall(){
+  const data = document.getElementById('callDate').value;
+  const esito = document.getElementById('callEsito').value;
+  const note = document.getElementById('callNote').value.trim();
+  const progetto = document.getElementById('callProgetto').value.trim();
+  const appuntamento = document.getElementById('callApptCheck').checked ? combineDT(document.getElementById('callApptDate').value, document.getElementById('callApptTime').value) : '';
+  const followUp = combineDT(document.getElementById('callFollowUpDate').value, document.getElementById('callFollowUpTime').value);
+  if(!data){ alert('Inserisci la data.'); return; }
+  try{
+    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, createdAt: Date.now() });
+    await db.collection('contacts').doc(selectedId).update({ followUp: followUp||'' });
+    document.getElementById('callNote').value='';
+  }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+
+function updateNavBadges(){
+  const now = new Date();
+  const overdue = contacts.filter(c=>c.followUp && new Date(c.followUp) <= now).length;
+  const badge = document.getElementById('fuBadge');
+  if(!badge) return;
+  if(overdue>0){ badge.textContent = overdue>99?'99+':overdue; badge.classList.remove('hidden'); }
+  else{ badge.classList.add('hidden'); }
+}
+function followUpBadge(dateStr, big){
+  if(!dateStr) return '';
+  const due = new Date(dateStr) <= new Date();
+  const label = (due?'Follow-up scaduto: ':'Prossimo follow-up: ')+fmtDateTime(dateStr);
+  return `<span class="followup ${due?'due':'ok'}" style="${big?'display:inline-block;':''}">${label}</span>`;
+}
+
+const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navTable','navDashboard'];
+function setActiveTab(id){
+  NAV_TABS.forEach(t=>document.getElementById(t).classList.toggle('active', t===id));
+}
+document.getElementById('navAgenda').addEventListener('click', ()=>{
+  view='agenda'; tableDetailCallId=null;
+  setActiveTab('navAgenda');
+  renderMain();
+});
+document.getElementById('navContacts').addEventListener('click', ()=>{
+  view='contactsList'; tableDetailCallId=null;
+  setActiveTab('navContacts');
+  renderMain();
+});
+document.getElementById('navTable').addEventListener('click', ()=>{
+  view='table'; tableDetailCallId=null;
+  setActiveTab('navTable');
+  renderMain();
+});
+document.getElementById('navCall').addEventListener('click', ()=>{
+  view='call'; callStep='pick'; selectedId=null; tableDetailCallId=null;
+  setActiveTab('navCall');
+  renderMain();
+});
+document.getElementById('navFollowup').addEventListener('click', ()=>{
+  view='followup'; tableDetailCallId=null;
+  setActiveTab('navFollowup');
+  renderMain();
+});
+document.getElementById('navAppt').addEventListener('click', ()=>{
+  view='appt'; tableDetailCallId=null;
+  setActiveTab('navAppt');
+  renderMain();
+});
+document.getElementById('navDashboard').addEventListener('click', ()=>{
+  view='dashboard'; tableDetailCallId=null; dashboardDrilldown=null;
+  setActiveTab('navDashboard');
+  renderMain();
+});
+
+function updateNotifBtn(){
+  const btn = document.getElementById('notifBtn');
+  if(!btn) return;
+  if(typeof Notification==='undefined'){ btn.style.display='none'; return; }
+  if(Notification.permission==='granted'){ btn.textContent='🔔 Notifiche attive'; btn.disabled=true; }
+  else if(Notification.permission==='denied'){ btn.textContent='🔕 Notifiche bloccate dal browser'; btn.disabled=true; }
+  else { btn.textContent='🔔 Attiva notifiche'; btn.disabled=false; }
+}
+const notifiedFollowUps = new Set();
+const notifiedAppts = new Set();
+function checkDueNotifications(){
+  if(typeof Notification==='undefined' || Notification.permission!=='granted') return;
+  const now = new Date();
+  contacts.forEach(c=>{
+    const key = c.id+'|'+c.followUp;
+    if(c.followUp && new Date(c.followUp)<=now && !notifiedFollowUps.has(key)){
+      notifiedFollowUps.add(key);
+      try{ new Notification('Follow-up da fare', { body: fullName(c), icon:'icon-192.png' }); }catch(e){}
+    }
+  });
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  calls.forEach(k=>{
+    if(!k.appuntamento || notifiedAppts.has(k.id)) return;
+    const start = new Date(k.appuntamento);
+    const diffMin = (start-now)/60000;
+    if(diffMin>0 && diffMin<=15){
+      notifiedAppts.add(k.id);
+      const c = byId[k.contactId]||{};
+      const hh=String(start.getHours()).padStart(2,'0'), mm=String(start.getMinutes()).padStart(2,'0');
+      try{ new Notification('Appuntamento tra poco', { body: `${fullName(c)} alle ${hh}:${mm}`, icon:'icon-192.png' }); }catch(e){}
+    }
+  });
+}
+document.getElementById('notifBtn')?.addEventListener('click', async ()=>{
+  if(typeof Notification==='undefined') return;
+  try{ await Notification.requestPermission(); }catch(e){}
+  updateNotifBtn();
+});
+updateNotifBtn();
+setInterval(checkDueNotifications, 60000);
+
+function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function csvEscape(v){ const s=String(v==null?'':v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function downloadCSV(filename, rows){
+  const csv = rows.map(r=>r.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function exportICS(){
+  const events = apptCalls();
+  if(events.length===0){ alert('Nessun appuntamento da esportare.'); return; }
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const pad = n=>String(n).padStart(2,'0');
+  const toICS = d=>`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  const now = new Date();
+  const dtstamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth()+1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+  const icsEsc = s=>String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+  const foldLine = line=>{
+    const max = 73;
+    if(line.length<=max) return line;
+    let out = line.slice(0,max);
+    let rest = line.slice(max);
+    while(rest.length>0){
+      out += '\r\n ' + rest.slice(0,max-1);
+      rest = rest.slice(max-1);
+    }
+    return out;
+  };
+  let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Registro Chiamate//IT\r\nCALSCALE:GREGORIAN\r\n';
+  events.forEach(k=>{
+    const c = byId[k.contactId]||{};
+    const start = new Date(k.appuntamento);
+    const end = new Date(start.getTime()+60*60*1000);
+    const summary = icsEsc(fullName(c) + (k.progetto?' - '+k.progetto:''));
+    const desc = icsEsc([k.progetto, k.note].filter(Boolean).join('\n'));
+    const loc = icsEsc(fullAddress(c));
+    ics += 'BEGIN:VEVENT\r\n';
+    ics += foldLine(`UID:${k.id}@registro-chiamate`) + '\r\n';
+    ics += foldLine(`DTSTAMP:${dtstamp}`) + '\r\n';
+    ics += foldLine(`DTSTART:${toICS(start)}`) + '\r\n';
+    ics += foldLine(`DTEND:${toICS(end)}`) + '\r\n';
+    ics += foldLine(`SUMMARY:${summary}`) + '\r\n';
+    if(desc) ics += foldLine(`DESCRIPTION:${desc}`) + '\r\n';
+    if(loc) ics += foldLine(`LOCATION:${loc}`) + '\r\n';
+    ics += 'END:VEVENT\r\n';
+  });
+  ics += 'END:VCALENDAR\r\n';
+  const blob = new Blob([ics], {type:'text/calendar;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'appuntamenti.ics';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function exportBackupCSV(){
+  const contactRows = [['Nome','Cognome','Professione','Studio/Azienda','Via','Città','Telefono','Email','Follow-up','Note']];
+  contacts.forEach(c=>{
+    contactRows.push([c.nome||'', c.cognome||'', c.professione||'', c.azienda||'', c.via||'', c.citta||'', c.telefono||'', c.email||'', c.followUp?fmtDateTime(c.followUp):'', c.note||'']);
+  });
+  downloadCSV('contatti.csv', contactRows);
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const callRows = [['Data','Contatto','Esito','Progetto','Note','Appuntamento','Note incontro']];
+  calls.forEach(k=>{
+    const c = byId[k.contactId]||{};
+    callRows.push([fmtDate(k.data), fullName(c), k.esito||'', k.progetto||'', k.note||'', k.appuntamento?fmtDateTime(k.appuntamento):'', k.noteIncontro||'']);
+  });
+  setTimeout(()=>downloadCSV('chiamate.csv', callRows), 400);
+}
+function isApptCall(k){ return k.esito==='Appuntamento fissato' || !!k.appuntamento; }
+function esitoCell(k){
+  if(isApptCall(k)) return `<span class="esito-tag appt">${esc(k.esito||'Appuntamento fissato')}</span>`;
+  return esc(k.esito||'—');
+}
+function fullName(c){
+  if(c.cognome) return `${c.cognome} ${c.nome||''}`.trim();
+  if(c.nome) return c.nome;
+  return c.azienda || c.telefono || c.email || '(senza nome)';
+}
+function tagPills(tag){ if(!tag) return ''; return tag.split(',').map(t=>t.trim()).filter(Boolean).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join(''); }
+function fullAddress(c){ if(c.via || c.citta) return [c.via, c.citta].filter(Boolean).join(', '); return c.indirizzo || ''; }
+function mapsUrl(c){ return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddress(c))}`; }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(d){ if(!d) return ''; const [y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
+function fmtLongDate(dateStr){
+  const days=['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+  const months=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+  const d = new Date(dateStr);
+  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+}
+function combineDT(dateVal, timeVal){ if(!dateVal || !timeVal) return ''; return `${dateVal}T${timeVal}`; }
+function splitDT(v){ if(!v) return {date:'', time:''}; const parts=String(v).split('T'); return {date:parts[0]||'', time:(parts[1]||'').slice(0,5)}; }
+function timeOptions(selected){
+  let opts = '<option value="">--:--</option>';
+  const primary = [], rest = [];
+  for(let h=0; h<24; h++){
+    for(const m of [0,30]){
+      const hh=String(h).padStart(2,'0'), mm=String(m).padStart(2,'0');
+      const val = `${hh}:${mm}`;
+      const entry = `<option value="${val}" ${selected===val?'selected':''}>${val}</option>`;
+      (h>=8 && h<=20 ? primary : rest).push(entry);
+    }
+  }
+  return opts + primary.join('') + rest.join('');
+}
+function fmtDateTime(v){
+  if(!v) return '';
+  const d = new Date(v);
+  if(isNaN(d)) return v;
+  const dd=String(d.getDate()).padStart(2,'0'), mm=String(d.getMonth()+1).padStart(2,'0'), hh=String(d.getHours()).padStart(2,'0'), min=String(d.getMinutes()).padStart(2,'0');
+  return `${dd}/${mm}/${d.getFullYear()} ore ${hh}:${min}`;
+}
+
+init();
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); });
+}
+</script>
+</body>
+</html>
