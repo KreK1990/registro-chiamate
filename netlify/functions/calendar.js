@@ -39,8 +39,15 @@ function foldLine(line) {
   return out;
 }
 
-exports.handler = async function () {
+exports.handler = async function (event) {
   try {
+    if (event && event.httpMethod === 'HEAD') {
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'text/calendar; charset=utf-8' },
+        body: '',
+      };
+    }
     const [contactsSnap, callsSnap] = await Promise.all([
       db.collection('contacts').get(),
       db.collection('calls').get(),
@@ -81,12 +88,16 @@ exports.handler = async function () {
 
     ics += 'END:VCALENDAR\r\n';
 
+    const headers = {
+      'Content-Type': 'text/calendar; charset=utf-8',
+      'Content-Disposition': 'inline; filename="appuntamenti.ics"',
+      'Content-Length': String(Buffer.byteLength(ics, 'utf8')),
+      'Cache-Control': 'no-cache, max-age=0',
+    };
+
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'text/calendar; charset=utf-8',
-        'Cache-Control': 'no-cache, max-age=0',
-      },
+      headers,
       body: ics,
     };
   } catch (err) {
