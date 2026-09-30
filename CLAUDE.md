@@ -67,12 +67,14 @@ URL della function: `https://<sito>.netlify.app/.netlify/functions/calendar?toke
 la function usa l'Admin SDK che scavalca le regole Firestore). Gli orari sono emessi con
 `TZID=Europe/Rome` + `VTIMEZONE`, sia nel feed sia nell'export manuale. È pensato
 per essere aggiunto come "calendario in abbonamento" (webcal) su iPhone/Google
-Calendar/iCloud, così il Calendario si aggiorna da solo periodicamente. Al momento del
-trasferimento a Claude Code, l'utente stava ancora risolvendo problemi di compatibilità
-con la sottoscrizione nativa di iOS (errori SSL/validazione intermittenti anche con
-l'URL funzionante in Safari) — stava provando Google Calendar come alternativa. Se si
-riprende questo filo, il file `.ics` esportabile manualmente (pulsante nell'app, sezione
-Appuntamenti) resta comunque un fallback funzionante e testato.
+Calendar/iCloud, così il Calendario si aggiorna da solo periodicamente. La sottoscrizione
+nativa su iPhone funziona (verificata il 2026-10-01). I problemi iniziali erano dovuti al
+"Visitor access" di Netlify impostato su Private per la produzione (ogni richiesta
+riceveva il login Netlify): ora è Private solo per le Deploy Previews, e la produzione è
+pubblica — la protezione dei dati è affidata al login Firebase e al token del feed.
+"Accesso negato" dal feed = token nell'URL diverso da `CALENDAR_TOKEN`; dopo aver
+cambiato la variabile su Netlify serve un nuovo deploy perché la function la legga.
+Il file `.ics` esportabile manualmente (sezione Appuntamenti) resta un fallback.
 
 ## Note di stile/architettura da preservare
 
