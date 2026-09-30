@@ -1,0 +1,5 @@
+# Appunti con chiavi e token: non devono mai finire nel repository (che è pubblico)
+# né sul sito Netlify (che pubblica i file del repository).
+*.txt
+.env
+.env.*
