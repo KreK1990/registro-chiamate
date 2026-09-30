@@ -88,7 +88,7 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .subnav button.active{background:var(--text);color:var(--bg);border-color:var(--text);}
 .week-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;}
 .week-nav .week-label{font-family:var(--serif);font-style:italic;font-size:16px;}
-.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:6px;overflow:hidden;min-width:918px;}
 .calendar-day{background:var(--panel);padding:10px;min-height:130px;}
 .calendar-day-head{font-size:11.5px;color:var(--muted);margin-bottom:8px;font-weight:600;letter-spacing:.2px;}
 .calendar-day-head.today{color:var(--accent);}
@@ -145,8 +145,8 @@ table.calls-table tbody tr.row-appt:hover{background:var(--accent-soft);}
   .menu-btn .nav-badge{top:-6px;right:-6px;}
   .topbar-title{font-family:var(--serif);font-style:italic;font-weight:500;font-size:19px;}
   .app{flex-direction:column;}
-  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:50;width:min(86vw,340px);min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);transform:translateX(-100%);transition:transform .25s ease;box-shadow:0 0 24px rgba(0,0,0,.18);}
-  body.drawer-open .sidebar{transform:none;}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:50;width:min(86vw,340px);min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);transform:translateX(-100%);transition:transform .25s ease;}
+  body.drawer-open .sidebar{transform:none;box-shadow:0 0 24px rgba(0,0,0,.18);}
   .drawer-backdrop{display:block;position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.38);opacity:0;pointer-events:none;transition:opacity .25s ease;}
   body.drawer-open .drawer-backdrop{opacity:1;pointer-events:auto;}
   .sidebar-head{position:relative;}
@@ -161,6 +161,15 @@ table.calls-table tbody tr.row-appt:hover{background:var(--accent-soft);}
   .bottom-cal-right{border-left:none;padding-left:0;max-width:none;flex-basis:100%;}
   .field-row{grid-template-columns:1fr;}
   .main{padding:18px 16px 28px;}
+  /* Settimana appuntamenti: un giorno per riga invece di 7 colonne */
+  .calendar-grid{grid-template-columns:1fr;min-width:0;}
+  .calendar-day{min-height:0;display:flex;align-items:flex-start;gap:12px;padding:10px 12px;}
+  .calendar-day-head{flex:0 0 74px;margin:5px 0 0;font-size:12.5px;white-space:nowrap;}
+  .calendar-day-appts{flex:1;min-width:0;min-height:26px;}
+  .calendar-day-appts .appt-chip{font-size:13.5px;padding:7px 9px;}
+  .calendar-day-appts .appt-chip:last-child{margin-bottom:0;}
+  .week-nav{flex-wrap:wrap;}
+  .week-nav .week-label{order:-1;width:100%;text-align:center;}
   input,textarea,select{font-size:16px;}
 }
 </style>
@@ -897,9 +906,9 @@ function apptCalendarView(){
     const dayAppts = list.filter(k=>{ const kd=new Date(k.appuntamento); return kd.toDateString()===d.toDateString(); });
     return `<div class="calendar-day">
       <div class="calendar-day-head ${d.toDateString()===todayStr?'today':''}">${dayNames[i]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</div>
-      ${dayAppts.map(k=>{ const c=byId[k.contactId]||{}; const t=new Date(k.appuntamento); const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
+      <div class="calendar-day-appts">${dayAppts.map(k=>{ const c=byId[k.contactId]||{}; const t=new Date(k.appuntamento); const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
         return `<div class="appt-chip" data-appt-call-id="${k.id}"><span class="t">${hh}:${mm}</span> ${esc(fullName(c))}</div>`;
-      }).join('') || ''}
+      }).join('') || ''}</div>
     </div>`;
   }).join('');
   return `
