@@ -5,3 +5,42 @@
 
 [functions]
   node_bundler = "esbuild"
+
+# La radice del sito apre direttamente l'app.
+[[redirects]]
+  from = "/"
+  to = "/crm-chiamate-standalone.html"
+  status = 301
+
+# File del repository che non devono essere serviti pubblicamente
+# (la versione Claude Artifact è solo di riferimento e qui non funziona).
+[[redirects]]
+  from = "/crm-chiamate.html"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/CLAUDE.md"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package.json"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify.toml"
+  to = "/404"
+  status = 404
+  force = true
+
+# Sorgente delle functions (non l'endpoint, che è sotto /.netlify/functions/).
+[[redirects]]
+  from = "/netlify/*"
+  to = "/404"
+  status = 404
+  force = true

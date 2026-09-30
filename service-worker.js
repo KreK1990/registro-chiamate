@@ -1,6 +1,6 @@
 // Service worker: keeps the app installable and available offline,
 // but always prefers the freshest version when online.
-const CACHE_NAME = 'registro-chiamate-v2';
+const CACHE_NAME = 'registro-chiamate-v3';
 const APP_SHELL = [
   './crm-chiamate-standalone.html',
   './manifest.json',
@@ -23,6 +23,18 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+// Tocco su una notifica (follow-up / appuntamento): riporta in primo piano
+// l'app se è già aperta, altrimenti la apre.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      if (wins.length) return wins[0].focus();
+      return self.clients.openWindow('./crm-chiamate-standalone.html');
+    })
+  );
 });
 
 self.addEventListener('fetch', (event) => {

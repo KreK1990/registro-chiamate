@@ -4,19 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Registro Chiamate</title>
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" href="icon-192.png">
-<meta name="theme-color" content="#212C36">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Registro">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --bg:#EEE8D6; --panel:#FBF8F1; --border:#D8CDAF; --text:#212C36; --muted:#6C7680;
@@ -145,11 +135,6 @@ table.calls-table tbody tr.row-appt:hover{background:var(--accent-soft);}
 .day-appts-strip{display:flex;flex-direction:column;gap:6px;}
 .day-appt-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;font-size:13px;cursor:pointer;}
 .day-appt-row:hover{background:var(--accent-soft);}
-.gate{max-width:420px;margin:10vh auto;padding:0 20px;}
-.gate h2{margin-bottom:6px;}
-.gate p{color:var(--muted);font-size:13.5px;line-height:1.5;margin:0 0 16px;}
-.gate textarea{min-height:120px;font-family:var(--mono);font-size:12px;}
-.gate .err{color:var(--danger);font-size:13px;margin-top:8px;}
 .hidden{display:none !important;}
 @media (max-width:720px){
   .app{flex-direction:column;}
@@ -163,8 +148,7 @@ table.calls-table tbody tr.row-appt:hover{background:var(--accent-soft);}
 </style>
 </head>
 <body>
-<div id="gateScreen"></div>
-<div class="layout hidden" id="layoutRoot">
+<div class="layout">
   <div class="app">
     <div class="sidebar">
       <div class="sidebar-head">
@@ -191,111 +175,25 @@ table.calls-table tbody tr.row-appt:hover{background:var(--accent-soft);}
 <script>
 let db=null, contacts=[], calls=[], selectedId=null, view='agenda', sortField='cognome', callStep='pick', confirmDeleteId=null, tableDetailCallId=null, clearFollowUpOnEntry=false, apptSubView='list', apptWeekOffset=0, footerCalDate=new Date(), footerSelectedDay=null, editingCallId=null, confirmDeleteCallId=null, dashboardDrilldown=null, dashboardSubView='weekly', tableFilters={search:'',esito:'',professione:''}, contactsSearchQuery=''; // view: agenda|contactsList|new|detail|table|call|followup|appt|dashboard
 
-function showGate(html){
-  document.getElementById('layoutRoot').classList.add('hidden');
-  const g = document.getElementById('gateScreen');
-  g.classList.remove('hidden');
-  g.innerHTML = `<div class="gate">${html}</div>`;
-}
-
-function hideGate(){
-  document.getElementById('gateScreen').classList.add('hidden');
-  document.getElementById('layoutRoot').classList.remove('hidden');
-}
-
-function renderConfigGate(err){
-  showGate(`
-    <h2>Configurazione</h2>
-    <p>Incolla qui sotto la configurazione del tuo progetto Firebase (da Console Firebase → Impostazioni progetto → Le tue app → SDK setup and configuration → oggetto "firebaseConfig"). Va fatto una sola volta per dispositivo/browser.</p>
-    <textarea id="cfgInput" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'></textarea>
-    <button class="btn block" id="cfgSaveBtn">Salva e continua</button>
-    ${err?`<div class="err">${esc(err)}</div>`:''}
-  `);
-  document.getElementById('cfgSaveBtn').addEventListener('click', ()=>{
-    const raw = document.getElementById('cfgInput').value.trim();
-    try{
-      const cfg = JSON.parse(raw);
-      if(!cfg.apiKey || !cfg.projectId) throw new Error('Config incompleta');
-      localStorage.setItem('firebaseConfig', JSON.stringify(cfg));
-      boot();
-    }catch(e){ renderConfigGate('Configurazione non valida: incolla l\'oggetto JSON completo copiato da Firebase.'); }
-  });
-}
-
-function renderLoginGate(err){
-  showGate(`
-    <h2>Accedi</h2>
-    <p>Accedi con l'account creato nella sezione Authentication del tuo progetto Firebase.</p>
-    <label>Email</label><input id="loginEmail" type="email">
-    <div style="margin-top:10px;"></div>
-    <label>Password</label><input id="loginPass" type="password">
-    <button class="btn block" id="loginBtn" style="margin-top:14px;">Accedi</button>
-    ${err?`<div class="err">${esc(err)}</div>`:''}
-    <p style="margin-top:18px;font-size:12px;">Configurazione errata? <a href="#" id="resetCfgLink" style="color:var(--accent);">Cambia progetto Firebase</a></p>
-  `);
-  document.getElementById('loginBtn').addEventListener('click', async ()=>{
-    const email = document.getElementById('loginEmail').value.trim();
-    const pass = document.getElementById('loginPass').value;
-    try{ await firebase.auth().signInWithEmailAndPassword(email, pass); }
-    catch(e){ renderLoginGate('Accesso non riuscito: '+(e.message||e.code||'')); }
-  });
-  document.getElementById('resetCfgLink').addEventListener('click', (e)=>{ e.preventDefault(); localStorage.removeItem('firebaseConfig'); renderConfigGate(); });
-}
-
-function firestoreAdapter(){
-  const fs = firebase.firestore();
-  return {
-    collection(path){ return fs.collection(path); },
-    doc(path){ return fs.doc(path); }
-  };
-}
-
-function boot(){
-  const raw = localStorage.getItem('firebaseConfig');
-  if(!raw){ renderConfigGate(); return; }
-  let cfg;
-  try{ cfg = JSON.parse(raw); }catch(e){ localStorage.removeItem('firebaseConfig'); renderConfigGate(); return; }
-  try{
-    if(!firebase.apps.length) firebase.initializeApp(cfg);
-  }catch(e){ renderConfigGate('Errore di inizializzazione: '+(e.message||'')); return; }
-  firebase.auth().onAuthStateChanged(user=>{
-    if(!user){ stopListeners(); renderLoginGate(); return; }
-    hideGate();
-    startApp();
-  });
-}
-
-let unsubscribers = [];
-function stopListeners(){ unsubscribers.forEach(u=>{ try{ u(); }catch(e){} }); unsubscribers = []; }
-function showDataError(err){
-  const code = (err && (err.code||err.message)) || '';
-  const hint = code==='permission-denied'
-    ? 'Accesso negato dalle regole di Firestore: prova a uscire e rientrare.'
-    : 'Controlla la connessione e ricarica la pagina.';
-  document.getElementById('main').innerHTML = `<div class="empty">Impossibile leggere i dati (${esc(code)}). ${hint}</div>`;
-}
-
-function startApp(){
-  stopListeners();
-  db = firestoreAdapter();
+async function init(){
+  db = await claude.use("db").catch(()=>null);
+  if(!db){ document.getElementById('main').innerHTML='<div class="empty">Archiviazione non disponibile in questa vista.</div>'; return; }
   renderFooter();
   renderSidebarToday();
-  unsubscribers.push(db.collection('contacts').onSnapshot(snap=>{
+  db.collection('contacts').onSnapshot(snap=>{
     contacts = snap.docs.map(d=>({id:d.id, ...d.data()}));
     if(view!=='new' && !(view==='call' && callStep==='entry')) renderMain();
     renderFooter();
     renderSidebarToday();
     updateNavBadges();
-  }, showDataError));
-  unsubscribers.push(db.collection('calls').onSnapshot(snap=>{
+  });
+  db.collection('calls').onSnapshot(snap=>{
     calls = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
     if(view!=='new' && !(view==='call' && callStep==='entry')) renderMain();
     renderFooter();
     renderSidebarToday();
-  }, showDataError));
+  });
 }
-
-function init(){ boot(); }
 
 function contactsListView(){
   const q = contactsSearchQuery.trim().toLowerCase();
@@ -1711,9 +1609,6 @@ function fmtDateTime(v){
 }
 
 init();
-if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); });
-}
 </script>
 </body>
 </html>
