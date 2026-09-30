@@ -120,8 +120,8 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .addr-link:hover{text-decoration:underline;}
 .map-embed{margin-top:12px;height:240px;border:1px solid var(--border);border-radius:2px;overflow:hidden;background:var(--accent-soft);}
 .map-embed iframe{display:block;width:100%;height:100%;border:0;}
-.name-link{cursor:pointer;}
-.name-link:hover{color:var(--accent);}
+.name-link{cursor:pointer;color:var(--accent);}
+.name-link:hover,[data-contact-id]:hover .name-link{text-decoration:underline;}
 .tag-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:500;margin:4px 4px 0 0;}
 .esito-tag{display:inline-block;padding:2px 9px;border-radius:4px;font-size:12px;font-weight:500;}
 .esito-tag.appt{background:var(--accent);color:var(--panel);font-weight:600;}
@@ -401,6 +401,13 @@ function renderMain(){
       btn.addEventListener('click', ()=>{
         selectedId=btn.dataset.fuId; clearFollowUpOnEntry=true; view='call'; callStep='entry';
         setActiveTab('navCall');
+        renderMain();
+      });
+    });
+    main.querySelectorAll('[data-contact-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        selectedId=el.dataset.contactId; view='detail'; confirmDeleteId=null; tableDetailCallId=null;
+        setActiveTab('navContacts');
         renderMain();
       });
     });
@@ -1074,9 +1081,10 @@ function agendaView(){
     const due = new Date(c.followUp) <= now;
     const time = (c.followUp.split('T')[1]||'').slice(0,5);
     return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:8px;">
-      <div>
-        <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
+      <div data-contact-id="${c.id}" style="cursor:pointer;flex:1 1 200px;min-width:0;">
+        <div class="name-link" style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
+        ${c.telefono?`<a href="tel:${esc(c.telefono.replace(/\s+/g,''))}" class="addr-link" onclick="event.stopPropagation()" style="font-size:12.5px;">Tel ${esc(formatPhone(c.telefono))}</a>`:''}
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <span class="followup ${due?'due':'ok'}">${time}${due && (new Date(c.followUp)).toDateString()!==todayStr?' · scaduto':''}</span>
