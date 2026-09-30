@@ -118,6 +118,8 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .mini-empty{font-size:11.5px;color:var(--muted);font-style:italic;padding:2px 0;}
 .addr-link{color:var(--accent);text-decoration:none;}
 .addr-link:hover{text-decoration:underline;}
+.map-embed{margin-top:12px;height:240px;border:1px solid var(--border);border-radius:2px;overflow:hidden;background:var(--accent-soft);}
+.map-embed iframe{display:block;width:100%;height:100%;border:0;}
 .name-link{cursor:pointer;}
 .name-link:hover{color:var(--accent);}
 .tag-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:500;margin:4px 4px 0 0;}
@@ -195,6 +197,7 @@ h2{color:var(--accent);font-weight:800;}
   .day-group{margin-bottom:16px;}
   .subnav{margin-bottom:12px;flex-wrap:wrap;}
   .top-actions{margin-bottom:8px;}
+  .map-embed{height:200px;}
   /* Settimana appuntamenti: un giorno per riga invece di 7 colonne */
   .calendar-grid{grid-template-columns:1fr;min-width:0;}
   .calendar-day{min-height:0;display:flex;align-items:flex-start;gap:12px;padding:10px 12px;}
@@ -519,6 +522,7 @@ function renderMain(){
         <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
         <div style="margin-top:8px;font-size:14px;">${c.telefono?('Tel '+esc(formatPhone(c.telefono))+'  '):''}${c.email?(esc(c.email)):''}</div>
         ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
+        ${fullAddress(c)?`<div class="map-embed"><iframe src="${mapEmbedUrl(c)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa: ${esc(fullAddress(c))}"></iframe></div>`:''}
         ${c.tag?`<div style="margin-top:8px;">${tagPills(c.tag)}</div>`:''}
         ${c.note?`<div style="margin-top:8px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(c.note)}</div>`:''}
         ${followUpBadge(c.followUp,true)}
@@ -1762,6 +1766,8 @@ function fullName(c){
 function tagPills(tag){ if(!tag) return ''; return tag.split(',').map(t=>t.trim()).filter(Boolean).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join(''); }
 function fullAddress(c){ if(c.via || c.citta) return [c.via, c.citta].filter(Boolean).join(', '); return c.indirizzo || ''; }
 function mapsUrl(c){ return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddress(c))}`; }
+// Mappa incorporata (Google Maps "output=embed": non richiede chiave API).
+function mapEmbedUrl(c){ return `https://www.google.com/maps?q=${encodeURIComponent(fullAddress(c))}&z=16&output=embed`; }
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function fmtDate(d){ if(!d) return ''; const [y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
 function fmtLongDate(dateStr){
