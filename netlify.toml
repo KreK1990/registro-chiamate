@@ -3,6 +3,13 @@
   functions = "netlify/functions"
   command = "true"
 
+[build.environment]
+  # La apiKey web di Firebase in crm-chiamate-standalone.html (FIREBASE_CONFIG) e'
+  # pubblica per progetto: identifica il progetto ma non da' accesso ai dati, protetti
+  # da login Firebase e regole Firestore. La "smart detection" dei segreti di Netlify
+  # la scambia per una chiave segreta e fa fallire la build: la si esclude qui.
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyBOA1oZUMLONDDAddWQ5P3tWEZz5GLdmWI"
+
 [functions]
   node_bundler = "esbuild"
 
