@@ -121,6 +121,13 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .tel-link{white-space:nowrap;font-weight:500;}
 .map-embed{margin-top:12px;height:240px;border:1px solid var(--border);border-radius:2px;overflow:hidden;background:var(--accent-soft);}
 .map-embed iframe{display:block;width:100%;height:100%;border:0;}
+.ac-wrap{position:relative;}
+.ac-list{position:absolute;left:0;right:0;top:100%;z-index:30;background:var(--panel);border:1px solid var(--border-strong);border-top:none;max-height:260px;overflow-y:auto;box-shadow:0 6px 16px rgba(0,0,0,.12);}
+.ac-item{padding:9px 11px;cursor:pointer;border-top:1px solid var(--border);}
+.ac-item:first-child{border-top:none;}
+.ac-item:hover{background:var(--accent-soft);}
+.ac-name{font-weight:600;font-size:14px;color:var(--accent);}
+.ac-sub{font-size:12px;color:var(--muted);margin-top:2px;}
 .name-link{cursor:pointer;color:var(--accent);}
 .name-link:hover,[data-contact-id]:hover .name-link{text-decoration:underline;}
 .tag-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:500;margin:4px 4px 0 0;}
@@ -511,7 +518,7 @@ function init(){ boot(); }
 
 function contactsListView(){
   const q = contactsSearchQuery.trim().toLowerCase();
-  const filtered = contacts.filter(c=>!q || (c.nome||'').toLowerCase().includes(q) || (c.cognome||'').toLowerCase().includes(q) || (c.azienda||'').toLowerCase().includes(q) || (c.telefono||'').includes(q) || (c.tag||'').toLowerCase().includes(q));
+  const filtered = contacts.filter(c=>!q || (c.nome||'').toLowerCase().includes(q) || (c.cognome||'').toLowerCase().includes(q) || (c.azienda||'').toLowerCase().includes(q) || (c.telefono||'').includes(q) || (c.cellulare||'').includes(q) || (c.tag||'').toLowerCase().includes(q));
   filtered.sort((a,b)=>{
     const ka = (sortField==='cognome' ? (a.cognome||a.nome||'') : (a.nome||''));
     const kb = (sortField==='cognome' ? (b.cognome||b.nome||'') : (b.nome||''));
@@ -684,13 +691,14 @@ function renderMain(){
       <div class="card">
         <h2>${esc(fullName(c))}</h2>
         <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
-        <div style="margin-top:8px;font-size:14px;">${telLink(c.telefono)}${c.telefono&&c.email?' · ':''}${c.email?`<a href="mailto:${esc(c.email)}" class="addr-link">${esc(c.email)}</a>`:''}</div>
+        <div style="margin-top:8px;font-size:14px;">${phoneLinks(c)}${(c.cellulare||c.telefono)&&c.email?' · ':''}${c.email?`<a href="mailto:${esc(c.email)}" class="addr-link">${esc(c.email)}</a>`:''}</div>
         ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
         ${fullAddress(c)?`<div class="map-embed"><iframe src="${mapEmbedUrl(c)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa: ${esc(fullAddress(c))}"></iframe></div>`:''}
         ${c.tag?`<div style="margin-top:8px;">${tagPills(c.tag)}</div>`:''}
         ${c.note?`<div style="margin-top:8px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(c.note)}</div>`:''}
         ${followUpBadge(c.followUp,true)}
       </div>
+      ${studioColleaguesHtml(c)}
       <div class="card">
         <h3>Storico chiamate (${myCalls.length})</h3>
         ${myCalls.length? `<div class="table-wrap"><table class="calls-table">
@@ -731,6 +739,9 @@ function renderMain(){
         <button class="btn block" id="saveCallBtn">Salva chiamata</button>
       </div>`;
     document.getElementById('saveCallBtn').addEventListener('click', saveCall);
+    main.querySelectorAll('[data-contact-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; confirmDeleteId=null; renderMain(); main.scrollTop=0; });
+    });
     main.querySelectorAll('tr[data-call-id]').forEach(tr=>{
       tr.addEventListener('click', ()=>{ tableDetailCallId=tr.dataset.callId; renderMain(); });
     });
@@ -1241,7 +1252,7 @@ function agendaView(){
       <div data-contact-id="${c.id}" style="cursor:pointer;flex:1 1 200px;min-width:0;">
         <div class="name-link" style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
-        ${telLink(c.telefono,'font-size:12.5px;')}
+        ${phoneLinks(c,'font-size:12.5px;')}
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <span class="followup ${due?'due':'ok'}">${time}${due && (new Date(c.followUp)).toDateString()!==todayStr?' · scaduto':''}</span>
@@ -1283,7 +1294,7 @@ function followupView(){
         <div>
           <div class="name-link" data-contact-id="${c.id}" style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
           <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
-          ${telLink(c.telefono,'font-size:12.5px;')}
+          ${phoneLinks(c,'font-size:12.5px;')}
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
           <span class="followup ${due?'due':'ok'}">${time}</span>
@@ -1334,7 +1345,7 @@ function renderCallFlow(){
     <div class="card">
       <div class="top-actions" style="margin-bottom:4px;"><button class="btn secondary small" id="changeContactBtn">Cambia contatto</button></div>
       <h3>Chiamata con ${esc(fullName(c))}</h3>
-      ${c.telefono?`<div style="margin:-6px 0 12px;font-size:15px;">${telLink(c.telefono)}</div>`:''}
+      ${(c.cellulare||c.telefono)?`<div style="margin:-6px 0 12px;font-size:15px;">${phoneLinks(c)}</div>`:''}
       <div class="field-row">
         <div><label>Data</label><input type="date" id="qcData" value="${todayISO()}"></div>
         <div><label>Esito</label><select id="qcEsito">
@@ -1485,7 +1496,7 @@ function tableDetailView(){
     <div class="card">
       <h2>${c.id?`<span class="name-link" id="callContactName">${esc(fullName(c))}</span>`:esc(fullName(c))}</h2>
       <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
-      ${c.telefono?`<div style="margin-top:4px;font-size:14px;">${telLink(c.telefono)}</div>`:''}
+      ${(c.cellulare||c.telefono)?`<div style="margin-top:4px;font-size:14px;">${phoneLinks(c)}</div>`:''}
       ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
       <div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
         <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}</div></div>
@@ -1603,14 +1614,14 @@ function newContactForm(){
         <div><label>Professione</label>
           <select id="fProf">${PROFESSIONI.map(p=>`<option ${((isCustom&&p==='Altro')||c.professione===p)?'selected':''}>${p}</option>`).join('')}</select>
         </div>
-        <div></div>
+        <div><label>Cellulare</label><input id="fCell" type="tel" inputmode="tel" value="${esc(c.cellulare||'')}"></div>
       </div>
       <div class="custom-row ${isCustom?'':'hidden'}" id="fProfAltroWrap">
         <label>Specifica professione</label><input id="fProfAltro" value="${isCustom?esc(c.professione):''}">
       </div>
       <div class="field-row">
-        <div><label>Studio / Azienda presso cui lavora</label><input id="fAzienda" value="${esc(c.azienda||'')}"></div>
-        <div><label>Telefono</label><input id="fTel" value="${esc(c.telefono||'')}"></div>
+        <div><label>Studio / Attività</label><div class="ac-wrap"><input id="fAzienda" autocomplete="off" value="${esc(c.azienda||'')}" placeholder="Scrivi il nome: ti suggerisco quelli già presenti"><div class="ac-list hidden" id="fAziendaList"></div></div></div>
+        <div><label>Telefono studio / attività</label><input id="fTel" type="tel" inputmode="tel" value="${esc(c.telefono||'')}"></div>
       </div>
       <div class="field-row">
         <div><label>Via dello studio</label><input id="fVia" value="${esc(c.via||'')}"></div>
@@ -1639,9 +1650,102 @@ function newContactForm(){
     </div>`;
 }
 // Numero cliccabile: su telefono apre l'app Telefono con il numero pronto.
-function telLink(tel, style){
+function telLink(tel, style, label){
   if(!tel) return '';
-  return `<a href="tel:${esc(String(tel).replace(/[^\d+]/g,''))}" class="addr-link tel-link" onclick="event.stopPropagation()"${style?` style="${style}"`:''}>Tel ${esc(formatPhone(tel))}</a>`;
+  return `<a href="tel:${esc(String(tel).replace(/[^\d+]/g,''))}" class="addr-link tel-link" onclick="event.stopPropagation()"${style?` style="${style}"`:''}>${label||'Tel'} ${esc(formatPhone(tel))}</a>`;
+}
+// Cellulare e telefono dello studio. Se c'e' solo il vecchio campo "telefono"
+// (contatti salvati prima del campo cellulare) resta etichettato "Tel".
+function phoneLinks(c, style){
+  return [
+    c.cellulare ? telLink(c.cellulare, style, 'Cell') : '',
+    c.telefono ? telLink(c.telefono, style, c.cellulare ? 'Tel studio' : 'Tel') : ''
+  ].filter(Boolean).join(' · ');
+}
+
+// Studio/attivita' come entita': contatti con lo stesso nome di studio (ignorando
+// maiuscole, spazi e punteggiatura) appartengono allo stesso studio. Nome, via,
+// citta' e telefono dello studio si ricavano dai contatti che ne fanno parte.
+function normStudio(s){ return String(s||'').toLowerCase().replace(/[.,;'"]/g,' ').replace(/\s+/g,' ').trim(); }
+function studioIndex(excludeId){
+  const map = new Map();
+  contacts.forEach(c=>{
+    const key = normStudio(c.azienda);
+    if(!key || c.id===excludeId) return;
+    let s = map.get(key);
+    if(!s){ s = { key, name: c.azienda.trim(), via:'', citta:'', telefono:'', members:[] }; map.set(key, s); }
+    s.members.push(c);
+    if(!s.via && c.via) s.via = c.via;
+    if(!s.citta && c.citta) s.citta = c.citta;
+    if(!s.telefono && c.telefono) s.telefono = c.telefono;
+  });
+  return [...map.values()].map(s=>({ ...s, name: bestStudioName(s.members.map(m=>m.azienda)) }));
+}
+// Telefoni confrontati solo per cifre: la formattazione puo' differire.
+function sameStudioVal(f, a, b){
+  return f==='telefono' ? String(a||'').replace(/\D/g,'')===String(b||'').replace(/\D/g,'') : (a||'')===(b||'');
+}
+// Grafia da usare per uno studio: la piu' frequente; a parita', quella con maiuscole
+// "normali" (non tutto maiuscolo) e senza doppi spazi o punteggiatura finale.
+function bestStudioName(names){
+  const counts = new Map();
+  names.map(n=>String(n||'').trim()).filter(Boolean).forEach(n=>counts.set(n, (counts.get(n)||0)+1));
+  const score = (n, c)=> c*10 + (/[A-Z]/.test(n) && n!==n.toUpperCase() ? 2 : 0) + (/\s{2}|[.,;]$/.test(n) ? 0 : 1);
+  const best = [...counts.entries()].sort((a,b)=>score(b[0],b[1])-score(a[0],a[1]))[0];
+  return best ? best[0] : '';
+}
+function findStudio(name, excludeId){
+  const key = normStudio(name);
+  return key ? (studioIndex(excludeId).find(s=>s.key===key) || null) : null;
+}
+function studioColleaguesHtml(c){
+  const s = findStudio(c.azienda, c.id);
+  if(!s) return '';
+  const list = [...s.members].sort((a,b)=>fullName(a).localeCompare(fullName(b)));
+  return `<div class="card">
+    <h3>Altri contatti di ${esc(s.name)} (${list.length})</h3>
+    ${list.map(o=>`<div class="mini-row" data-contact-id="${o.id}"><span class="name-link">${esc(fullName(o))}</span>${o.professione?` <span style="color:var(--muted);">· ${esc(o.professione)}</span>`:''}</div>`).join('')}
+  </div>`;
+}
+function bindStudioAutocomplete(){
+  const input = document.getElementById('fAzienda');
+  const list = document.getElementById('fAziendaList');
+  const editingId = (window.__editing||{}).id;
+  let matches = [];
+  const close = ()=>{ list.classList.add('hidden'); list.innerHTML=''; };
+  const pick = (s)=>{
+    input.value = s.name;
+    if(s.via) document.getElementById('fVia').value = s.via;
+    if(s.citta) document.getElementById('fCitta').value = s.citta;
+    if(s.telefono) document.getElementById('fTel').value = s.telefono;
+    close();
+  };
+  const render = ()=>{
+    const q = normStudio(input.value);
+    if(!q){ close(); return; }
+    matches = studioIndex(editingId)
+      .filter(s=>s.key.includes(q) && !(s.key===q && s.name===input.value.trim()))
+      .sort((a,b)=>(a.key.startsWith(q)?0:1)-(b.key.startsWith(q)?0:1) || a.name.localeCompare(b.name))
+      .slice(0,6);
+    if(!matches.length){ close(); return; }
+    list.innerHTML = matches.map((s,i)=>{
+      const where = [s.via, s.citta].filter(Boolean).join(', ');
+      const who = s.members.map(fullName).slice(0,3).join(', ') + (s.members.length>3 ? ` e altri ${s.members.length-3}` : '');
+      return `<div class="ac-item" data-i="${i}"><div class="ac-name">${esc(s.name)}</div><div class="ac-sub">${esc([where, who].filter(Boolean).join(' · '))}</div></div>`;
+    }).join('');
+    list.classList.remove('hidden');
+  };
+  // pointerdown (non click): scatta prima che il campo perda il focus, anche al tocco su iPhone.
+  list.addEventListener('pointerdown', e=>{
+    const item = e.target.closest('.ac-item');
+    if(!item) return;
+    e.preventDefault();
+    pick(matches[+item.dataset.i]);
+  });
+  input.addEventListener('input', render);
+  input.addEventListener('focus', render);
+  input.addEventListener('blur', ()=>setTimeout(close, 150));
+  input.addEventListener('keydown', e=>{ if(e.key==='Escape') close(); });
 }
 function formatPhone(v){
   const digits = String(v||'').replace(/\D/g,'');
@@ -1652,12 +1756,14 @@ function bindNewForm(){
   document.getElementById('fProf').addEventListener('change', e=>{
     document.getElementById('fProfAltroWrap').classList.toggle('hidden', e.target.value!=='Altro');
   });
-  document.getElementById('fTel').addEventListener('input', e=>{
+  ['fCell','fTel'].forEach(id=>document.getElementById(id).addEventListener('input', e=>{
     const pos = e.target.selectionStart, before = e.target.value.length;
     e.target.value = formatPhone(e.target.value);
     const diff = e.target.value.length - before;
     e.target.setSelectionRange(pos+diff, pos+diff);
-  });
+  }));
+  window.__studioChoice = null;
+  bindStudioAutocomplete();
   document.getElementById('saveContactBtn').addEventListener('click', saveContact);
   document.getElementById('cancelBtn').addEventListener('click', ()=>{
     window.__editing=null;
@@ -1673,16 +1779,18 @@ async function saveContact(){
   if(!nome || !cognome){ alert('Nome e cognome sono obbligatori.'); return; }
   const editing = window.__editing;
   const telefono = formatPhone(document.getElementById('fTel').value);
+  const cellulare = formatPhone(document.getElementById('fCell').value);
   if(!(editing && editing.id) && !window.__dupConfirmed){
-    const telNorm = telefono.replace(/\s+/g,'');
+    // Il telefono dello studio e' condiviso tra colleghi: per i doppioni conta il cellulare.
+    const cellNorm = cellulare.replace(/\s+/g,'');
     const dup = contacts.find(c=>{
-      if(telNorm && (c.telefono||'').replace(/\s+/g,'')===telNorm) return true;
+      if(cellNorm && (c.cellulare||'').replace(/\s+/g,'')===cellNorm) return true;
       if(c.nome && c.cognome && c.nome.toLowerCase()===nome.toLowerCase() && c.cognome.toLowerCase()===cognome.toLowerCase()) return true;
       return false;
     });
     if(dup){
       window.__dupConfirmed = true;
-      document.getElementById('dupWarning').innerHTML = `<div style="margin-top:10px;padding:10px 12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;font-size:13px;">Esiste già un contatto simile: <strong>${esc(fullName(dup))}</strong>${dup.telefono?' · '+esc(dup.telefono):''}. Premi di nuovo "Salva" per crearlo comunque.</div>`;
+      document.getElementById('dupWarning').innerHTML = `<div style="margin-top:10px;padding:10px 12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;font-size:13px;">Esiste già un contatto simile: <strong>${esc(fullName(dup))}</strong>${dup.cellulare?' · Cell '+esc(dup.cellulare):''}. Premi di nuovo "Salva" per crearlo comunque.</div>`;
       document.getElementById('saveContactBtn').textContent = 'Salva comunque';
       return;
     }
@@ -1695,14 +1803,44 @@ async function saveContact(){
     via: document.getElementById('fVia').value.trim(),
     citta: document.getElementById('fCitta').value.trim(),
     telefono,
+    cellulare,
     email: document.getElementById('fEmail').value.trim(),
     followUp: combineDT(document.getElementById('fFollowUpDate').value, document.getElementById('fFollowUpTime').value),
     tag: document.getElementById('fTag').value.trim(),
     note: document.getElementById('fNote').value.trim()
   };
+  // Studio gia' presente: stesso nome degli altri contatti, dati mancanti presi dallo
+  // studio; se indirizzo/telefono cambiano, si chiede se aggiornare anche gli altri.
+  const studio = findStudio(data.azienda, editing && editing.id);
+  const studioFields = ['via','citta','telefono'];
+  if(studio){
+    data.azienda = bestStudioName([...studio.members.map(m=>m.azienda), data.azienda]);
+    studioFields.forEach(f=>{ if(!data[f] && studio[f]) data[f] = studio[f]; });
+    const changed = studioFields.some(f=>!sameStudioVal(f, studio[f], data[f]));
+    if(changed && !window.__studioChoice){
+      const n = studio.members.length;
+      document.getElementById('dupWarning').innerHTML = `<div style="margin-top:10px;padding:10px 12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:2px;font-size:13px;">Indirizzo o telefono di <strong>${esc(studio.name)}</strong> sono diversi da quelli ${n===1?'dell\'altro contatto':`degli altri ${n} contatti`} dello studio.
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+          <button class="btn small" id="studioAllBtn">Aggiorna anche ${n===1?'l\'altro contatto':`gli altri ${n}`}</button>
+          <button class="btn secondary small" id="studioOneBtn">Salva solo questo contatto</button>
+        </div></div>`;
+      document.getElementById('studioAllBtn').addEventListener('click', ()=>{ window.__studioChoice='all'; saveContact(); });
+      document.getElementById('studioOneBtn').addEventListener('click', ()=>{ window.__studioChoice='one'; saveContact(); });
+      return;
+    }
+  }
   try{
     if(editing && editing.id){ await db.collection('contacts').doc(editing.id).update(data); selectedId = editing.id; }
     else { const ref = await db.collection('contacts').add({...data, createdAt: Date.now()}); selectedId = ref.id; }
+    if(studio && window.__studioChoice==='all'){
+      for(const m of studio.members){
+        const upd = {};
+        studioFields.forEach(f=>{ if(!sameStudioVal(f, m[f], data[f])) upd[f] = data[f]; });
+        if(m.azienda!==data.azienda) upd.azienda = data.azienda;
+        if(Object.keys(upd).length) await db.collection('contacts').doc(m.id).update(upd);
+      }
+    }
+    window.__studioChoice = null;
     window.__editing=null;
     if(window.__returnToCall){ window.__returnToCall=false; view='call'; callStep='entry'; }
     else{ view='detail'; }
@@ -1929,9 +2067,9 @@ function exportICS(){
   URL.revokeObjectURL(url);
 }
 function exportBackupCSV(){
-  const contactRows = [['Nome','Cognome','Professione','Studio/Azienda','Via','Città','Telefono','Email','Follow-up','Note']];
+  const contactRows = [['Nome','Cognome','Professione','Cellulare','Studio/Attività','Via','Città','Telefono studio','Email','Follow-up','Note']];
   contacts.forEach(c=>{
-    contactRows.push([c.nome||'', c.cognome||'', c.professione||'', c.azienda||'', c.via||'', c.citta||'', c.telefono||'', c.email||'', c.followUp?fmtDateTime(c.followUp):'', c.note||'']);
+    contactRows.push([c.nome||'', c.cognome||'', c.professione||'', c.cellulare||'', c.azienda||'', c.via||'', c.citta||'', c.telefono||'', c.email||'', c.followUp?fmtDateTime(c.followUp):'', c.note||'']);
   });
   downloadCSV('contatti.csv', contactRows);
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
@@ -1950,7 +2088,7 @@ function esitoCell(k){
 function fullName(c){
   if(c.cognome) return `${c.cognome} ${c.nome||''}`.trim();
   if(c.nome) return c.nome;
-  return c.azienda || c.telefono || c.email || '(senza nome)';
+  return c.azienda || c.cellulare || c.telefono || c.email || '(senza nome)';
 }
 function tagPills(tag){ if(!tag) return ''; return tag.split(',').map(t=>t.trim()).filter(Boolean).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join(''); }
 function fullAddress(c){ if(c.via || c.citta) return [c.via, c.citta].filter(Boolean).join(', '); return c.indirizzo || ''; }
