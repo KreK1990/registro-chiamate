@@ -892,26 +892,44 @@ function renderFooter(){
 // ---------------------------------------------------------------------------
 // Importazione di incontri gia' svolti da un file Excel (.xlsx/.xls/.csv).
 // Passi: file -> associazione colonne -> anteprima -> importazione (annullabile).
-// Ogni incontro diventa una chiamata con appuntamento alla data/ora indicata
-// (esito "Appuntamento fissato", note in noteIncontro); i clienti non presenti
-// vengono creati. Contatti e chiamate creati hanno importBatch, per l'annullamento.
-// La libreria SheetJS si carica solo quando serve.
+// Ogni riga diventa una chiamata (data = colonna "Data chiamata" se presente); se
+// c'e' un appuntamento (anche testo tipo "08/04 alle ore 11:30", anno ricavato dalla
+// data della chiamata) diventa un incontro: esito "Appuntamento fissato", note in
+// noteIncontro. I clienti non presenti vengono creati. Contatti e chiamate creati
+// hanno importBatch, per l'annullamento. SheetJS si carica solo quando serve.
 // ---------------------------------------------------------------------------
 const IMPORT_FIELDS = [
-  ['data', 'Data incontro *', ['data', 'giorno', 'date', 'data incontro', 'data appuntamento']],
-  ['ora', 'Ora', ['ora', 'orario', 'time', 'ora incontro', 'ora inizio']],
+  ['chiamata', 'Data chiamata', ['chiamata', 'data chiamata', 'telefonata', 'data telefonata']],
+  ['data', 'Data incontro / appuntamento', ['appuntamento', 'incontro', 'data incontro', 'data appuntamento', 'data', 'giorno', 'date']],
+  ['ora', 'Ora incontro', ['ora', 'orario', 'time', 'ora incontro', 'ora appuntamento', 'ora inizio']],
   ['cliente', 'Cliente (nome e cognome insieme)', ['cliente', 'nominativo', 'contatto', 'referente', 'nome e cognome', 'nome cognome', 'cognome e nome', 'cognome nome', 'persona']],
   ['nome', 'Nome', ['nome']],
   ['cognome', 'Cognome', ['cognome']],
   ['professione', 'Professione', ['professione', 'qualifica', 'titolo', 'ruolo']],
-  ['studio', 'Studio / Attività', ['studio', 'azienda', 'attivita', 'societa', 'ditta', 'impresa', 'studio attivita', 'ragione sociale']],
+  ['studio', 'Studio / Attività', ['studio', 'azienda', 'attivita', 'societa', 'soc studio', 'ditta', 'impresa', 'studio attivita', 'ragione sociale']],
   ['via', 'Via / indirizzo', ['via', 'indirizzo']],
   ['citta', 'Città', ['citta', 'comune', 'localita', 'paese']],
   ['cellulare', 'Cellulare', ['cellulare', 'cell', 'mobile']],
   ['telefono', 'Telefono studio', ['telefono', 'tel', 'tel studio', 'telefono studio', 'telefono fisso']],
+  ['email', 'Email', ['mail', 'email', 'e mail', 'posta elettronica']],
   ['progetto', 'Progetto', ['progetto', 'cantiere', 'oggetto', 'argomento', 'commessa']],
-  ['note', 'Note incontro', ['note', 'esito', 'descrizione', 'commento', 'commenti', 'note incontro', 'resoconto']]
+  ['note', 'Note', ['note', 'esito', 'descrizione', 'commento', 'commenti', 'note incontro', 'resoconto']]
 ];
+// Nomi propri comuni: servono a capire se "Cliente" e' scritto Nome Cognome o Cognome Nome.
+const FIRST_NAMES = new Set(('aldo alberto alessandro alessandra alessia alessio alice andrea angela angelo anna antonella antonino antonio arianna arturo '
+  + 'barbara beatrice benedetta bruno camilla carla carlo carlotta carmela carmine caterina cesare chiara cinzia claudia claudio corrado cristian cristiano cristina '
+  + 'dario davide debora denis diego domenico donatella edoardo elena eleonora elia elisa elisabetta emanuela emanuele emilio enrico enzo erika ettore eugenio '
+  + 'fabio fabrizio federica federico filippo fiorella flavio francesca francesco franco gabriele gabriella gaetano gianluca gianni giacomo gino giorgia giorgio '
+  + 'giovanna giovanni giulia giuliana giuliano giulio giuseppe graziella guido hermann ilaria irene ivan jacopo laura lorenzo lorena luca lucia luciano luigi luisa '
+  + 'manrico manuela manuel marcello marco margherita maria mariangela marina mario marisa marta martina massimiliano massimo matteo mattia maurizio mauro michela '
+  + 'michele milena mirko monica nadia nicola nicolo nicoletta noemi omar orazio paola paolo patrizia piera piero pietro raffaele raffaella renato riccardo rita '
+  + 'roberta roberto rocco rosa rossella sabrina salvatore samuele sandra sandro sara saverio sergio silvia silvio simona simone sofia stefania stefano teresa '
+  + 'tiziana tommaso umberto valentina valentino valeria valerio vanessa vincenzo viola vittoria vittorio walter '
+  + 'adriano agnese agostino alba alfredo amedeo annalisa antonia armando attilio augusto aurelio aurora bianca camillo carmen cecilia christian ciro '
+  + 'cristiana daniela daniele dino elio emma ernesto fausto felice ferdinando fernando fiorenzo giada gianfranco giancarlo gianmarco gianmauro '
+  + 'gianpaolo giampiero gilberto giordano gregorio graziano guglielmo ignazio ivo lara leonardo lino livio lucio ludovica marcella mariano mariella '
+  + 'maura mirella nunzia oscar ottavio pamela pasquale pierluigi piergiorgio pierpaolo rebecca remo rinaldo rino rosario ruggero sebastiano serena '
+  + 'severino silvano stella tiziano tullio ugo veronica vito wanda').split(' '));
 
 function loadXLSX(){
   if(window.XLSX) return Promise.resolve();
@@ -924,6 +942,10 @@ function loadXLSX(){
   });
 }
 function normName(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim(); }
+const IMPORT_SYNONYMS = IMPORT_FIELDS.flatMap(f=>f[2].map(normName));
+function headerScore(cells){
+  return cells.filter(v=>{ const h = normName(v); return h && IMPORT_SYNONYMS.some(x=>h===x || (x.length>2 && h.includes(x))); }).length;
+}
 
 function guessImportMapping(headers){
   const H = headers.map(normName);
@@ -940,7 +962,10 @@ function guessImportMapping(headers){
   return map;
 }
 
-function parseImpDate(v){
+// Data (ed eventuale ora) da cella Excel o testo: "15/01/2026", "15/01/26 10:30",
+// "2026-01-15", "08/04 alle ore 11:30" (senza anno: si usa l'anno della data di
+// riferimento refDate "YYYY-MM-DD", o quello successivo se cadrebbe prima).
+function parseImpDate(v, refDate){
   if(v===null || v===undefined || String(v).trim()==='') return null;
   const pad = n=>String(n).padStart(2,'0');
   const mk = (y,m,d,H,M)=>{
@@ -949,6 +974,7 @@ function parseImpDate(v){
     if(H!==null && (H>23 || M>59)) return null;
     return { date:`${y}-${pad(m)}-${pad(d)}`, time: H!==null ? `${pad(H)}:${pad(M)}` : null };
   };
+  const hm = (a,b)=>a!==undefined ? [+a, +b] : [null, null];
   if(typeof v==='number'){
     const p = XLSX.SSF.parse_date_code(v);
     if(!p || p.y<1990) return null;
@@ -956,10 +982,25 @@ function parseImpDate(v){
     return mk(p.y, p.m, p.d, hasTime ? p.H : null, hasTime ? p.M : null);
   }
   const s = String(v).trim();
-  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4}|\d{2})(?:[ ,T]+(\d{1,2})[:.](\d{2}))?/);
-  if(m){ let y = +m[3]; if(y<100) y += 2000; return mk(y, +m[2], +m[1], m[4]!==undefined ? +m[4] : null, m[5]!==undefined ? +m[5] : null); }
+  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4}|\d{2})(?!\d)(?:\D+?(\d{1,2})[:.](\d{2}))?/);
+  if(m){ let y = +m[3]; if(y<100) y += 2000; return mk(y, +m[2], +m[1], ...hm(m[4], m[5])); }
   m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/);
-  if(m) return mk(+m[1], +m[2], +m[3], m[4]!==undefined ? +m[4] : null, m[5]!==undefined ? +m[5] : null);
+  if(m) return mk(+m[1], +m[2], +m[3], ...hm(m[4], m[5]));
+  m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})(?![\/.\-]?\d)(?:\D+?(\d{1,2})[:.](\d{2}))?/);
+  if(m){
+    // senza anno: l'anno (precedente, stesso o successivo) che porta la data piu' vicina
+    // a quella di riferimento (la chiamata, oppure oggi)
+    const base = refDate ? +refDate.slice(0,4) : new Date().getFullYear();
+    const ref = refDate ? new Date(refDate) : new Date();
+    let best = null;
+    [base-1, base, base+1].forEach(y=>{
+      const r = mk(y, +m[2], +m[1], ...hm(m[3], m[4]));
+      if(!r) return;
+      const diff = Math.abs(new Date(r.date) - ref);
+      if(!best || diff < best.diff) best = { r, diff };
+    });
+    return best ? best.r : null;
+  }
   return null;
 }
 function parseImpTime(v){
@@ -974,8 +1015,10 @@ function parseImpTime(v){
   const H = +m[1], M = m[2] ? +m[2] : 0;
   return (H>23 || M>59) ? null : `${pad(H)}:${pad(M)}`;
 }
-// "Arch. Mario Rossi" -> professione Architetto, nome Mario, cognome Rossi.
-function splitCliente(s){
+// "Arch. Mario Rossi" -> professione Architetto. order: 'cn' = Cognome Nome (il nome e'
+// l'ultima parola: "De Luca Antonino"), 'nc' = Nome Cognome, 'auto' = deciso dai nomi
+// propri noti, altrimenti fallback.
+function clienteTokens(s){
   const TITLES = { arch:'Architetto', architetto:'Architetto', ing:'Ingegnere', ingegnere:'Ingegnere', geom:'Geometra', geometra:'Geometra',
     avv:'Avvocato', avvocato:'Avvocato', notaio:'Notaio', dott:'', dottssa:'', dottoressa:'', dottore:'', dr:'', sig:'', sigra:'', signor:'', signora:'', sigg:'' };
   const toks = s.split(/\s+/).filter(Boolean);
@@ -986,8 +1029,20 @@ function splitCliente(s){
     if(TITLES[t] && !professione) professione = TITLES[t];
     toks.shift();
   }
+  return { toks, professione };
+}
+function detectNameOrder(toks){
+  if(toks.length<2) return null;
+  const f = FIRST_NAMES.has(normName(toks[0])), l = FIRST_NAMES.has(normName(toks[toks.length-1]));
+  return f && !l ? 'nc' : l && !f ? 'cn' : null;
+}
+function splitCliente(s, order, fallback){
+  const { toks, professione } = clienteTokens(s);
   if(toks.length===1) return { nome:'', cognome:toks[0], professione };
-  return { nome:toks[0], cognome:toks.slice(1).join(' '), professione };
+  const o = order==='auto' ? (detectNameOrder(toks) || fallback || 'cn') : order;
+  return o==='nc'
+    ? { nome:toks[0], cognome:toks.slice(1).join(' '), professione }
+    : { nome:toks[toks.length-1], cognome:toks.slice(0,-1).join(' '), professione };
 }
 function matchImpContact(nome, cognome, studio){
   let cands;
@@ -1011,20 +1066,36 @@ function buildImportRows(s){
   const M = s.mapping;
   const get = (r,k)=>M[k]==='' ? '' : r.cells[M[k]];
   const str = v=>String(v===null || v===undefined ? '' : v).trim();
+  // ordine prevalente nella colonna Cliente, per le righe in cui i nomi non bastano a deciderlo
+  let fallback = 'cn';
+  if(M.cliente!==''){
+    const votes = { cn:0, nc:0 };
+    s.dataRows.forEach(r=>{ const o = detectNameOrder(clienteTokens(str(get(r,'cliente'))).toks); if(o) votes[o]++; });
+    fallback = votes.nc > votes.cn ? 'nc' : 'cn';
+  }
   const pending = new Map(), seen = new Set();
   return s.dataRows.map(r=>{
     const out = { n:r.rowNum, issues:[], warn:[] };
-    const dt = parseImpDate(get(r,'data'));
-    if(!dt) out.issues.push(str(get(r,'data')) ? 'data non valida' : 'data mancante');
-    let time = null;
-    if(str(get(r,'ora'))!==''){ time = parseImpTime(get(r,'ora')); if(!time) out.issues.push('ora non valida'); }
-    else if(dt && dt.time) time = dt.time;
-    if(!time && !out.issues.includes('ora non valida')){ time = '09:00'; out.warn.push('ora non indicata: 09:00'); }
-    out.date = dt ? dt.date : ''; out.time = time;
+    const call = M.chiamata!=='' ? parseImpDate(get(r,'chiamata')) : null;
+    if(str(get(r,'chiamata')) && !call) out.issues.push(`data chiamata non valida: "${str(get(r,'chiamata'))}"`);
+    const rawAppt = str(get(r,'data'));
+    const dt = rawAppt ? parseImpDate(get(r,'data'), call ? call.date : null) : null;
+    if(rawAppt && !dt) out.issues.push(`appuntamento non leggibile: "${rawAppt}"`);
+    if(!rawAppt && !call && !out.issues.length) out.issues.push('data mancante');
+    out.hasAppt = !!dt;
+    out.callDate = call ? call.date : (dt ? dt.date : '');
+    out.date = dt ? dt.date : '';
+    if(dt){
+      let time = null;
+      if(str(get(r,'ora'))!==''){ time = parseImpTime(get(r,'ora')); if(!time) out.issues.push('ora non valida'); }
+      else if(dt.time) time = dt.time;
+      if(!time && !out.issues.includes('ora non valida')){ time = '09:00'; out.warn.push('ora non indicata: 09:00'); }
+      out.time = time;
+    }
 
     let nome = str(get(r,'nome')), cognome = str(get(r,'cognome')), professione = str(get(r,'professione'));
     if(!nome && !cognome && str(get(r,'cliente'))){
-      const p = splitCliente(str(get(r,'cliente')));
+      const p = splitCliente(str(get(r,'cliente')), s.nameOrder || 'auto', fallback);
       nome = p.nome; cognome = p.cognome; if(!professione) professione = p.professione;
     }
     const studioRaw = str(get(r,'studio'));
@@ -1032,7 +1103,7 @@ function buildImportRows(s){
     Object.assign(out, {
       nome, cognome, professione,
       studio: st ? bestStudioName([...st.members.map(m=>m.azienda), studioRaw]) : studioRaw,
-      via: str(get(r,'via')), citta: str(get(r,'citta')),
+      via: str(get(r,'via')), citta: str(get(r,'citta')), email: str(get(r,'email')),
       cellulare: str(get(r,'cellulare')) ? formatPhone(str(get(r,'cellulare'))) : '',
       telefono: str(get(r,'telefono')) ? formatPhone(str(get(r,'telefono'))) : '',
       progetto: str(get(r,'progetto')), note: str(get(r,'note'))
@@ -1050,12 +1121,17 @@ function buildImportRows(s){
       }
     }
     if(!out.issues.length){
-      const dupKey = (out.contact ? out.contact.id : out.newKey)+'|'+out.date;
-      if(seen.has(dupKey)) out.skip = 'ripetuto nel file (stesso cliente e giorno)';
-      else if(out.contact && calls.some(k=>k.contactId===out.contact.id && ((k.appuntamento||'').slice(0,10)===out.date || k.data===out.date))) out.skip = 'già presente nell\'app';
-      seen.add(dupKey);
+      if(!out.hasAppt && s.includeCallsOnly===false) out.skip = 'chiamata senza appuntamento (esclusa)';
+      else{
+        const day = out.hasAppt ? 'A'+out.date : 'C'+out.callDate;
+        const dupKey = (out.contact ? out.contact.id : out.newKey)+'|'+day;
+        if(seen.has(dupKey)) out.skip = 'ripetuto nel file (stesso cliente e giorno)';
+        else if(out.contact && calls.some(k=>k.contactId===out.contact.id && (out.hasAppt ? (k.appuntamento||'').slice(0,10)===out.date : k.data===out.callDate))) out.skip = 'già presente nell\'app';
+        seen.add(dupKey);
+      }
     }
-    if(out.date && out.date>todayISO()) out.warn.push('data futura');
+    if(out.hasAppt && out.date>todayISO()) out.warn.push('incontro futuro');
+    if(out.hasAppt && call && out.date<call.date) out.warn.push('incontro precedente alla chiamata: controlla le date');
     return out;
   });
 }
@@ -1065,7 +1141,7 @@ function importView(){
   const head = `<div class="top-actions" style="justify-content:space-between;"><button class="btn secondary small" id="impBackBtn">← Torna agli appuntamenti</button></div>
     <h2 style="margin-bottom:12px;">Importa incontri da Excel</h2>`;
   if(s.step==='file') return head + `<div class="card">
-    <p style="margin-top:0;font-size:14px;line-height:1.5;">Scegli il file Excel con gli incontri già svolti: una riga per incontro, con i titoli delle colonne nella prima riga. Nel passo successivo indicherai quale colonna contiene cosa e vedrai un'anteprima: nulla viene salvato finché non confermi.</p>
+    <p style="margin-top:0;font-size:14px;line-height:1.5;">Scegli il file Excel con le chiamate e gli incontri già svolti: una riga per chiamata o incontro, con una riga di titoli delle colonne. Nel passo successivo indicherai quale colonna contiene cosa e vedrai un'anteprima: nulla viene salvato finché non confermi.</p>
     <input type="file" id="impFile" accept=".xlsx,.xls,.csv">
     ${s.loading ? '<div style="font-size:13px;color:var(--muted);margin-top:8px;">Lettura del file…</div>' : ''}
     ${s.error ? `<div style="color:var(--danger);font-size:13px;margin-top:8px;">${esc(s.error)}</div>` : ''}
@@ -1076,14 +1152,26 @@ function importView(){
     const ncols = Math.max(s.headers.length, ...s.dataRows.slice(0,50).map(r=>r.cells.length));
     const cols = [...Array(ncols)].map((_,i)=>({ i, label: s.headers[i] || `Colonna ${i+1}` }));
     const sample = s.dataRows[0] ? s.dataRows[0].cells : [];
+    const ex = (i,key)=>{
+      const v = sample[i];
+      if(v===undefined || String(v).trim()==='') return '';
+      const shown = typeof v==='number' && (key==='data' || key==='chiamata') ? ((parseImpDate(v)||{}).date || v) : v;
+      return ' (es. '+esc(String(shown).slice(0,30))+')';
+    };
     return head + `<div class="card">
       <h3>1. Associa le colonne</h3>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">File <strong>${esc(s.fileName)}</strong>: ${s.dataRows.length} righe con dati.
-        Ho riconosciuto le colonne dai titoli: controlla e correggi se serve. Per il cliente basta una colonna unica "Cliente" oppure Nome e Cognome separati.</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">File <strong>${esc(s.fileName)}</strong>: ${s.dataRows.length} righe con dati (titoli alla riga ${s.headerRowNum}).
+        Ho riconosciuto le colonne dai titoli: controlla e correggi se serve. Serve almeno una data (della chiamata o dell'incontro) e il cliente.</div>
       ${s.wb.SheetNames.length>1 ? `<div class="imp-map" style="margin-bottom:12px;"><label>Foglio</label><select id="impSheet">${s.wb.SheetNames.map(n=>`<option ${n===s.sheet?'selected':''}>${esc(n)}</option>`).join('')}</select></div>` : ''}
       <div class="imp-map">
         ${IMPORT_FIELDS.map(([key,label])=>`<label>${label}</label>
-          <select data-map="${key}"><option value="">— nessuna —</option>${cols.map(c=>`<option value="${c.i}" ${s.mapping[key]===c.i?'selected':''}>${esc(c.label)}${sample[c.i]!==undefined && String(sample[c.i]).trim()!=='' ? ' (es. '+esc(String(typeof sample[c.i]==='number' && key==='data' ? (parseImpDate(sample[c.i])||{}).date||sample[c.i] : sample[c.i]).slice(0,30))+')' : ''}</option>`).join('')}</select>`).join('')}
+          <select data-map="${key}"><option value="">— nessuna —</option>${cols.map(c=>`<option value="${c.i}" ${s.mapping[key]===c.i?'selected':''}>${esc(c.label)}${ex(c.i,key)}</option>`).join('')}</select>`).join('')}
+        <label>Ordine nella colonna Cliente</label>
+        <select id="impNameOrder">
+          <option value="auto" ${(s.nameOrder||'auto')==='auto'?'selected':''}>Automatico (riconosce i nomi propri)</option>
+          <option value="cn" ${s.nameOrder==='cn'?'selected':''}>Cognome Nome</option>
+          <option value="nc" ${s.nameOrder==='nc'?'selected':''}>Nome Cognome</option>
+        </select>
       </div>
       ${s.mapError ? `<div style="color:var(--danger);font-size:13px;margin-top:10px;">${esc(s.mapError)}</div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
@@ -1096,52 +1184,60 @@ function importView(){
   if(s.step==='preview'){
     const rows = buildImportRows(s);
     const ok = rows.filter(r=>!r.issues.length && !r.skip);
+    const nAppt = ok.filter(r=>r.hasAppt).length, nCalls = ok.length - nAppt;
+    const nCallsOnlyAll = rows.filter(r=>!r.issues.length && !r.hasAppt).length;
     const nNew = new Set(ok.filter(r=>r.newKey).map(r=>r.newKey)).size;
-    const nErr = rows.filter(r=>r.issues.length).length, nSkip = rows.filter(r=>r.skip).length;
+    const nErr = rows.filter(r=>r.issues.length).length;
+    const nSkip = rows.filter(r=>r.skip && !/esclusa/.test(r.skip)).length;
     const status = r=>{
       if(r.issues.length) return `<span style="color:var(--danger);font-weight:600;">Errore: ${esc(r.issues.join('; '))}</span>`;
       if(r.skip) return `<span style="color:var(--muted);">Saltato: ${esc(r.skip)}</span>`;
-      const base = r.contact ? `Cliente esistente: ${esc(fullName(r.contact))}` : (r.newFirstRow===r.n ? '<strong>Nuovo contatto</strong>' : `Nuovo contatto (come riga ${r.newFirstRow})`);
+      const base = r.contact ? `Cliente esistente` : (r.newFirstRow===r.n ? '<strong>Nuovo contatto</strong>' : `Nuovo contatto (come riga ${r.newFirstRow})`);
       return base + (r.warn.length ? ` <span style="color:var(--muted);">· ${esc(r.warn.join(' · '))}</span>` : '');
     };
+    const who = r=>r.contact
+      ? esc(fullName(r.contact))
+      : ((r.cognome ? `<strong>${esc(r.cognome)}</strong>` : '') + (r.nome ? ' '+esc(r.nome) : '') || '—');
     return head + `<div class="card">
       <h3>2. Anteprima</h3>
       <div style="font-size:14px;line-height:1.6;">
-        <strong>${ok.length}</strong> incontri da importare${nNew ? `, con <strong>${nNew}</strong> nuovi contatti` : ''}.
-        ${nSkip ? `<br><span style="color:var(--muted);">${nSkip} righe saltate (incontro già presente o ripetuto).</span>` : ''}
+        Da importare: <strong>${nAppt}</strong> incontri${nCalls ? ` e <strong>${nCalls}</strong> chiamate senza appuntamento` : ''}${nNew ? `, con <strong>${nNew}</strong> nuovi contatti` : ''}.
+        ${nSkip ? `<br><span style="color:var(--muted);">${nSkip} righe saltate (già presenti o ripetute).</span>` : ''}
         ${nErr ? `<br><span style="color:var(--danger);">${nErr} righe con errori non verranno importate: correggile nel file e ricaricalo, oppure importa le altre.</span>` : ''}
+        <br><span style="color:var(--muted);">Nei nuovi contatti il cognome è in <strong>grassetto</strong>: controlla che nome e cognome non siano invertiti.</span>
       </div>
+      ${nCallsOnlyAll ? `<label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;font-size:13.5px;color:var(--text);"><input type="checkbox" id="impCallsOnly" style="width:auto;" ${s.includeCallsOnly===false?'':'checked'}>Importa anche le ${nCallsOnlyAll} chiamate senza appuntamento (per lo storico)</label>` : ''}
       <div class="table-wrap" style="margin-top:12px;"><table class="calls-table">
-        <thead><tr><th>Riga</th><th>Data</th><th>Ora</th><th>Cliente</th><th>Studio</th><th>Esito anteprima</th></tr></thead>
-        <tbody>${rows.map(r=>`<tr>
-          <td>${r.n}</td><td>${r.date ? fmtDate(r.date) : '—'}</td><td>${esc(r.time||'—')}</td>
-          <td>${esc(r.contact ? fullName(r.contact) : ([r.cognome, r.nome].filter(Boolean).join(' ') || '—'))}${r.professione && !r.contact ? `<div style="font-size:11.5px;color:var(--muted);">${esc(r.professione)}</div>` : ''}</td>
+        <thead><tr><th>Riga</th><th>Chiamata</th><th>Incontro</th><th>Cliente</th><th>Studio</th><th>Esito anteprima</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr class="${r.hasAppt?'row-appt':''}">
+          <td>${r.n}</td><td>${r.callDate ? fmtDate(r.callDate) : '—'}</td><td>${r.hasAppt ? fmtDate(r.date)+' '+esc(r.time||'') : '—'}</td>
+          <td>${who(r)}${r.professione && !r.contact ? `<div style="font-size:11.5px;color:var(--muted);">${esc(r.professione)}</div>` : ''}</td>
           <td>${esc(r.studio||'—')}</td><td>${status(r)}</td></tr>`).join('')}</tbody>
       </table></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
-        <button class="btn" id="impRunBtn" ${ok.length ? '' : 'disabled'}>Importa ${ok.length} incontri</button>
+        <button class="btn" id="impRunBtn" ${ok.length ? '' : 'disabled'}>Importa ${ok.length} righe</button>
         <button class="btn secondary" id="impBackMapBtn">← Modifica colonne</button>
       </div>
     </div>`;
   }
 
-  if(s.step==='running') return head + `<div class="card"><h3>Importazione in corso…</h3>
-    <div style="font-size:14px;">${s.progress.done} di ${s.progress.total} incontri salvati. Non chiudere l'app.</div></div>`;
+  if(s.step==='running') return head + `<div class="card"><h3>${s.undoing ? 'Annullamento in corso…' : 'Importazione in corso…'}</h3>
+    <div style="font-size:14px;">${s.progress.done} di ${s.progress.total}. Non chiudere l'app.</div></div>`;
 
   if(s.step==='done'){
     const nC = s.created.contacts.length, nK = s.created.calls.length;
     if(s.undone) return head + `<div class="card"><h3>Importazione annullata</h3>
-      <div style="font-size:14px;">Ho eliminato i ${nK} incontri e i ${nC} contatti creati da questa importazione.</div>
+      <div style="font-size:14px;">Ho eliminato le ${nK} chiamate/incontri e i ${nC} contatti creati da questa importazione.</div>
       <button class="btn" id="impFinishBtn" style="margin-top:12px;">Torna agli appuntamenti</button></div>`;
     return head + `<div class="card"><h3>${s.failed ? 'Importazione interrotta' : 'Importazione completata'}</h3>
       <div style="font-size:14px;line-height:1.6;">
         ${s.failed ? `<span style="color:var(--danger);">Errore: ${esc(s.failed)}.</span><br>` : ''}
-        Importati <strong>${nK}</strong> incontri${nC ? ` e creati <strong>${nC}</strong> nuovi contatti` : ''}.
-        Li trovi in <strong>Appuntamenti → Svolti</strong> e nello storico di ogni cliente.
+        Importati <strong>${s.created.appts}</strong> incontri${nK - s.created.appts ? ` e <strong>${nK - s.created.appts}</strong> chiamate` : ''}${nC ? `, creati <strong>${nC}</strong> nuovi contatti` : ''}.
+        Gli incontri sono in <strong>Appuntamenti → Svolti</strong>; tutto è anche nello storico di ogni cliente.
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
         <button class="btn" id="impFinishBtn">Vai agli incontri svolti</button>
-        ${nK || nC ? `<button class="btn secondary" id="impUndoBtn">${s.undoConfirm ? `Conferma: elimina i ${nK} incontri e i ${nC} contatti importati` : 'Annulla questa importazione'}</button>` : ''}
+        ${nK || nC ? `<button class="btn secondary" id="impUndoBtn">${s.undoConfirm ? `Conferma: elimina le ${nK} righe importate e i ${nC} contatti creati` : 'Annulla questa importazione'}</button>` : ''}
       </div></div>`;
   }
   return head;
@@ -1160,9 +1256,10 @@ function bindImport(){
     document.querySelectorAll('[data-map]').forEach(sel=>sel.addEventListener('change', ()=>{
       s.mapping[sel.dataset.map] = sel.value==='' ? '' : +sel.value;
     }));
+    document.getElementById('impNameOrder').addEventListener('change', e=>{ s.nameOrder = e.target.value; });
     document.getElementById('impPreviewBtn').addEventListener('click', ()=>{
       const M = s.mapping;
-      if(M.data==='') s.mapError = 'Indica la colonna con la data dell\'incontro.';
+      if(M.data==='' && M.chiamata==='') s.mapError = 'Indica la colonna con la data della chiamata o dell\'incontro.';
       else if(M.cliente==='' && M.cognome==='' && M.nome==='' && M.studio==='') s.mapError = 'Indica almeno la colonna del cliente (oppure Nome/Cognome, oppure Studio).';
       else { s.mapError = ''; s.step = 'preview'; }
       rerender();
@@ -1170,6 +1267,7 @@ function bindImport(){
     document.getElementById('impOtherFileBtn').addEventListener('click', ()=>{ window.__imp = { step:'file' }; rerender(); });
   }
   if(s.step==='preview'){
+    document.getElementById('impCallsOnly')?.addEventListener('change', e=>{ s.includeCallsOnly = e.target.checked; rerender(); });
     document.getElementById('impBackMapBtn').addEventListener('click', ()=>{ s.step = 'map'; rerender(); });
     document.getElementById('impRunBtn').addEventListener('click', runImport);
   }
@@ -1200,7 +1298,12 @@ function selectImportSheet(name){
   s.sheet = name;
   const rows = XLSX.utils.sheet_to_json(s.wb.Sheets[name], { header:1, raw:true, defval:'' });
   const nonEmpty = cells=>cells.some(v=>String(v).trim()!=='');
-  const hi = Math.max(0, rows.findIndex(nonEmpty));
+  // Riga dei titoli: tra le prime 10, quella con piu' titoli riconosciuti (un eventuale
+  // titolo del foglio sopra, tipo "DIARIO SETTIMANALE", viene ignorato).
+  let hi = -1, best = 0;
+  rows.slice(0,10).forEach((cells,i)=>{ const sc = headerScore(cells); if(sc>best){ best = sc; hi = i; } });
+  if(hi<0) hi = Math.max(0, rows.findIndex(nonEmpty));
+  s.headerRowNum = hi+1;
   s.headers = (rows[hi]||[]).map(h=>String(h).trim());
   s.dataRows = rows.map((cells,i)=>({ cells, rowNum:i+1 })).slice(hi+1).filter(r=>nonEmpty(r.cells));
   s.mapping = guessImportMapping(s.headers);
@@ -1209,10 +1312,10 @@ async function downloadImportTemplate(){
   try{
     await loadXLSX();
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Data','Ora','Nome','Cognome','Professione','Studio/Attività','Via','Città','Cellulare','Telefono studio','Progetto','Note incontro'],
-      ['15/01/2026','10:30','Mario','Rossi','Architetto','Studio Esempio','Via Roma 1','Bolzano','333 1234567','0471 123456','Balconi','Presentazione prodotti, richiamare a febbraio']
+      ['Data chiamata','Appuntamento','Nome','Cognome','Professione','Studio/Attività','Via','Città','Cellulare','Telefono studio','Email','Progetto','Note'],
+      ['10/01/2026','15/01/2026 alle 10:30','Mario','Rossi','Architetto','Studio Esempio','Via Roma 1','Torino','333 1234567','011 1234567','','Balconi','Presentazione prodotti, richiamare a febbraio']
     ]);
-    ws['!cols'] = [10,6,12,14,13,20,18,12,13,15,16,40].map(w=>({ wch:w }));
+    ws['!cols'] = [12,20,12,14,13,20,18,12,13,15,20,16,40].map(w=>({ wch:w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Incontri');
     XLSX.writeFile(wb, 'modello-incontri.xlsx');
@@ -1221,8 +1324,8 @@ async function downloadImportTemplate(){
 async function runImport(){
   const s = window.__imp;
   const rows = buildImportRows(s).filter(r=>!r.issues.length && !r.skip);
-  s.step = 'running'; s.progress = { done:0, total:rows.length };
-  s.created = { contacts:[], calls:[] }; s.batch = 'imp-'+Date.now(); s.failed = ''; s.undone = false; s.undoConfirm = false;
+  s.step = 'running'; s.undoing = false; s.progress = { done:0, total:rows.length };
+  s.created = { contacts:[], calls:[], appts:0 }; s.batch = 'imp-'+Date.now(); s.failed = ''; s.undone = false; s.undoConfirm = false;
   renderMain();
   const newIds = new Map();
   try{
@@ -1233,16 +1336,18 @@ async function runImport(){
         const ref = await db.collection('contacts').add({
           nome:r.nome, cognome:r.cognome, professione:r.professione, cellulare:r.cellulare,
           azienda:r.studio, via:r.via || (st && st.via) || '', citta:r.citta || (st && st.citta) || '',
-          telefono:r.telefono || (st && st.telefono) || '', email:'', followUp:'', tag:'', note:'',
+          telefono:r.telefono || (st && st.telefono) || '', email:r.email, followUp:'', tag:'', note:'',
           createdAt:Date.now(), importBatch:s.batch
         });
         contactId = ref.id; newIds.set(r.newKey, contactId); s.created.contacts.push(contactId);
       }
       const ref = await db.collection('calls').add({
-        contactId, data:r.date, esito:'Appuntamento fissato', progetto:r.progetto, note:'',
-        appuntamento:`${r.date}T${r.time}`, noteIncontro:r.note, createdAt:Date.now(), importBatch:s.batch
+        contactId, data:r.callDate, esito: r.hasAppt ? 'Appuntamento fissato' : '', progetto:r.progetto,
+        note: r.hasAppt ? '' : r.note, appuntamento: r.hasAppt ? `${r.date}T${r.time}` : '',
+        noteIncontro: r.hasAppt ? r.note : '', createdAt:Date.now(), importBatch:s.batch
       });
       s.created.calls.push(ref.id);
+      if(r.hasAppt) s.created.appts++;
       s.progress.done++;
       if(view==='import') renderMain();
     }
@@ -1252,7 +1357,7 @@ async function runImport(){
 }
 async function undoImport(){
   const s = window.__imp;
-  s.step = 'running'; s.progress = { done:0, total:s.created.calls.length + s.created.contacts.length }; renderMain();
+  s.step = 'running'; s.undoing = true; s.progress = { done:0, total:s.created.calls.length + s.created.contacts.length }; renderMain();
   try{
     for(const id of s.created.calls){ await db.collection('calls').doc(id).delete(); s.progress.done++; }
     for(const id of s.created.contacts){ await db.collection('contacts').doc(id).delete(); s.progress.done++; }
