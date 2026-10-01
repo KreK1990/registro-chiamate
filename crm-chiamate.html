@@ -118,6 +118,8 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .ac-item:hover{background:var(--accent-soft);}
 .ac-name{font-weight:600;font-size:14px;color:var(--accent);}
 .ac-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+.imp-map{display:grid;grid-template-columns:minmax(150px,230px) 1fr;gap:8px 12px;align-items:center;}
+.imp-map label{margin:0;font-size:13px;color:var(--text);}
 .name-link{cursor:pointer;color:var(--accent);}
 .name-link:hover,[data-contact-id]:hover .name-link{text-decoration:underline;}
 .tag-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:500;margin:4px 4px 0 0;}
@@ -191,6 +193,8 @@ h2{color:var(--accent);font-weight:800;}
   .subnav{margin-bottom:12px;flex-wrap:wrap;}
   .top-actions{margin-bottom:8px;}
   .map-embed{height:200px;}
+  .imp-map{grid-template-columns:1fr;gap:3px;}
+  .imp-map select{margin-bottom:8px;}
   .tel-link{display:inline-block;padding:4px 0;}
   /* Settimana appuntamenti: un giorno per riga invece di 7 colonne */
   .calendar-grid{grid-template-columns:1fr;min-width:0;}
@@ -339,6 +343,7 @@ function renderMain(){
     main.innerHTML = apptView();
     const icsBtn = document.getElementById('exportIcsBtn');
     if(icsBtn) icsBtn.addEventListener('click', exportICS);
+    document.getElementById('importMeetingsBtn')?.addEventListener('click', ()=>{ window.__imp = { step:'file' }; view = 'import'; renderMain(); });
     document.getElementById('apptListBtn').addEventListener('click', ()=>{ apptSubView='list'; renderMain(); });
     document.getElementById('apptCalBtn').addEventListener('click', ()=>{ apptSubView='calendar'; renderMain(); });
     document.getElementById('apptDoneBtn').addEventListener('click', ()=>{ apptSubView='done'; renderMain(); });
@@ -412,6 +417,7 @@ function renderMain(){
     if(cSort) cSort.addEventListener('change', e=>{ sortField=e.target.value; renderMain(); });
     return;
   }
+  if(view==='import'){ main.innerHTML = importView(); bindImport(); return; }
   if(view==='new'){ main.innerHTML = newContactForm(); bindNewForm(); return; }
   if(view==='detail' && selectedId){
     const c = contacts.find(x=>x.id===selectedId);
@@ -626,6 +632,379 @@ function renderFooter(){
   });
 }
 
+// ---------------------------------------------------------------------------
+// Importazione di incontri gia' svolti da un file Excel (.xlsx/.xls/.csv).
+// Passi: file -> associazione colonne -> anteprima -> importazione (annullabile).
+// Ogni incontro diventa una chiamata con appuntamento alla data/ora indicata
+// (esito "Appuntamento fissato", note in noteIncontro); i clienti non presenti
+// vengono creati. Contatti e chiamate creati hanno importBatch, per l'annullamento.
+// La libreria SheetJS si carica solo quando serve.
+// ---------------------------------------------------------------------------
+const IMPORT_FIELDS = [
+  ['data', 'Data incontro *', ['data', 'giorno', 'date', 'data incontro', 'data appuntamento']],
+  ['ora', 'Ora', ['ora', 'orario', 'time', 'ora incontro', 'ora inizio']],
+  ['cliente', 'Cliente (nome e cognome insieme)', ['cliente', 'nominativo', 'contatto', 'referente', 'nome e cognome', 'nome cognome', 'cognome e nome', 'cognome nome', 'persona']],
+  ['nome', 'Nome', ['nome']],
+  ['cognome', 'Cognome', ['cognome']],
+  ['professione', 'Professione', ['professione', 'qualifica', 'titolo', 'ruolo']],
+  ['studio', 'Studio / Attività', ['studio', 'azienda', 'attivita', 'societa', 'ditta', 'impresa', 'studio attivita', 'ragione sociale']],
+  ['via', 'Via / indirizzo', ['via', 'indirizzo']],
+  ['citta', 'Città', ['citta', 'comune', 'localita', 'paese']],
+  ['cellulare', 'Cellulare', ['cellulare', 'cell', 'mobile']],
+  ['telefono', 'Telefono studio', ['telefono', 'tel', 'tel studio', 'telefono studio', 'telefono fisso']],
+  ['progetto', 'Progetto', ['progetto', 'cantiere', 'oggetto', 'argomento', 'commessa']],
+  ['note', 'Note incontro', ['note', 'esito', 'descrizione', 'commento', 'commenti', 'note incontro', 'resoconto']]
+];
+
+function loadXLSX(){
+  if(window.XLSX) return Promise.resolve();
+  return new Promise((resolve, reject)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = ()=>resolve();
+    sc.onerror = ()=>reject(new Error('libreria Excel non caricata, controlla la connessione'));
+    document.head.appendChild(sc);
+  });
+}
+function normName(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim(); }
+
+function guessImportMapping(headers){
+  const H = headers.map(normName);
+  const used = new Set(), map = {};
+  ['exact','includes'].forEach(pass=>{
+    IMPORT_FIELDS.forEach(([key,,syn])=>{
+      if(map[key]!==undefined) return;
+      const S = syn.map(normName);
+      const idx = H.findIndex((h,i)=>!used.has(i) && h && (pass==='exact' ? S.includes(h) : S.some(x=>x.length>2 && h.includes(x))));
+      if(idx>=0){ map[key] = idx; used.add(idx); }
+    });
+  });
+  IMPORT_FIELDS.forEach(([key])=>{ if(map[key]===undefined) map[key] = ''; });
+  return map;
+}
+
+function parseImpDate(v){
+  if(v===null || v===undefined || String(v).trim()==='') return null;
+  const pad = n=>String(n).padStart(2,'0');
+  const mk = (y,m,d,H,M)=>{
+    const dt = new Date(y, m-1, d);
+    if(dt.getFullYear()!==y || dt.getMonth()!==m-1 || dt.getDate()!==d) return null;
+    if(H!==null && (H>23 || M>59)) return null;
+    return { date:`${y}-${pad(m)}-${pad(d)}`, time: H!==null ? `${pad(H)}:${pad(M)}` : null };
+  };
+  if(typeof v==='number'){
+    const p = XLSX.SSF.parse_date_code(v);
+    if(!p || p.y<1990) return null;
+    const hasTime = (v % 1) > 1e-9;
+    return mk(p.y, p.m, p.d, hasTime ? p.H : null, hasTime ? p.M : null);
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4}|\d{2})(?:[ ,T]+(\d{1,2})[:.](\d{2}))?/);
+  if(m){ let y = +m[3]; if(y<100) y += 2000; return mk(y, +m[2], +m[1], m[4]!==undefined ? +m[4] : null, m[5]!==undefined ? +m[5] : null); }
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if(m) return mk(+m[1], +m[2], +m[3], m[4]!==undefined ? +m[4] : null, m[5]!==undefined ? +m[5] : null);
+  return null;
+}
+function parseImpTime(v){
+  const pad = n=>String(n).padStart(2,'0');
+  if(typeof v==='number'){
+    if(Number.isInteger(v)) return (v>=0 && v<24) ? `${pad(v)}:00` : null;   // "10" scritto come numero
+    const mins = Math.round((v % 1) * 1440) % 1440;                           // frazione di giorno di Excel
+    return `${pad(Math.floor(mins/60))}:${pad(mins%60)}`;
+  }
+  const m = String(v).trim().match(/^(?:h\s*)?(\d{1,2})(?:[:.](\d{2}))?(?:\s*[-–].*)?$/i);
+  if(!m) return null;
+  const H = +m[1], M = m[2] ? +m[2] : 0;
+  return (H>23 || M>59) ? null : `${pad(H)}:${pad(M)}`;
+}
+// "Arch. Mario Rossi" -> professione Architetto, nome Mario, cognome Rossi.
+function splitCliente(s){
+  const TITLES = { arch:'Architetto', architetto:'Architetto', ing:'Ingegnere', ingegnere:'Ingegnere', geom:'Geometra', geometra:'Geometra',
+    avv:'Avvocato', avvocato:'Avvocato', notaio:'Notaio', dott:'', dottssa:'', dottoressa:'', dottore:'', dr:'', sig:'', sigra:'', signor:'', signora:'', sigg:'' };
+  const toks = s.split(/\s+/).filter(Boolean);
+  let professione = '';
+  while(toks.length>1){
+    const t = toks[0].toLowerCase().replace(/\./g,'');
+    if(!(t in TITLES)) break;
+    if(TITLES[t] && !professione) professione = TITLES[t];
+    toks.shift();
+  }
+  if(toks.length===1) return { nome:'', cognome:toks[0], professione };
+  return { nome:toks[0], cognome:toks.slice(1).join(' '), professione };
+}
+function matchImpContact(nome, cognome, studio){
+  let cands;
+  if(nome && cognome){
+    const a = normName(nome+' '+cognome), b = normName(cognome+' '+nome);
+    cands = contacts.filter(c=>{ const x = normName((c.nome||'')+' '+(c.cognome||'')); return x===a || x===b; });
+  }else if(nome || cognome){
+    const one = normName(cognome || nome);
+    cands = contacts.filter(c=>normName(c.cognome)===one || (!c.cognome && normName(c.nome)===one));
+  }else{
+    cands = contacts.filter(c=>!c.nome && !c.cognome && normStudio(c.azienda)===normStudio(studio));
+  }
+  if(cands.length>1 && studio){
+    const f = cands.filter(c=>normStudio(c.azienda)===normStudio(studio));
+    if(f.length) cands = f;
+  }
+  return cands.length===1 ? { contact:cands[0] } : cands.length>1 ? { ambiguous:cands } : {};
+}
+
+function buildImportRows(s){
+  const M = s.mapping;
+  const get = (r,k)=>M[k]==='' ? '' : r.cells[M[k]];
+  const str = v=>String(v===null || v===undefined ? '' : v).trim();
+  const pending = new Map(), seen = new Set();
+  return s.dataRows.map(r=>{
+    const out = { n:r.rowNum, issues:[], warn:[] };
+    const dt = parseImpDate(get(r,'data'));
+    if(!dt) out.issues.push(str(get(r,'data')) ? 'data non valida' : 'data mancante');
+    let time = null;
+    if(str(get(r,'ora'))!==''){ time = parseImpTime(get(r,'ora')); if(!time) out.issues.push('ora non valida'); }
+    else if(dt && dt.time) time = dt.time;
+    if(!time && !out.issues.includes('ora non valida')){ time = '09:00'; out.warn.push('ora non indicata: 09:00'); }
+    out.date = dt ? dt.date : ''; out.time = time;
+
+    let nome = str(get(r,'nome')), cognome = str(get(r,'cognome')), professione = str(get(r,'professione'));
+    if(!nome && !cognome && str(get(r,'cliente'))){
+      const p = splitCliente(str(get(r,'cliente')));
+      nome = p.nome; cognome = p.cognome; if(!professione) professione = p.professione;
+    }
+    const studioRaw = str(get(r,'studio'));
+    const st = studioRaw ? findStudio(studioRaw) : null;
+    Object.assign(out, {
+      nome, cognome, professione,
+      studio: st ? bestStudioName([...st.members.map(m=>m.azienda), studioRaw]) : studioRaw,
+      via: str(get(r,'via')), citta: str(get(r,'citta')),
+      cellulare: str(get(r,'cellulare')) ? formatPhone(str(get(r,'cellulare'))) : '',
+      telefono: str(get(r,'telefono')) ? formatPhone(str(get(r,'telefono'))) : '',
+      progetto: str(get(r,'progetto')), note: str(get(r,'note'))
+    });
+    if(!nome && !cognome && !out.studio) out.issues.push('manca il cliente');
+
+    if(!out.issues.length){
+      const m = matchImpContact(nome, cognome, out.studio);
+      if(m.ambiguous) out.issues.push(`più contatti corrispondono (${m.ambiguous.map(fullName).join(', ')}): indica nome e studio`);
+      else if(m.contact) out.contact = m.contact;
+      else{
+        const key = normName(nome+' '+cognome)+'|'+normStudio(out.studio);
+        if(!pending.has(key)) pending.set(key, out.n);
+        out.newKey = key; out.newFirstRow = pending.get(key);
+      }
+    }
+    if(!out.issues.length){
+      const dupKey = (out.contact ? out.contact.id : out.newKey)+'|'+out.date;
+      if(seen.has(dupKey)) out.skip = 'ripetuto nel file (stesso cliente e giorno)';
+      else if(out.contact && calls.some(k=>k.contactId===out.contact.id && ((k.appuntamento||'').slice(0,10)===out.date || k.data===out.date))) out.skip = 'già presente nell\'app';
+      seen.add(dupKey);
+    }
+    if(out.date && out.date>todayISO()) out.warn.push('data futura');
+    return out;
+  });
+}
+
+function importView(){
+  const s = window.__imp || (window.__imp = { step:'file' });
+  const head = `<div class="top-actions" style="justify-content:space-between;"><button class="btn secondary small" id="impBackBtn">← Torna agli appuntamenti</button></div>
+    <h2 style="margin-bottom:12px;">Importa incontri da Excel</h2>`;
+  if(s.step==='file') return head + `<div class="card">
+    <p style="margin-top:0;font-size:14px;line-height:1.5;">Scegli il file Excel con gli incontri già svolti: una riga per incontro, con i titoli delle colonne nella prima riga. Nel passo successivo indicherai quale colonna contiene cosa e vedrai un'anteprima: nulla viene salvato finché non confermi.</p>
+    <input type="file" id="impFile" accept=".xlsx,.xls,.csv">
+    ${s.loading ? '<div style="font-size:13px;color:var(--muted);margin-top:8px;">Lettura del file…</div>' : ''}
+    ${s.error ? `<div style="color:var(--danger);font-size:13px;margin-top:8px;">${esc(s.error)}</div>` : ''}
+    <div style="margin-top:14px;font-size:13px;color:var(--muted);">Non hai un file pronto? <a href="#" id="impTemplateLink" class="addr-link">Scarica il modello Excel</a></div>
+  </div>`;
+
+  if(s.step==='map'){
+    const ncols = Math.max(s.headers.length, ...s.dataRows.slice(0,50).map(r=>r.cells.length));
+    const cols = [...Array(ncols)].map((_,i)=>({ i, label: s.headers[i] || `Colonna ${i+1}` }));
+    const sample = s.dataRows[0] ? s.dataRows[0].cells : [];
+    return head + `<div class="card">
+      <h3>1. Associa le colonne</h3>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">File <strong>${esc(s.fileName)}</strong>: ${s.dataRows.length} righe con dati.
+        Ho riconosciuto le colonne dai titoli: controlla e correggi se serve. Per il cliente basta una colonna unica "Cliente" oppure Nome e Cognome separati.</div>
+      ${s.wb.SheetNames.length>1 ? `<div class="imp-map" style="margin-bottom:12px;"><label>Foglio</label><select id="impSheet">${s.wb.SheetNames.map(n=>`<option ${n===s.sheet?'selected':''}>${esc(n)}</option>`).join('')}</select></div>` : ''}
+      <div class="imp-map">
+        ${IMPORT_FIELDS.map(([key,label])=>`<label>${label}</label>
+          <select data-map="${key}"><option value="">— nessuna —</option>${cols.map(c=>`<option value="${c.i}" ${s.mapping[key]===c.i?'selected':''}>${esc(c.label)}${sample[c.i]!==undefined && String(sample[c.i]).trim()!=='' ? ' (es. '+esc(String(typeof sample[c.i]==='number' && key==='data' ? (parseImpDate(sample[c.i])||{}).date||sample[c.i] : sample[c.i]).slice(0,30))+')' : ''}</option>`).join('')}</select>`).join('')}
+      </div>
+      ${s.mapError ? `<div style="color:var(--danger);font-size:13px;margin-top:10px;">${esc(s.mapError)}</div>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+        <button class="btn" id="impPreviewBtn">Vedi anteprima</button>
+        <button class="btn secondary" id="impOtherFileBtn">Scegli un altro file</button>
+      </div>
+    </div>`;
+  }
+
+  if(s.step==='preview'){
+    const rows = buildImportRows(s);
+    const ok = rows.filter(r=>!r.issues.length && !r.skip);
+    const nNew = new Set(ok.filter(r=>r.newKey).map(r=>r.newKey)).size;
+    const nErr = rows.filter(r=>r.issues.length).length, nSkip = rows.filter(r=>r.skip).length;
+    const status = r=>{
+      if(r.issues.length) return `<span style="color:var(--danger);font-weight:600;">Errore: ${esc(r.issues.join('; '))}</span>`;
+      if(r.skip) return `<span style="color:var(--muted);">Saltato: ${esc(r.skip)}</span>`;
+      const base = r.contact ? `Cliente esistente: ${esc(fullName(r.contact))}` : (r.newFirstRow===r.n ? '<strong>Nuovo contatto</strong>' : `Nuovo contatto (come riga ${r.newFirstRow})`);
+      return base + (r.warn.length ? ` <span style="color:var(--muted);">· ${esc(r.warn.join(' · '))}</span>` : '');
+    };
+    return head + `<div class="card">
+      <h3>2. Anteprima</h3>
+      <div style="font-size:14px;line-height:1.6;">
+        <strong>${ok.length}</strong> incontri da importare${nNew ? `, con <strong>${nNew}</strong> nuovi contatti` : ''}.
+        ${nSkip ? `<br><span style="color:var(--muted);">${nSkip} righe saltate (incontro già presente o ripetuto).</span>` : ''}
+        ${nErr ? `<br><span style="color:var(--danger);">${nErr} righe con errori non verranno importate: correggile nel file e ricaricalo, oppure importa le altre.</span>` : ''}
+      </div>
+      <div class="table-wrap" style="margin-top:12px;"><table class="calls-table">
+        <thead><tr><th>Riga</th><th>Data</th><th>Ora</th><th>Cliente</th><th>Studio</th><th>Esito anteprima</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td>${r.n}</td><td>${r.date ? fmtDate(r.date) : '—'}</td><td>${esc(r.time||'—')}</td>
+          <td>${esc(r.contact ? fullName(r.contact) : ([r.cognome, r.nome].filter(Boolean).join(' ') || '—'))}${r.professione && !r.contact ? `<div style="font-size:11.5px;color:var(--muted);">${esc(r.professione)}</div>` : ''}</td>
+          <td>${esc(r.studio||'—')}</td><td>${status(r)}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+        <button class="btn" id="impRunBtn" ${ok.length ? '' : 'disabled'}>Importa ${ok.length} incontri</button>
+        <button class="btn secondary" id="impBackMapBtn">← Modifica colonne</button>
+      </div>
+    </div>`;
+  }
+
+  if(s.step==='running') return head + `<div class="card"><h3>Importazione in corso…</h3>
+    <div style="font-size:14px;">${s.progress.done} di ${s.progress.total} incontri salvati. Non chiudere l'app.</div></div>`;
+
+  if(s.step==='done'){
+    const nC = s.created.contacts.length, nK = s.created.calls.length;
+    if(s.undone) return head + `<div class="card"><h3>Importazione annullata</h3>
+      <div style="font-size:14px;">Ho eliminato i ${nK} incontri e i ${nC} contatti creati da questa importazione.</div>
+      <button class="btn" id="impFinishBtn" style="margin-top:12px;">Torna agli appuntamenti</button></div>`;
+    return head + `<div class="card"><h3>${s.failed ? 'Importazione interrotta' : 'Importazione completata'}</h3>
+      <div style="font-size:14px;line-height:1.6;">
+        ${s.failed ? `<span style="color:var(--danger);">Errore: ${esc(s.failed)}.</span><br>` : ''}
+        Importati <strong>${nK}</strong> incontri${nC ? ` e creati <strong>${nC}</strong> nuovi contatti` : ''}.
+        Li trovi in <strong>Appuntamenti → Svolti</strong> e nello storico di ogni cliente.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+        <button class="btn" id="impFinishBtn">Vai agli incontri svolti</button>
+        ${nK || nC ? `<button class="btn secondary" id="impUndoBtn">${s.undoConfirm ? `Conferma: elimina i ${nK} incontri e i ${nC} contatti importati` : 'Annulla questa importazione'}</button>` : ''}
+      </div></div>`;
+  }
+  return head;
+}
+
+function bindImport(){
+  const s = window.__imp;
+  const rerender = ()=>renderMain();
+  document.getElementById('impBackBtn').addEventListener('click', ()=>{ window.__imp = null; view = 'appt'; renderMain(); });
+  if(s.step==='file'){
+    document.getElementById('impFile').addEventListener('change', e=>{ const f = e.target.files[0]; if(f) readImportFile(f); });
+    document.getElementById('impTemplateLink').addEventListener('click', e=>{ e.preventDefault(); downloadImportTemplate(); });
+  }
+  if(s.step==='map'){
+    document.getElementById('impSheet')?.addEventListener('change', e=>{ selectImportSheet(e.target.value); rerender(); });
+    document.querySelectorAll('[data-map]').forEach(sel=>sel.addEventListener('change', ()=>{
+      s.mapping[sel.dataset.map] = sel.value==='' ? '' : +sel.value;
+    }));
+    document.getElementById('impPreviewBtn').addEventListener('click', ()=>{
+      const M = s.mapping;
+      if(M.data==='') s.mapError = 'Indica la colonna con la data dell\'incontro.';
+      else if(M.cliente==='' && M.cognome==='' && M.nome==='' && M.studio==='') s.mapError = 'Indica almeno la colonna del cliente (oppure Nome/Cognome, oppure Studio).';
+      else { s.mapError = ''; s.step = 'preview'; }
+      rerender();
+    });
+    document.getElementById('impOtherFileBtn').addEventListener('click', ()=>{ window.__imp = { step:'file' }; rerender(); });
+  }
+  if(s.step==='preview'){
+    document.getElementById('impBackMapBtn').addEventListener('click', ()=>{ s.step = 'map'; rerender(); });
+    document.getElementById('impRunBtn').addEventListener('click', runImport);
+  }
+  if(s.step==='done'){
+    document.getElementById('impFinishBtn').addEventListener('click', ()=>{ window.__imp = null; view = 'appt'; apptSubView = 'done'; renderMain(); });
+    document.getElementById('impUndoBtn')?.addEventListener('click', ()=>{
+      if(!s.undoConfirm){ s.undoConfirm = true; rerender(); return; }
+      undoImport();
+    });
+  }
+}
+
+async function readImportFile(file){
+  const s = window.__imp;
+  s.loading = true; s.error = ''; renderMain();
+  try{
+    await loadXLSX();
+    s.wb = XLSX.read(await file.arrayBuffer(), { type:'array' });
+    s.fileName = file.name;
+    selectImportSheet(s.wb.SheetNames[0]);
+    if(!s.dataRows.length) throw new Error('il foglio non contiene righe di dati sotto i titoli');
+    s.step = 'map';
+  }catch(e){ s.error = 'Impossibile leggere il file: '+(e.message||e); }
+  s.loading = false; renderMain();
+}
+function selectImportSheet(name){
+  const s = window.__imp;
+  s.sheet = name;
+  const rows = XLSX.utils.sheet_to_json(s.wb.Sheets[name], { header:1, raw:true, defval:'' });
+  const nonEmpty = cells=>cells.some(v=>String(v).trim()!=='');
+  const hi = Math.max(0, rows.findIndex(nonEmpty));
+  s.headers = (rows[hi]||[]).map(h=>String(h).trim());
+  s.dataRows = rows.map((cells,i)=>({ cells, rowNum:i+1 })).slice(hi+1).filter(r=>nonEmpty(r.cells));
+  s.mapping = guessImportMapping(s.headers);
+}
+async function downloadImportTemplate(){
+  try{
+    await loadXLSX();
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Data','Ora','Nome','Cognome','Professione','Studio/Attività','Via','Città','Cellulare','Telefono studio','Progetto','Note incontro'],
+      ['15/01/2026','10:30','Mario','Rossi','Architetto','Studio Esempio','Via Roma 1','Bolzano','333 1234567','0471 123456','Balconi','Presentazione prodotti, richiamare a febbraio']
+    ]);
+    ws['!cols'] = [10,6,12,14,13,20,18,12,13,15,16,40].map(w=>({ wch:w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Incontri');
+    XLSX.writeFile(wb, 'modello-incontri.xlsx');
+  }catch(e){ alert('Impossibile creare il modello: '+(e.message||e)); }
+}
+async function runImport(){
+  const s = window.__imp;
+  const rows = buildImportRows(s).filter(r=>!r.issues.length && !r.skip);
+  s.step = 'running'; s.progress = { done:0, total:rows.length };
+  s.created = { contacts:[], calls:[] }; s.batch = 'imp-'+Date.now(); s.failed = ''; s.undone = false; s.undoConfirm = false;
+  renderMain();
+  const newIds = new Map();
+  try{
+    for(const r of rows){
+      let contactId = r.contact ? r.contact.id : newIds.get(r.newKey);
+      if(!contactId){
+        const st = r.studio ? findStudio(r.studio) : null;
+        const ref = await db.collection('contacts').add({
+          nome:r.nome, cognome:r.cognome, professione:r.professione, cellulare:r.cellulare,
+          azienda:r.studio, via:r.via || (st && st.via) || '', citta:r.citta || (st && st.citta) || '',
+          telefono:r.telefono || (st && st.telefono) || '', email:'', followUp:'', tag:'', note:'',
+          createdAt:Date.now(), importBatch:s.batch
+        });
+        contactId = ref.id; newIds.set(r.newKey, contactId); s.created.contacts.push(contactId);
+      }
+      const ref = await db.collection('calls').add({
+        contactId, data:r.date, esito:'Appuntamento fissato', progetto:r.progetto, note:'',
+        appuntamento:`${r.date}T${r.time}`, noteIncontro:r.note, createdAt:Date.now(), importBatch:s.batch
+      });
+      s.created.calls.push(ref.id);
+      s.progress.done++;
+      if(view==='import') renderMain();
+    }
+  }catch(e){ s.failed = e.code || e.message || String(e); }
+  s.step = 'done';
+  if(view==='import') renderMain();
+}
+async function undoImport(){
+  const s = window.__imp;
+  s.step = 'running'; s.progress = { done:0, total:s.created.calls.length + s.created.contacts.length }; renderMain();
+  try{
+    for(const id of s.created.calls){ await db.collection('calls').doc(id).delete(); s.progress.done++; }
+    for(const id of s.created.contacts){ await db.collection('contacts').doc(id).delete(); s.progress.done++; }
+    s.undone = true;
+  }catch(e){ s.failed = 'annullamento non completato: '+(e.code || e.message || e); }
+  s.step = 'done'; s.undoConfirm = false;
+  if(view==='import') renderMain();
+}
+
 function apptCalls(){
   return calls.filter(k=>k.appuntamento).sort((a,b)=>a.appuntamento.localeCompare(b.appuntamento));
 }
@@ -637,6 +1016,7 @@ function apptView(){
       <button id="apptCalBtn" class="${apptSubView==='calendar'?'active':''}">Calendario settimanale</button>
       <button id="apptDoneBtn" class="${apptSubView==='done'?'active':''}">Svolti</button>
     </div>
+    <button class="btn secondary small" id="importMeetingsBtn">⬆ Importa incontri (Excel)</button>
     <button class="btn secondary small" id="exportIcsBtn">⬇ Esporta calendario (.ics)</button>
   </div>`;
   const body = apptSubView==='calendar' ? apptCalendarView() : apptSubView==='done' ? apptDoneView() : apptListView();
@@ -1428,12 +1808,13 @@ function studioIndex(excludeId){
 function sameStudioVal(f, a, b){
   return f==='telefono' ? String(a||'').replace(/\D/g,'')===String(b||'').replace(/\D/g,'') : (a||'')===(b||'');
 }
-// Grafia da usare per uno studio: la piu' frequente; a parita', quella con maiuscole
-// "normali" (non tutto maiuscolo) e senza doppi spazi o punteggiatura finale.
+// Grafia da usare per uno studio: prima quelle con maiuscole "normali" (non tutto
+// minuscolo ne' tutto maiuscolo), poi la piu' frequente, poi senza doppi spazi o
+// punteggiatura finale.
 function bestStudioName(names){
   const counts = new Map();
   names.map(n=>String(n||'').trim()).filter(Boolean).forEach(n=>counts.set(n, (counts.get(n)||0)+1));
-  const score = (n, c)=> c*10 + (/[A-Z]/.test(n) && n!==n.toUpperCase() ? 2 : 0) + (/\s{2}|[.,;]$/.test(n) ? 0 : 1);
+  const score = (n, c)=> (/[A-Z]/.test(n) && n!==n.toUpperCase() ? 1000 : 0) + c*10 + (/\s{2}|[.,;]$/.test(n) ? 0 : 1);
   const best = [...counts.entries()].sort((a,b)=>score(b[0],b[1])-score(a[0],a[1]))[0];
   return best ? best[0] : '';
 }

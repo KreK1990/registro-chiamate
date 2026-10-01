@@ -66,6 +66,13 @@ Campi principali:
   membri. I doppioni di contatto si riconoscono dal cellulare, non dal telefono studio.
 - **calls**: contactId, data (YYYY-MM-DD), esito, progetto, note, appuntamento (datetime
   ISO), noteIncontro, createdAt.
+- `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
+  (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
+  .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
+  riconosce i clienti esistenti per nome+cognome (anche invertiti, titoli come "Arch."
+  diventano professione), salta incontri già presenti (stesso cliente e giorno) e crea
+  ogni incontro come chiamata con esito "Appuntamento fissato" e appuntamento alla
+  data/ora indicata (09:00 se manca l'ora).
 
 ## Deploy & hosting
 
