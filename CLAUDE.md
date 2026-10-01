@@ -54,8 +54,16 @@ dall'utente nella console Firebase (niente registrazione libera); nell'app ci so
 evita ai colleghi di incollare la configurazione al primo accesso.
 
 Campi principali:
-- **contacts**: nome, cognome, professione, azienda, via, citta, telefono, email,
-  followUp (datetime ISO "YYYY-MM-DDTHH:MM"), tag, note.
+- **contacts**: nome, cognome, professione, cellulare, azienda (studio/attività), via,
+  citta, telefono (= telefono dello studio/attività; nei contatti salvati prima del campo
+  cellulare può essere anche un cellulare, per questo da solo è etichettato "Tel"),
+  email, followUp (datetime ISO "YYYY-MM-DDTHH:MM"), tag, note.
+  Lo studio/attività è un'entità "derivata", senza collection propria: contatti con lo
+  stesso `azienda` normalizzato (`normStudio`: minuscole, spazi e punteggiatura) sono
+  lo stesso studio; via/citta/telefono dello studio si ricavano dai membri
+  (`studioIndex`). Il modulo suggerisce gli studi esistenti, al salvataggio usa la
+  grafia prevalente (`bestStudioName`) e può propagare via/città/telefono agli altri
+  membri. I doppioni di contatto si riconoscono dal cellulare, non dal telefono studio.
 - **calls**: contactId, data (YYYY-MM-DD), esito, progetto, note, appuntamento (datetime
   ISO), noteIncontro, createdAt.
 
