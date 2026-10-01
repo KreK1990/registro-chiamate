@@ -105,7 +105,7 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .appt-chip{background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:5px 7px;font-size:12px;margin-bottom:5px;cursor:pointer;line-height:1.35;}
 .appt-chip .t{font-family:var(--mono);font-weight:500;}
 .appt-chip:hover{opacity:.8;}
-.bar-clickable:hover{opacity:.78;}
+.bar-clickable:hover{fill:color-mix(in srgb, var(--accent) 8%, transparent);}
 .sidebar-today{flex:1;overflow-y:auto;padding:16px;border-top:1px solid var(--border);min-height:0;}
 .sidebar-today-title{font-family:var(--serif);font-size:15px;margin-bottom:2px;}
 .sidebar-today-date{font-size:11px;color:var(--muted);margin-bottom:14px;}
@@ -641,18 +641,22 @@ function renderMain(){
     if(dy) dy.addEventListener('click', ()=>{ dashboardSubView='yearly'; renderMain(); });
     main.querySelectorAll('.bar-clickable').forEach(el=>{
       el.addEventListener('click', ()=>{
-        if(el.dataset.day){ dashboardDrilldown.day = el.dataset.day; }
-        else{ dashboardDrilldown = { weekStart: el.dataset.weekStart, type: el.dataset.chartType, day: null }; }
+        const level = JSON.parse(el.dataset.drill);
+        if(!dashboardDrilldown) dashboardDrilldown = { type: el.dataset.chartType || 'calls', stack: [] };
+        dashboardDrilldown.stack.push(level);
         renderMain();
+        main.scrollTop = 0;
       });
     });
     main.querySelectorAll('[data-appt-call-id]').forEach(el=>{
       el.addEventListener('click', ()=>{ tableDetailCallId=el.dataset.apptCallId; renderMain(); });
     });
-    const backBtn = document.getElementById('backToDashboardBtn');
-    if(backBtn) backBtn.addEventListener('click', ()=>{ dashboardDrilldown=null; renderMain(); });
-    const backWeekBtn = document.getElementById('backToWeekBtn');
-    if(backWeekBtn) backWeekBtn.addEventListener('click', ()=>{ dashboardDrilldown.day=null; renderMain(); });
+    const backBtn = document.getElementById('drillBackBtn');
+    if(backBtn) backBtn.addEventListener('click', ()=>{
+      dashboardDrilldown.stack.pop();
+      if(!dashboardDrilldown.stack.length) dashboardDrilldown = null;
+      renderMain();
+    });
     return;
   }
   if(view==='contactsList'){
@@ -1451,6 +1455,17 @@ function weeklyBuckets(predicate, weeksBack){
 
 function weekLabel(d){ return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; }
 
+// Attributi per rendere cliccabile una colonna: level e' il livello di dettaglio da
+// aprire ({kind:'year'|'month'|'week'|'day', ...}), chartType 'calls' o 'appt'.
+function drillAttrs(level, chartType){
+  return ` class="bar-clickable" data-drill="${esc(JSON.stringify(level))}" data-chart-type="${chartType||''}" style="cursor:pointer;"`;
+}
+// Area di tocco invisibile su tutta la striscia della colonna (barra + etichette):
+// le colonne sottili (es. 31 giorni su iPhone) restano facili da toccare.
+function hitArea(i, gap, padL, padT, h, attrs){
+  return `<rect x="${(padL+i*gap).toFixed(1)}" y="${padT}" width="${gap.toFixed(1)}" height="${h-padT}" fill="transparent"${attrs}></rect>`;
+}
+
 function barChartSVG(buckets, color, chartType){
   const w=640, h=190, padL=8, padR=8, padT=18, padB=26;
   const innerW=w-padL-padR, innerH=h-padT-padB;
@@ -1463,18 +1478,18 @@ function barChartSVG(buckets, color, chartType){
     const bh = (b.count/max)*innerH;
     const x = padL + i*gap + (gap-bw)/2;
     const y = padT + innerH - bh;
-    const clickAttrs = chartType ? ` class="bar-clickable" data-week-start="${b.start.toISOString()}" data-chart-type="${chartType}" style="cursor:pointer;"` : '';
-    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${color}"${clickAttrs}></rect>`;
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${color}"></rect>`;
     if(b.count>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--text)" font-family="var(--sans)" style="pointer-events:none;">${b.count}</text>`;
     bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${weekLabel(b.start)}</text>`;
+    if(chartType) bars += hitArea(i, gap, padL, padT, h, drillAttrs({ kind:'week', start:b.start.toISOString() }, chartType));
   });
   const baseline = `<line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="var(--border)" stroke-width="1"/>`;
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;max-width:640px;">${baseline}${bars}</svg>`;
 }
 
-function dailyBucketsForWeek(weekStart, predicate){
-  const dayNames=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
-  const buckets = [...Array(7)].map((_,i)=>{ const d=new Date(weekStart); d.setDate(d.getDate()+i); return {date:d, count:0, label:dayNames[i]}; });
+// Conteggio per giorno: days = array di Date (una colonna per giorno).
+function dailyBuckets(days, predicate, labelFn){
+  const buckets = days.map(d=>({ date:d, count:0, label: labelFn ? labelFn(d) : '' }));
   calls.forEach(k=>{
     if(!k.data) return;
     if(predicate && !predicate(k)) return;
@@ -1484,24 +1499,39 @@ function dailyBucketsForWeek(weekStart, predicate){
   });
   return buckets;
 }
+function dailyBucketsForWeek(weekStart, predicate){
+  const dayNames=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+  const days = [...Array(7)].map((_,i)=>{ const d=new Date(weekStart); d.setDate(d.getDate()+i); return d; });
+  return dailyBuckets(days, predicate, d=>dayNames[(d.getDay()+6)%7]);
+}
+function dailyBucketsForMonth(year, month, predicate){
+  const n = new Date(year, month+1, 0).getDate();
+  const days = [...Array(n)].map((_,i)=>new Date(year, month, i+1));
+  return dailyBuckets(days, predicate, null);
+}
 
-function dayBarChartSVG(buckets, color){
-  const w=640, h=190, padL=8, padR=8, padT=18, padB=34;
+// Colonne per giorno. compact (vista mese, fino a 31 colonne): solo il numero del giorno.
+function dayBarChartSVG(buckets, color, compact){
+  const w=640, h=190, padL=8, padR=8, padT=18, padB=compact ? 22 : 34;
   const innerW=w-padL-padR, innerH=h-padT-padB;
   const max = Math.max(1, ...buckets.map(b=>b.count));
   const n = buckets.length;
   const gap = innerW/n;
-  const bw = Math.min(46, gap*0.55);
+  const bw = compact ? Math.min(14, gap*0.65) : Math.min(46, gap*0.55);
   let bars='';
   buckets.forEach((b,i)=>{
     const bh = (b.count/max)*innerH;
     const x = padL + i*gap + (gap-bw)/2;
     const y = padT + innerH - bh;
-    const clickAttrs = ` class="bar-clickable" data-day="${b.date.toDateString()}" style="cursor:pointer;"`;
-    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${color}"${clickAttrs}></rect>`;
-    if(b.count>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--text)" font-family="var(--sans)" style="pointer-events:none;">${b.count}</text>`;
-    bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-20}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${b.label}</text>`;
-    bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${weekLabel(b.date)}</text>`;
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="${compact?2:3}" fill="${color}"></rect>`;
+    if(b.count>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="${compact?10:11}" fill="var(--text)" font-family="var(--sans)" style="pointer-events:none;">${b.count}</text>`;
+    if(compact){
+      bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${b.date.getDate()}</text>`;
+    }else{
+      bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-20}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${b.label}</text>`;
+      bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${weekLabel(b.date)}</text>`;
+    }
+    bars += hitArea(i, gap, padL, padT, h, drillAttrs({ kind:'day', day:b.date.toDateString() }));
   });
   const baseline = `<line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="var(--border)" stroke-width="1"/>`;
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;max-width:640px;">${baseline}${bars}</svg>`;
@@ -1540,10 +1570,11 @@ function dashboardWeeklyView(){
     </div>`;
 }
 
-function monthlyBuckets(predicate, monthsBack){
+function monthlyBuckets(predicate, monthsBack, year){
   const now = new Date();
   const buckets = [];
-  for(let i=monthsBack-1;i>=0;i--){
+  if(year!==undefined){ for(let m=0;m<12;m++) buckets.push({ year, month:m, count:0 }); }   // i 12 mesi di un anno
+  else for(let i=monthsBack-1;i>=0;i--){
     const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
     buckets.push({year:d.getFullYear(), month:d.getMonth(), count:0});
   }
@@ -1571,7 +1602,8 @@ function yearlyBuckets(predicate, yearsBack){
   return buckets;
 }
 
-function simpleBarChartSVG(buckets, color, labelFn){
+// drillFn(b) -> livello di dettaglio da aprire al clic sulla colonna (facoltativo).
+function simpleBarChartSVG(buckets, color, labelFn, drillFn, chartType){
   const w=640, h=190, padL=8, padR=8, padT=18, padB=26;
   const innerW=w-padL-padR, innerH=h-padT-padB;
   const max = Math.max(1, ...buckets.map(b=>b.count));
@@ -1584,12 +1616,16 @@ function simpleBarChartSVG(buckets, color, labelFn){
     const x = padL + i*gap + (gap-bw)/2;
     const y = padT + innerH - bh;
     bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${color}"></rect>`;
-    if(b.count>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--text)" font-family="var(--sans)">${b.count}</text>`;
-    bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)">${labelFn(b)}</text>`;
+    if(b.count>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--text)" font-family="var(--sans)" style="pointer-events:none;">${b.count}</text>`;
+    bars += `<text x="${(x+bw/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${labelFn(b)}</text>`;
+    if(drillFn) bars += hitArea(i, gap, padL, padT, h, drillAttrs(drillFn(b), chartType));
   });
   const baseline = `<line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="var(--border)" stroke-width="1"/>`;
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;max-width:640px;">${baseline}${bars}</svg>`;
 }
+
+const MONTHS_SHORT = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+const MONTHS_LONG = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 
 function dashboardMonthlyView(){
   const monthsBack = 12;
@@ -1597,19 +1633,19 @@ function dashboardMonthlyView(){
   const apptBuckets = monthlyBuckets(isApptCall, monthsBack);
   const totalCalls = callBuckets.reduce((s,b)=>s+b.count,0);
   const totalAppts = apptBuckets.reduce((s,b)=>s+b.count,0);
-  const monthNamesShort=['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
-  const labelFn = b=>`${monthNamesShort[b.month]} '${String(b.year).slice(2)}`;
+  const labelFn = b=>`${MONTHS_SHORT[b.month]} '${String(b.year).slice(2)}`;
+  const drillFn = b=>({ kind:'month', year:b.year, month:b.month });
   return `
-    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultimi ${monthsBack} mesi</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultimi ${monthsBack} mesi · clicca una colonna per il dettaglio del mese</div>
     <div class="card">
       <h3>Chiamate per mese</h3>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls}</div>
-      ${simpleBarChartSVG(callBuckets, 'var(--accent)', labelFn)}
+      ${simpleBarChartSVG(callBuckets, 'var(--accent)', labelFn, drillFn, 'calls')}
     </div>
     <div class="card">
       <h3>Appuntamenti fissati per mese</h3>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalAppts}</div>
-      ${simpleBarChartSVG(apptBuckets, 'var(--text)', labelFn)}
+      ${simpleBarChartSVG(apptBuckets, 'var(--text)', labelFn, drillFn, 'appt')}
     </div>`;
 }
 
@@ -1620,61 +1656,87 @@ function dashboardYearlyView(){
   const totalCalls = callBuckets.reduce((s,b)=>s+b.count,0);
   const totalAppts = apptBuckets.reduce((s,b)=>s+b.count,0);
   const labelFn = b=>String(b.year);
+  const drillFn = b=>({ kind:'year', year:b.year });
   return `
-    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultimi ${yearsBack} anni</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultimi ${yearsBack} anni · clicca una colonna per vedere i mesi</div>
     <div class="card">
       <h3>Chiamate per anno</h3>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls}</div>
-      ${simpleBarChartSVG(callBuckets, 'var(--accent)', labelFn)}
+      ${simpleBarChartSVG(callBuckets, 'var(--accent)', labelFn, drillFn, 'calls')}
     </div>
     <div class="card">
       <h3>Appuntamenti fissati per anno</h3>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalAppts}</div>
-      ${simpleBarChartSVG(apptBuckets, 'var(--text)', labelFn)}
+      ${simpleBarChartSVG(apptBuckets, 'var(--text)', labelFn, drillFn, 'appt')}
     </div>`;
 }
 
-function dashboardDrilldownView(){
-  if(dashboardDrilldown.day) return dashboardDayListView();
-  const weekStart = new Date(dashboardDrilldown.weekStart);
-  const weekEndDisplay = new Date(weekStart); weekEndDisplay.setDate(weekEndDisplay.getDate()+6);
-  const isAppt = dashboardDrilldown.type==='appt';
-  const dayBuckets = dailyBucketsForWeek(weekStart, isAppt ? isApptCall : null);
-  const total = dayBuckets.reduce((s,b)=>s+b.count,0);
-  const title = isAppt ? 'Appuntamenti fissati' : 'Chiamate effettuate';
-  return `
-    <div class="top-actions"><button class="btn secondary small" id="backToDashboardBtn">← Torna alla dashboard</button></div>
-    <div class="card">
-      <h3>${title} — settimana ${weekLabel(weekStart)} – ${weekLabel(weekEndDisplay)}</h3>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${total} in questa settimana · clicca un giorno per l'elenco</div>
-      ${dayBarChartSVG(dayBuckets, isAppt ? 'var(--text)' : 'var(--accent)')}
-    </div>`;
-}
-
-function dashboardDayListView(){
-  const isAppt = dashboardDrilldown.type==='appt';
-  const dayDate = new Date(dashboardDrilldown.day);
-  const dayCalls = calls.filter(k=>{
-    if(!k.data) return false;
-    if(isAppt && !isApptCall(k)) return false;
-    return new Date(k.data+'T00:00:00').toDateString()===dayDate.toDateString();
-  });
+// Dettaglio a livelli: dashboardDrilldown = { type:'calls'|'appt', stack:[livelli] }.
+// Ogni clic su una colonna aggiunge un livello (anno -> mese -> giorno, oppure
+// settimana -> giorno); "Indietro" ne toglie uno, e dall'ultimo torna alla dashboard.
+function drillCallsList(list){
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
-  const title = isAppt ? 'Appuntamenti fissati' : 'Chiamate effettuate';
-  return `
-    <div class="top-actions"><button class="btn secondary small" id="backToWeekBtn">← Torna alla settimana</button></div>
-    <div class="card">
-      <h3>${title} — ${fmtLongDate(dashboardDrilldown.day)}</h3>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${dayCalls.length} in totale</div>
-      ${dayCalls.length? dayCalls.map(k=>{
-        const c = byId[k.contactId]||{};
-        return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
-          <span class="date">${fmtDate(k.data)}</span> ${esitoCell(k)}
-          <div style="font-weight:600;font-size:14px;margin-top:4px;">${esc(fullName(c))}</div>
-          ${k.progetto?`<div style="font-size:13px;color:var(--muted);">${esc(k.progetto)}</div>`:''}
-        </div>`;
-      }).join('') : '<div class="empty">Nessuna chiamata in questo giorno.</div>'}
+  return list.length ? list.map(k=>{
+    const c = byId[k.contactId]||{};
+    return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
+      <span class="date">${fmtDate(k.data)}</span> ${esitoCell(k)}
+      <div style="font-weight:600;font-size:14px;margin-top:4px;">${esc(fullName(c))}</div>
+      ${k.progetto?`<div style="font-size:13px;color:var(--muted);">${esc(k.progetto)}</div>`:''}
     </div>`;
+  }).join('') : '<div class="empty">Nessuna voce in questo periodo.</div>';
+}
+function dashboardDrilldownView(){
+  const isAppt = dashboardDrilldown.type==='appt';
+  const pred = isAppt ? isApptCall : null;
+  const color = isAppt ? 'var(--text)' : 'var(--accent)';
+  const what = isAppt ? 'Appuntamenti fissati' : 'Chiamate effettuate';
+  const lvl = dashboardDrilldown.stack[dashboardDrilldown.stack.length-1];
+  const back = `<div class="top-actions" style="justify-content:space-between;">
+    <button class="btn secondary small" id="drillBackBtn">← ${dashboardDrilldown.stack.length>1 ? 'Indietro' : 'Torna alla dashboard'}</button>
+  </div>`;
+  if(lvl.kind==='year'){
+    const buckets = monthlyBuckets(pred, 12, lvl.year);
+    const total = buckets.reduce((s,b)=>s+b.count,0);
+    return back + `<div class="card">
+      <h3>${what} — ${lvl.year}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${total} · clicca un mese per il dettaglio</div>
+      ${simpleBarChartSVG(buckets, color, b=>MONTHS_SHORT[b.month], b=>({ kind:'month', year:b.year, month:b.month }), dashboardDrilldown.type)}
+    </div>`;
+  }
+  if(lvl.kind==='month'){
+    const buckets = dailyBucketsForMonth(lvl.year, lvl.month, pred);
+    const total = buckets.reduce((s,b)=>s+b.count,0);
+    const prefix = `${lvl.year}-${String(lvl.month+1).padStart(2,'0')}`;
+    const list = calls.filter(k=>k.data && k.data.startsWith(prefix) && (!pred || pred(k))).sort((a,b)=>a.data.localeCompare(b.data));
+    return back + `<div class="card">
+      <h3>${what} — ${MONTHS_LONG[lvl.month]} ${lvl.year}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${total} · clicca un giorno per l'elenco</div>
+      ${dayBarChartSVG(buckets, color, true)}
+    </div>
+    <div class="card">
+      <h3>Elenco del mese (${list.length})</h3>
+      ${drillCallsList(list)}
+    </div>`;
+  }
+  if(lvl.kind==='week'){
+    const weekStart = new Date(lvl.start);
+    const weekEndDisplay = new Date(weekStart); weekEndDisplay.setDate(weekEndDisplay.getDate()+6);
+    const buckets = dailyBucketsForWeek(weekStart, pred);
+    const total = buckets.reduce((s,b)=>s+b.count,0);
+    return back + `<div class="card">
+      <h3>${what} — settimana ${weekLabel(weekStart)} – ${weekLabel(weekEndDisplay)}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${total} in questa settimana · clicca un giorno per l'elenco</div>
+      ${dayBarChartSVG(buckets, color, false)}
+    </div>`;
+  }
+  // giorno
+  const dayDate = new Date(lvl.day);
+  const list = calls.filter(k=>k.data && (!pred || pred(k)) && new Date(k.data+'T00:00:00').toDateString()===dayDate.toDateString());
+  return back + `<div class="card">
+    <h3>${what} — ${fmtLongDate(lvl.day)}</h3>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${list.length} in totale</div>
+    ${drillCallsList(list)}
+  </div>`;
 }
 
 function apptCalendarView(){
