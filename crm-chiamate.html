@@ -1210,7 +1210,10 @@ function tableDetailView(){
   if(editingCallId===k.id) return callEditView(k,c);
   return `
     <div class="top-actions" style="justify-content:space-between;">
-      <button class="btn secondary small" id="backToTableBtn">← Torna indietro</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn secondary small" id="backToTableBtn">← Torna indietro</button>
+        ${c.id?`<button class="btn secondary small" id="openCallContactBtn">Apri scheda contatto</button>`:''}
+      </div>
       <div style="display:flex;gap:8px;">
         ${confirmDeleteCallId===k.id ? `
           <span style="color:var(--danger);font-size:13px;font-weight:600;align-self:center;">Eliminare questa chiamata?</span>
@@ -1223,8 +1226,9 @@ function tableDetailView(){
       </div>
     </div>
     <div class="card">
-      <h2>${esc(fullName(c))}</h2>
+      <h2>${c.id?`<span class="name-link" id="callContactName">${esc(fullName(c))}</span>`:esc(fullName(c))}</h2>
       <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
+      ${c.telefono?`<div style="margin-top:4px;font-size:14px;">${telLink(c.telefono)}</div>`:''}
       ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
       <div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
         <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}</div></div>
@@ -1285,6 +1289,17 @@ function bindTableDetail(){
     return;
   }
   document.getElementById('backToTableBtn').addEventListener('click', ()=>{ tableDetailCallId=null; confirmDeleteCallId=null; renderMain(); });
+  // Dalla chiamata alla scheda del contatto (nome cliccabile o pulsante dedicato).
+  const openContact = ()=>{
+    const k = calls.find(x=>x.id===tableDetailCallId);
+    if(!k) return;
+    selectedId=k.contactId; view='detail'; confirmDeleteId=null;
+    tableDetailCallId=null; confirmDeleteCallId=null; editingCallId=null;
+    setActiveTab('navContacts');
+    renderMain();
+  };
+  document.getElementById('openCallContactBtn')?.addEventListener('click', openContact);
+  document.getElementById('callContactName')?.addEventListener('click', openContact);
   if(confirmDeleteCallId===tableDetailCallId){
     document.getElementById('confirmDeleteCallBtn').addEventListener('click', deleteCall);
     document.getElementById('cancelDeleteCallBtn').addEventListener('click', ()=>{ confirmDeleteCallId=null; renderMain(); });
