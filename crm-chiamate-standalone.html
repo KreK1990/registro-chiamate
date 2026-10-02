@@ -225,6 +225,12 @@ details[open] > summary .part-toggle::before{content:"\25BE  ";}
 .appt-search{display:flex;gap:8px;align-items:center;margin:0 0 14px;}
 .appt-search input{flex:1;}
 .proj-chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);padding:4px 4px 4px 9px;border-radius:2px;font-size:13px;font-weight:600;margin:0 6px 6px 0;}
+.proj-head{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start;}
+.proj-head .proj-map{margin-top:0;height:230px;}
+.dash-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:6px;}
+.dash-legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;border-radius:2px;}
+.dash-tile{cursor:pointer;}
+.dash-tile:hover{background:var(--accent-soft);}
 .proj-chip-addr{display:block;font-weight:400;font-size:11.5px;color:var(--muted);}
 .proj-chip button{border:none;background:transparent;color:inherit;font-size:17px;line-height:1;cursor:pointer;padding:0 5px;}
 .appt-proj-chips:empty{display:none;}
@@ -323,6 +329,8 @@ h2{color:var(--accent);font-weight:800;}
   .funnel-row{grid-template-columns:1fr auto;grid-template-areas:"label num" "track track" "note note";gap:4px 10px;}
   .timeline li{grid-template-columns:22px 1fr;grid-template-areas:"dot text" ". date" ". extra";}
   .fc-tiles{grid-template-columns:1fr 1fr;}
+  .proj-head{grid-template-columns:1fr;}
+  .proj-head .proj-map{height:200px;}
   .fc-value{font-size:19px;}
   .fc-q-row{grid-template-columns:1fr auto;}
   .fc-q-track{grid-column:1/-1;grid-row:2;}
@@ -764,6 +772,9 @@ function renderMain(){
     if(dy) dy.addEventListener('click', ()=>{ dashboardSubView='yearly'; renderMain(); });
     document.getElementById('dashClientsBtn')?.addEventListener('click', ()=>{ dashboardSubView='clients'; renderMain(); });
     document.getElementById('clientsPeriod')?.addEventListener('change', e=>{ dashboardClientsPeriod = e.target.value; renderMain(); });
+    document.getElementById('dashProjectsBtn')?.addEventListener('click', ()=>{ dashboardSubView='projects'; renderMain(); });
+    document.getElementById('dashProjPeriod')?.addEventListener('change', e=>{ dashProjPeriod = e.target.value; renderMain(); });
+    main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
     main.querySelectorAll('.call-item[data-contact-id]').forEach(el=>{
       el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; view='detail'; confirmDeleteId=null; tableDetailCallId=null; setActiveTab('navContacts'); renderMain(); });
     });
@@ -867,6 +878,7 @@ function renderMain(){
         <textarea id="callNote" placeholder="Cosa vi siete detti..."></textarea>
         <label>Progetto / argomento trattato</label>
         <input id="callProgetto" placeholder="Es. Ristrutturazione Via Roma 12">
+        ${apptProjectsHtml(c.id)}
         <label style="margin-top:10px;">Email del cliente</label>
         <input id="callEmail" type="email" inputmode="email" autocomplete="off" value="${esc(c.email||'')}" placeholder="Se te la comunica, viene salvata nella scheda">
         <label style="display:flex;align-items:center;gap:7px;margin-top:8px;cursor:pointer;"><input type="checkbox" id="callMailCheck" style="width:auto;">Promemoria: inviare mail informativa</label>
@@ -876,7 +888,6 @@ function renderMain(){
             <div><label>Data</label><input type="date" id="callApptDate"></div>
             <div><label>Ora</label><select id="callApptTime">${timeOptions('')}</select></div>
           </div>
-          ${apptProjectsHtml(c.id)}
         </div>
         <label style="margin-top:10px;">Prossimo follow-up (opzionale)</label>
         <div class="field-row">
@@ -1038,6 +1049,148 @@ function renderFooter(){
   el.querySelectorAll('[data-appt-call-id]').forEach(row=>{
     row.addEventListener('click', ()=>{ tableDetailCallId=row.dataset.apptCallId; renderMain(); });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard "Progetti": flusso delle commesse nel periodo (nuove richieste, offerte
+// presentate, conferme d'ordine, perse), tasso di successo, tempi medi, motivi di
+// perdita, grafico mensile e ordinato per mese (dagli ordini). Le date sono quelle delle
+// fasi (solo oggi o passate); colonne e riquadri aprono l'elenco dei progetti.
+// ---------------------------------------------------------------------------
+let dashProjPeriod = 'year';
+const DASH_PROJ_PERIODS = { year:'Anno in corso', quarter:'Trimestre in corso', month:'Mese in corso', '12m':'Ultimi 12 mesi', all:'Sempre' };
+function isoDay(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function dashProjRange(){
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+  if(dashProjPeriod==='year') return [`${y}-01-01`, `${y}-12-31`];
+  if(dashProjPeriod==='quarter'){ const q = Math.floor(m/3); return [isoDay(new Date(y, q*3, 1)), isoDay(new Date(y, q*3+3, 0))]; }
+  if(dashProjPeriod==='month') return [isoDay(new Date(y, m, 1)), isoDay(new Date(y, m+1, 0))];
+  if(dashProjPeriod==='12m') return [isoDay(new Date(y, m-11, 1)), isoDay(new Date(y, m+1, 0))];
+  return ['0000-01-01', '9999-12-31'];
+}
+function inDashRange(d, range){ return !!d && d>=range[0] && d<=range[1] && d<=todayISO(); }
+const PROJ_EVENTS = {
+  richiesta: { label:'Nuove richieste',     date:p=>p.fasi && p.fasi.richiesta,         value:p=>Number(p.importoOfferta)||0,   color:'var(--border-strong)' },
+  offerta:   { label:'Offerte presentate',  date:p=>p.fasi && p.fasi.offertaPresentata, value:p=>Number(p.importoOfferta)||0,   color:'var(--accent)' },
+  conferma:  { label:'Conferme d\'ordine',  date:p=>p.fasi && p.fasi.confermaOrdine,    value:p=>Number(projectAmount(p))||0,   color:'var(--brand-yellow)' },
+  persa:     { label:'Commesse perse',      date:p=>isLost(p) ? p.persaIl : '',         value:p=>Number(p.importoOfferta)||0,   color:'var(--danger)' }
+};
+function projEvents(type, range){ return projects.filter(p=>inDashRange(PROJ_EVENTS[type].date(p), range)); }
+function sumValue(type, list){ return list.reduce((s,p)=>s+PROJ_EVENTS[type].value(p), 0); }
+function daysBetween(a, b){ return Math.round((new Date(b) - new Date(a)) / 864e5); }
+function avgDays(list, fromKey, toKey){
+  const d = list.filter(p=>p.fasi && p.fasi[fromKey] && p.fasi[toKey] && p.fasi[toKey]>=p.fasi[fromKey]).map(p=>daysBetween(p.fasi[fromKey], p.fasi[toKey]));
+  return d.length ? { avg: Math.round(d.reduce((s,x)=>s+x, 0)/d.length), n: d.length } : null;
+}
+function ordersIn(range){
+  const out = [];
+  projects.forEach(p=>(p.ordini||[]).forEach(o=>{ if(inDashRange(o.data, range)) out.push({ p, o }); }));
+  return out.sort((a,b)=>(a.o.data||'').localeCompare(b.o.data||''));
+}
+function dashMonths(){
+  const now = new Date(), y = now.getFullYear();
+  if(dashProjPeriod==='year') return [...Array(12)].map((_,i)=>`${y}-${String(i+1).padStart(2,'0')}`);
+  return [...Array(12)].map((_,i)=>{ const d = new Date(y, now.getMonth()-11+i, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
+}
+function monthRange(ym){ const y = +ym.slice(0,4), m = +ym.slice(5,7); return [`${ym}-01`, isoDay(new Date(y, m, 0))]; }
+function compactEuro(v){ return v>=1e6 ? (Math.round(v/1e5)/10).toString().replace('.', ',')+'M' : v>=1000 ? Math.round(v/1000)+'k' : String(Math.round(v)); }
+// Colonne raggruppate per mese; ogni colonna apre l'elenco di quel mese.
+function groupedBarsSVG(months, series, fmtVal){
+  const w=640, h=200, padL=8, padR=8, padT=18, padB=26, innerW=w-padL-padR, innerH=h-padT-padB;
+  const max = Math.max(1, ...series.flatMap(s=>s.values));
+  const gap = innerW/months.length, slot = gap*0.84/series.length, bw = Math.min(16, slot*0.8);
+  let out = '';
+  months.forEach((ym,i)=>{
+    series.forEach((s,j)=>{
+      const v = s.values[i], bh = v/max*innerH;
+      const sx = padL + i*gap + gap*0.08 + j*slot, x = sx + (slot-bw)/2, y = padT + innerH - bh;
+      out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="2" fill="${s.color}"></rect>`;
+      if(v>0) out += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-4).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--text)" font-family="var(--sans)" style="pointer-events:none;">${fmtVal ? fmtVal(v) : v}</text>`;
+      out += `<rect x="${sx.toFixed(1)}" y="${padT}" width="${slot.toFixed(1)}" height="${innerH+padB}" fill="transparent"${drillAttrs(s.drill(ym), 'projects')}></rect>`;
+    });
+    out += `<text x="${(padL + i*gap + gap/2).toFixed(1)}" y="${h-8}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--sans)" style="pointer-events:none;">${MONTHS_SHORT[+ym.slice(5,7)-1]}${dashProjPeriod==='year' ? '' : " '"+ym.slice(2,4)}</text>`;
+  });
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;max-width:680px;"><line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="var(--border)"/>${out}</svg>`;
+}
+function dashLegend(items){ return `<div class="dash-legend">${items.map(([l,c])=>`<span><i style="background:${c};"></i>${l}</span>`).join('')}</div>`; }
+
+function dashboardProjectsView(){
+  const range = dashProjRange();
+  const ev = Object.fromEntries(Object.keys(PROJ_EVENTS).map(t=>[t, projEvents(t, range)]));
+  const conf = ev.conferma.length, lost = ev.persa.length;
+  const confVal = sumValue('conferma', ev.conferma), lostVal = sumValue('persa', ev.persa);
+  const winN = conf+lost ? Math.round(conf*100/(conf+lost)) : null;
+  const winV = confVal+lostVal ? Math.round(confVal*100/(confVal+lostVal)) : null;
+  const cycleOffer = avgDays(ev.offerta, 'richiesta', 'offertaPresentata');
+  const cycleOrder = avgDays(ev.conferma, 'offertaPresentata', 'confermaOrdine');
+  const ord = ordersIn(range), ordVal = ord.reduce((s,x)=>s+(Number(x.o.importo)||0), 0);
+  const tile = (type)=>`<div class="fc-tile dash-tile bar-clickable" data-drill="${esc(JSON.stringify({ kind:'projEvents', type }))}" data-chart-type="projects" style="border-top:3px solid ${PROJ_EVENTS[type].color};">
+      <div class="fc-label">${PROJ_EVENTS[type].label}</div><div class="fc-value">${ev[type].length}</div><div class="fc-note">${fmtEuro(sumValue(type, ev[type]))}</div></div>`;
+  const plain = (label, value, note)=>`<div class="fc-tile"><div class="fc-label">${label}</div><div class="fc-value">${value}</div>${note ? `<div class="fc-note">${note}</div>` : ''}</div>`;
+  const months = dashMonths();
+  const series = ['richiesta','offerta','conferma'].map(t=>({ color:PROJ_EVENTS[t].color, values: months.map(ym=>projEvents(t, monthRange(ym)).length), drill: ym=>({ kind:'projEvents', type:t, ym }) }));
+  const ordSeries = [{ color:'var(--accent)', values: months.map(ym=>ordersIn(monthRange(ym)).reduce((s,x)=>s+(Number(x.o.importo)||0), 0)), drill: ym=>({ kind:'ordersMonth', ym }) }];
+  const reasons = new Map();
+  ev.persa.forEach(p=>{ const k = p.motivoPerdita || 'Non indicato'; const r = reasons.get(k) || { n:0, v:0 }; r.n++; r.v += Number(p.importoOfferta)||0; reasons.set(k, r); });
+  const reasonRows = [...reasons.entries()].sort((a,b)=>b[1].v-a[1].v || b[1].n-a[1].n);
+  const maxR = Math.max(1, ...reasonRows.map(([,r])=>r.v));
+  return `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+      <label style="margin:0;font-size:13px;color:var(--muted);">Periodo</label>
+      <select id="dashProjPeriod" style="width:auto;">${Object.entries(DASH_PROJ_PERIODS).map(([v,l])=>`<option value="${v}" ${dashProjPeriod===v?'selected':''}>${l}</option>`).join('')}</select>
+    </div>
+    <div class="fc-tiles">${tile('richiesta')}${tile('offerta')}${tile('conferma')}${tile('persa')}</div>
+    <div class="fc-tiles" style="margin-top:10px;">
+      ${plain('Tasso di successo', winN==null ? '—' : winN+'%', winN==null ? 'nessuna commessa chiusa nel periodo' : `in valore ${winV}% · ${conf} confermate su ${conf+lost} chiuse`)}
+      ${plain('Dalla richiesta all\'offerta', cycleOffer ? cycleOffer.avg+' gg' : '—', cycleOffer ? `media su ${cycleOffer.n} ${cycleOffer.n===1?'offerta':'offerte'}` : 'nessun dato nel periodo')}
+      ${plain('Dall\'offerta all\'ordine', cycleOrder ? cycleOrder.avg+' gg' : '—', cycleOrder ? `media su ${cycleOrder.n} ${cycleOrder.n===1?'conferma':'conferme'}` : 'nessun dato nel periodo')}
+      <div class="fc-tile dash-tile bar-clickable" data-drill="${esc(JSON.stringify({ kind:'ordersMonth' }))}" data-chart-type="projects"><div class="fc-label">Ordinato nel periodo</div><div class="fc-value">${fmtEuro(ordVal)}</div><div class="fc-note">${ord.length} ${ord.length===1?'ordine':'ordini'} (consegne)</div></div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h3>Andamento mese per mese</h3>
+      ${dashLegend(['richiesta','offerta','conferma'].map(t=>[PROJ_EVENTS[t].label, PROJ_EVENTS[t].color]))}
+      ${groupedBarsSVG(months, series)}
+      <div style="font-size:12px;color:var(--muted);margin-top:6px;">Numero di commesse per mese${dashProjPeriod==='year' ? '' : ' (ultimi 12 mesi)'} · clicca una colonna per l'elenco</div>
+    </div>
+    <div class="card">
+      <h3>Ordinato per mese</h3>
+      ${groupedBarsSVG(months, ordSeries, compactEuro)}
+      <div style="font-size:12px;color:var(--muted);margin-top:6px;">Somma degli ordini per data dell'ordine · clicca una colonna per l'elenco degli ordini</div>
+    </div>
+    <div class="card">
+      <h3>Motivi delle commesse perse</h3>
+      ${reasonRows.length ? reasonRows.map(([k,r])=>`<div class="fc-q-row">
+        <div class="fc-q-label">${esc(k)} <span>${r.n} ${r.n===1?'commessa':'commesse'}</span></div>
+        <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round(r.v*100/maxR))}%;background:var(--danger);"></div></div>
+        <div class="fc-q-num"><strong>${fmtEuro(r.v)}</strong></div></div>`).join('') : '<div class="empty">Nessuna commessa persa nel periodo.</div>'}
+    </div>`;
+}
+// Elenco di dettaglio (dashboardDrilldown): progetti di un tipo di evento (nel mese o
+// nel periodo) oppure ordini (nel mese o nel periodo).
+function projEventsListView(lvl){
+  const range = lvl.ym ? monthRange(lvl.ym) : dashProjRange();
+  const when = lvl.ym ? monthLabel(lvl.ym) : DASH_PROJ_PERIODS[dashProjPeriod].toLowerCase();
+  const back = `<div class="top-actions" style="justify-content:space-between;"><button class="btn secondary small" id="drillBackBtn">← ${dashboardDrilldown.stack.length>1 ? 'Indietro' : 'Torna alla dashboard'}</button></div>`;
+  if(lvl.kind==='ordersMonth'){
+    const list = ordersIn(range);
+    const tot = list.reduce((s,x)=>s+(Number(x.o.importo)||0), 0);
+    return back + `<div class="card"><h3>Ordini — ${esc(when)}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">${list.length} ${list.length===1?'ordine':'ordini'} per ${fmtEuro(tot)} · clicca per aprire il progetto</div>
+      ${list.length ? list.map(({p,o})=>`<div class="call-item" data-open-project="${p.id}" style="cursor:pointer;">
+        <span class="date">${fmtDate(o.data)}</span> <strong>${fmtEuro(o.importo)}</strong>${o.numero ? ` <span style="color:var(--muted);">· n° ${esc(o.numero)}</span>` : ''}
+        <div style="font-weight:600;font-size:14px;margin-top:3px;">${esc(projectTitle(p))}</div>
+        <div style="font-size:12.5px;color:var(--muted);">${esc(projectAddress(p))}${o.note ? ` · ${esc(o.note)}` : ''}</div>
+      </div>`).join('') : '<div class="empty">Nessun ordine.</div>'}</div>`;
+  }
+  const E = PROJ_EVENTS[lvl.type];
+  const list = projEvents(lvl.type, range).sort((a,b)=>(E.date(a)||'').localeCompare(E.date(b)||''));
+  return back + `<div class="card"><h3>${esc(E.label)} — ${esc(when)}</h3>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">${list.length} ${list.length===1?'commessa':'commesse'} per ${fmtEuro(sumValue(lvl.type, list))} · clicca per aprire il progetto</div>
+    ${list.length ? list.map(p=>`<div class="call-item ${projectStateClass(p)}" data-open-project="${p.id}" style="cursor:pointer;">
+      <span class="date">${fmtDate(E.date(p))}</span> ${phaseBadge(p)} <strong style="margin-left:4px;">${fmtEuro(E.value(p))}</strong>
+      <div style="font-weight:600;font-size:14px;margin-top:3px;">${esc(projectTitle(p))}</div>
+      <div style="font-size:12.5px;color:var(--muted);">${esc(projectAddress(p))}${lvl.type==='persa' && p.motivoPerdita ? ` · ${esc(p.motivoPerdita)}` : ''}</div>
+    </div>`).join('') : '<div class="empty">Nessuna commessa.</div>'}</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1492,6 +1645,8 @@ function projectDetailView(){
       <strong>Ordine confermato</strong> il ${fmtDate(f.confermaOrdine)} · ${p.importoDeliberato!=null ? fmtEuro(p.importoDeliberato) : 'importo deliberato da confermare'}
     </div>` : ''}
     <div class="card ${isLost(p) ? 'proj-lost' : ''}">
+     <div class="proj-head">
+      <div class="proj-head-info">
       <div class="proj-code">ID ${esc(p.codice||'')}</div>
       <h2>${esc(p.nome || 'Progetto senza nome')}</h2>
       ${p.via||p.citta ? `<div style="font-size:14px;margin-top:2px;"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc([p.via, p.citta].filter(Boolean).join(', '))} · Indicazioni</a></div>` : ''}
@@ -1503,6 +1658,9 @@ function projectDetailView(){
         ${p.offertaUrl ? `<div><label>Offerta</label><div style="font-size:14px;"><a href="${esc(p.offertaUrl)}" target="_blank" rel="noopener" class="addr-link">Apri il PDF dell'offerta</a></div></div>` : ''}
       </div>
       ${p.note ? `<div style="margin-top:10px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(p.note)}</div>` : ''}
+      </div>
+      ${p.via||p.citta ? `<div class="map-embed proj-map"><iframe src="${mapEmbedUrl(p)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa del cantiere: ${esc(projectAddress(p))}"></iframe></div>` : ''}
+     </div>
     </div>
     <div class="card">
       <h3>Figure coinvolte (${(p.partecipanti||[]).length})</h3>
@@ -1542,12 +1700,12 @@ function projectDetailView(){
     </div>
     ${ordersCardHtml(p)}
     <div class="card">
-      <h3>Incontri collegati (${linked.length})</h3>
+      <h3>Chiamate e incontri collegati (${linked.length})</h3>
       ${linked.length ? linked.map(k=>{ const c = byId[k.contactId]||{}; return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
-        <span class="date">${k.appuntamento ? fmtDateTime(k.appuntamento) : fmtDate(k.data)}</span> ${k.consegnaOfferta ? '<span class="esito-tag appt">Consegna offerta</span>' : ''}
+        <span class="date">${k.appuntamento ? 'Incontro del '+fmtDateTime(k.appuntamento) : 'Chiamata del '+fmtDate(k.data)}</span> ${k.consegnaOfferta ? '<span class="esito-tag appt">Consegna offerta</span>' : (!k.appuntamento && k.esito ? esc(k.esito) : '')}
         <div style="font-weight:600;font-size:14px;margin-top:4px;">${esc(fullName(c))}</div>
         ${k.noteIncontro||k.note ? `<div style="font-size:13px;color:var(--muted);">${esc(k.noteIncontro||k.note)}</div>` : ''}
-      </div>`; }).join('') : '<div class="empty">Nessun incontro collegato. Quando registri una chiamata con appuntamento puoi scegliere questo progetto.</div>'}
+      </div>`; }).join('') : '<div class="empty">Nessuna chiamata o incontro collegato. Quando registri una chiamata o un appuntamento puoi indicare questo progetto.</div>'}
     </div>`;
 }
 // ---- ordini e consegne del progetto ----
@@ -1760,13 +1918,13 @@ function projChipHtml(p){
 function apptProjectsHtml(contactId, selected, consegna){
   const sel = (selected || []).map(id=>projects.find(p=>p.id===id)).filter(Boolean);
   return `<div class="appt-proj" data-contact="${esc(contactId||'')}">
-    <label style="margin-top:8px;">Progetti dell'incontro</label>
+    <label style="margin-top:8px;">Progetti di cui si è parlato</label>
     <div class="appt-proj-chips">${sel.map(projChipHtml).join('')}</div>
     <div class="ac-wrap">
       <input class="appt-proj-input" autocomplete="off" placeholder="${projects.length ? 'Cerca per ID, nome, città o cliente e aggiungi…' : 'Nessun progetto in archivio'}" ${projects.length ? '' : 'disabled'}>
       <div class="ac-list hidden appt-proj-list"></div>
     </div>
-    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin-top:8px;"><input type="checkbox" data-appt-offer style="width:auto;" ${consegna ? 'checked' : ''}>Consegno l'offerta (segna "Offerta presentata" sui progetti aggiunti)</label>
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin-top:8px;"><input type="checkbox" data-appt-offer style="width:auto;" ${consegna ? 'checked' : ''}>Consegno l'offerta all'incontro (segna "Offerta presentata" sui progetti aggiunti)</label>
   </div>`;
 }
 function apptProjectSuggestions(box, query){
@@ -1814,11 +1972,12 @@ function apptProjectSuggestions(box, query){
     if(e.key==='Enter'){ const first = e.target.closest('.appt-proj').querySelector('.appt-proj-list [data-pick]'); if(first){ e.preventDefault(); pick(first); } }
   });
 })();
+// I progetti si possono indicare per qualsiasi chiamata; la consegna dell'offerta vale solo
+// se c'e' un appuntamento.
 function readApptProjects(appuntamento){
-  if(!appuntamento) return { progetti:[], consegnaOfferta:false };
   const ids = [...document.querySelectorAll('#main .appt-proj [data-appt-sel]')].map(e=>e.dataset.apptSel);
   const offer = !!document.querySelector('#main [data-appt-offer]:checked');
-  return { progetti: ids, consegnaOfferta: offer && ids.length>0 };
+  return { progetti: ids, consegnaOfferta: !!appuntamento && offer && ids.length>0 };
 }
 async function markOfferPresented(sel, appuntamento){
   if(!sel.consegnaOfferta) return;
@@ -2500,8 +2659,9 @@ function dashboardView(){
     <button id="dashMonthBtn" class="${dashboardSubView==='monthly'?'active':''}">Mensile</button>
     <button id="dashYearBtn" class="${dashboardSubView==='yearly'?'active':''}">Annuale</button>
     <button id="dashClientsBtn" class="${dashboardSubView==='clients'?'active':''}">Clienti</button>
+    <button id="dashProjectsBtn" class="${dashboardSubView==='projects'?'active':''}">Progetti</button>
   </div>`;
-  const body = dashboardSubView==='monthly' ? dashboardMonthlyView() : dashboardSubView==='yearly' ? dashboardYearlyView() : dashboardSubView==='clients' ? dashboardClientsView() : dashboardWeeklyView();
+  const body = dashboardSubView==='monthly' ? dashboardMonthlyView() : dashboardSubView==='yearly' ? dashboardYearlyView() : dashboardSubView==='clients' ? dashboardClientsView() : dashboardSubView==='projects' ? dashboardProjectsView() : dashboardWeeklyView();
   return `<h2 style="margin-bottom:16px;">Dashboard attività</h2>${header}${body}`;
 }
 
@@ -2745,6 +2905,7 @@ function clientSegmentView(lvl){
 function dashboardDrilldownView(){
   const top = dashboardDrilldown.stack[dashboardDrilldown.stack.length-1];
   if(top.kind==='segment') return clientSegmentView(top);
+  if(top.kind==='projEvents' || top.kind==='ordersMonth') return projEventsListView(top);
   const isAppt = dashboardDrilldown.type==='appt';
   const pred = isAppt ? isApptCall : null;
   const color = isAppt ? 'var(--text)' : 'var(--accent)';
@@ -2963,6 +3124,7 @@ function renderCallFlow(){
       </div>
       <label>Progetto / argomento trattato</label>
       <input id="qcProgetto" placeholder="Es. Ristrutturazione Via Roma 12">
+      ${apptProjectsHtml(c.id)}
       <div style="margin-top:10px;"></div>
       <label>Note</label>
       <textarea id="qcNote" placeholder="Cosa vi siete detti..."></textarea>
@@ -2976,7 +3138,6 @@ function renderCallFlow(){
           <div><label>Data</label><input type="date" id="qcApptDate"></div>
           <div><label>Ora</label><select id="qcApptTime">${timeOptions('')}</select></div>
         </div>
-        ${apptProjectsHtml(c.id)}
       </div>
       <div style="margin-top:10px;"></div>
       <label>Follow up</label>
@@ -3144,6 +3305,7 @@ function callEditView(k,c){
       </div>
       <label>Progetto / argomento trattato</label>
       <input id="ecProgetto" value="${esc(k.progetto||'')}">
+      ${apptProjectsHtml(c.id, k.progetti||[], !!k.consegnaOfferta)}
       <label style="margin-top:10px;">Note</label>
       <textarea id="ecNote">${esc(k.note||'')}</textarea>
       <label style="display:flex;align-items:center;gap:7px;margin-top:12px;cursor:pointer;"><input type="checkbox" id="ecApptCheck" style="width:auto;" ${k.appuntamento?'checked':''}>Appuntamento fissato</label>
@@ -3152,7 +3314,6 @@ function callEditView(k,c){
           <div><label>Data</label><input type="date" id="ecApptDate" value="${splitDT(k.appuntamento).date}"></div>
           <div><label>Ora</label><select id="ecApptTime">${timeOptions(splitDT(k.appuntamento).time)}</select></div>
         </div>
-        ${apptProjectsHtml(c.id, k.progetti||[], !!k.consegnaOfferta)}
         <label style="margin-top:10px;">Note dell'incontro</label>
         <textarea id="ecNoteIncontro" placeholder="Come è andato l'incontro...">${esc(k.noteIncontro||'')}</textarea>
       </div>

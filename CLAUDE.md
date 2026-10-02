@@ -93,6 +93,15 @@ Campi principali:
   progetti non persi, a campo vuoto quelli del cliente) → `markOfferPresented` segna
   offertaPresentata con la data dell'incontro. `canAutoRender()` evita che gli
   aggiornamenti in tempo reale ridisegnino i moduli mentre si scrive.
+- **Dashboard → "Progetti"** (`dashboardProjectsView`, blocco prima del Forecast): eventi delle
+  commesse per data di fase nel periodo (`dashProjPeriod`, predefinito anno in corso):
+  richieste, offerte presentate, conferme (valore `projectAmount`), perse; tasso di
+  successo; tempi medi richiesta→offerta e offerta→conferma; ordinato (ordini per data);
+  grafici mensili e motivi di perdita. Riquadri e colonne aprono elenchi
+  (`projEventsListView`, drill kind projEvents / ordersMonth).
+- Progetti di cui si e' parlato: indicabili per ogni chiamata (non solo appuntamenti);
+  `consegnaOfferta` vale solo con appuntamento. Scheda progetto: mappa del cantiere in alto a
+  destra (`.proj-head`), "Chiamate e incontri collegati".
 - **Forecast** (voce di menu): solo commesse aperte (`!isLost && !isWon`). Campi sul
   progetto: `probabilita` (0-100; se assente si usa `FORECAST_DEFAULT_PROB` per fase,
   mostrata come "suggerita") e `chiusuraPrevista` ('YYYY-MM'). Ponderato = importoOfferta
