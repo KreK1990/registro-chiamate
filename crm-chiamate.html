@@ -212,6 +212,8 @@ details[open] > summary .part-toggle::before{content:"\25BE  ";}
 .order-done{color:var(--accent);font-weight:600;}
 .order-actions{grid-area:actions;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
 .order-form{background:var(--bg);padding:10px 12px;border-radius:2px;margin:8px 0;}
+.appt-search{display:flex;gap:8px;align-items:center;margin:0 0 14px;}
+.appt-search input{flex:1;}
 
 
 .imp-map label{margin:0;font-size:13px;color:var(--text);}
@@ -458,6 +460,12 @@ function renderMain(){
     document.getElementById('apptListBtn').addEventListener('click', ()=>{ apptSubView='list'; renderMain(); });
     document.getElementById('apptCalBtn').addEventListener('click', ()=>{ apptSubView='calendar'; renderMain(); });
     document.getElementById('apptDoneBtn').addEventListener('click', ()=>{ apptSubView='done'; renderMain(); });
+    const aSearch = document.getElementById('apptSearch');
+    aSearch.addEventListener('input', e=>{
+      apptSearch = e.target.value; renderMain();
+      const n = document.getElementById('apptSearch'); n.focus(); n.setSelectionRange(n.value.length, n.value.length);
+    });
+    document.getElementById('apptSearchClear')?.addEventListener('click', ()=>{ apptSearch = ''; renderMain(); });
     if(apptSubView==='calendar'){
       document.getElementById('weekPrevBtn').addEventListener('click', ()=>{ apptWeekOffset--; renderMain(); });
       document.getElementById('weekNextBtn').addEventListener('click', ()=>{ apptWeekOffset++; renderMain(); });
@@ -1286,11 +1294,11 @@ function orderFormHtml(o){
   return `<div class="order-form">
     <div class="field-row">
       <div><label>Data ordine</label><input type="date" id="ordData" value="${esc(o.data||todayISO())}"></div>
-      <div><label>N° ordine (facoltativo)</label><input id="ordNumero" value="${esc(o.numero||'')}"></div>
+      <div><label>N° ordine / DDT (facoltativo)</label><input id="ordNumero" value="${esc(o.numero||'')}"></div>
     </div>
     <div class="field-row">
       <div><label>Importo (€)</label><input id="ordImporto" inputmode="decimal" value="${esc(fmtNum(o.importo))}" placeholder="es. 18.500,00"></div>
-      <div><label>Consegna in cantiere</label><input type="date" id="ordConsegna" value="${esc(o.consegna||'')}"></div>
+      <div><label>Consegna indicativa</label><input type="date" id="ordConsegna" value="${esc(o.consegna||'')}"></div>
     </div>
     <label>Note</label>
     <input id="ordNote" value="${esc(o.note||'')}" placeholder="es. 2° viaggio, piani 3-4">
@@ -1322,12 +1330,13 @@ function ordersCardHtml(p){
       ${editing!=='new' && !isLost(p) ? '<button class="btn secondary small" id="ordAddBtn">+ Aggiungi ordine</button>' : ''}
     </div>
     ${summary}
+    ${list.length ? `<div class="order-note" style="margin:-2px 0 6px;">Le date di consegna degli ordini sono indicative: l'arrivo della merce che fa fede è quello indicato nella timeline (Merce arrivata in cantiere)${f_merce(p) ? `, ${fmtDate(f_merce(p))}` : ''}.</div>` : ''}
     ${list.map(o=>editing===o.id ? orderFormHtml(o) : `<div class="order-item">
       <div class="order-main">
         <span class="order-amount">${fmtEuro(o.importo)}</span>
         <span class="order-meta">ordine del ${fmtDate(o.data)}${o.numero ? ` · n° ${esc(o.numero)}` : ''}</span>
       </div>
-      <div class="order-sub">${o.consegna ? (o.consegna<=today ? `<span class="order-done">Consegnato il ${fmtDate(o.consegna)}</span>` : `Consegna prevista il ${fmtDate(o.consegna)}`) : 'Data di consegna da definire'}${o.note ? ` · ${esc(o.note)}` : ''}</div>
+      <div class="order-sub">${o.consegna ? `Consegna indicativa: ${fmtDate(o.consegna)}` : 'Consegna da definire'}${o.note ? ` · ${esc(o.note)}` : ''}</div>
       <div class="order-actions">${confirmDeleteOrderId===o.id ? `
         <span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare questo ordine?</span>
         <button class="btn small" data-order-del-yes="${o.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button>
@@ -1339,14 +1348,14 @@ function ordersCardHtml(p){
     ${!list.length && editing!=='new' ? '<div class="empty" style="padding:4px 0;">Nessun ordine. Aggiungi gli ordini man mano che partono le consegne: il primo segna la conferma d\'ordine.</div>' : ''}
   </div>`;
 }
-// Salva l'elenco ordini; il primo ordine segna la conferma d'ordine e la prima consegna
-// avvenuta segna "Merce arrivata in cantiere", se quelle fasi non erano gia' indicate.
+function f_merce(p){ return p.fasi && p.fasi.merceCantiere; }
+// Salva l'elenco ordini; il primo ordine segna la conferma d'ordine se non era gia' indicata.
+// Le date di consegna degli ordini sono indicative (DDT): "Merce arrivata in cantiere" si
+// indica solo a mano nella timeline, con la data confermata dal cliente.
 async function saveProjectOrders(p, ordini){
   const fasi = { ...(p.fasi||{}) };
   const dates = ordini.map(o=>o.data).filter(Boolean).sort();
   if(!fasi.confermaOrdine && dates.length) fasi.confermaOrdine = dates[0];
-  const delivered = ordini.map(o=>o.consegna).filter(d=>d && d<=todayISO()).sort();
-  if(!fasi.merceCantiere && delivered.length) fasi.merceCantiere = delivered[0];
   await db.collection('projects').doc(p.id).update({ ordini, fasi, updatedAt: Date.now() });
 }
 function bindOrders(p, fail){
@@ -1990,15 +1999,33 @@ function apptCalls(){
   return calls.filter(k=>k.appuntamento).sort((a,b)=>a.appuntamento.localeCompare(b.appuntamento));
 }
 
+// Ricerca negli appuntamenti: cliente, studio, professione, citta', progetto/argomento,
+// progetti collegati (ID e nome), esito e note della chiamata e dell'incontro.
+// Tutte le parole cercate devono comparire (in qualsiasi ordine).
+let apptSearch = '';
+function apptMatches(k){
+  const words = normName(apptSearch).split(' ').filter(Boolean);
+  if(!words.length) return true;
+  const c = contacts.find(x=>x.id===k.contactId) || {};
+  const proj = (k.progetti||[]).map(id=>{ const p = projects.find(x=>x.id===id); return p ? (p.codice||'')+' '+(p.nome||'') : ''; });
+  const hay = normName([fullName(c), c.nome, c.azienda, c.professione, c.citta, k.progetto, k.esito, k.note, k.noteIncontro, ...proj].join(' '));
+  return words.every(w=>hay.includes(w));
+}
 function apptView(){
+  const now = new Date();
+  const cnt = pred=>apptSearch ? ` (${apptCalls().filter(k=>pred(new Date(k.appuntamento)) && apptMatches(k)).length})` : '';
   const header = `<div class="top-actions" style="justify-content:space-between;">
     <div class="subnav" style="margin-bottom:0;">
-      <button id="apptListBtn" class="${apptSubView==='list'?'active':''}">Elenco</button>
+      <button id="apptListBtn" class="${apptSubView==='list'?'active':''}">Elenco${cnt(d=>d>now)}</button>
       <button id="apptCalBtn" class="${apptSubView==='calendar'?'active':''}">Calendario settimanale</button>
-      <button id="apptDoneBtn" class="${apptSubView==='done'?'active':''}">Svolti</button>
+      <button id="apptDoneBtn" class="${apptSubView==='done'?'active':''}">Svolti${cnt(d=>d<=now)}</button>
     </div>
     <button class="btn secondary small" id="importMeetingsBtn">⬆ Importa incontri (Excel)</button>
     <button class="btn secondary small" id="exportIcsBtn">⬇ Esporta calendario (.ics)</button>
+  </div>
+  <div class="appt-search">
+    <input id="apptSearch" type="search" value="${esc(apptSearch)}" placeholder="Cerca cliente, studio, progetto o parole nelle note…" autocomplete="off">
+    ${apptSearch ? '<button class="btn secondary small" id="apptSearchClear">Azzera</button>' : ''}
   </div>`;
   const body = apptSubView==='calendar' ? apptCalendarView() : apptSubView==='done' ? apptDoneView() : apptListView();
   return header + body;
@@ -2006,9 +2033,9 @@ function apptView(){
 
 function apptDoneView(){
   const now = new Date();
-  const list = apptCalls().filter(k=> new Date(k.appuntamento) <= now).sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento));
+  const list = apptCalls().filter(k=> new Date(k.appuntamento) <= now && apptMatches(k)).sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento));
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
-  if(list.length===0) return '<div class="empty">Nessun incontro ancora svolto.</div>';
+  if(list.length===0) return `<div class="empty">${apptSearch ? 'Nessun incontro svolto corrisponde alla ricerca.' : 'Nessun incontro ancora svolto.'}</div>`;
   return list.map(k=>{
     const c = byId[k.contactId] || {};
     const hasNote = !!(k.noteIncontro && k.noteIncontro.trim());
@@ -2026,9 +2053,9 @@ function apptDoneView(){
 
 function apptListView(){
   const now = new Date();
-  const list = apptCalls().filter(k=> new Date(k.appuntamento) > now);
+  const list = apptCalls().filter(k=> new Date(k.appuntamento) > now && apptMatches(k));
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
-  if(list.length===0) return '<div class="empty">Nessun appuntamento in programma.</div>';
+  if(list.length===0) return `<div class="empty">${apptSearch ? 'Nessun appuntamento in programma corrisponde alla ricerca: guarda anche in "Svolti".' : 'Nessun appuntamento in programma.'}</div>`;
   return list.map(k=>{
     const c = byId[k.contactId] || {};
     return `<div class="card" data-appt-call-id="${k.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
@@ -2468,7 +2495,7 @@ function apptCalendarView(){
   const list = apptCalls();
   const fmtRange = `${String(days[0].getDate()).padStart(2,'0')}/${String(days[0].getMonth()+1).padStart(2,'0')} – ${String(days[6].getDate()).padStart(2,'0')}/${String(days[6].getMonth()+1).padStart(2,'0')}/${days[6].getFullYear()}`;
   const cols = days.map((d,i)=>{
-    const dayAppts = list.filter(k=>{ const kd=new Date(k.appuntamento); return kd.toDateString()===d.toDateString(); });
+    const dayAppts = list.filter(k=>{ const kd=new Date(k.appuntamento); return apptMatches(k) && kd.toDateString()===d.toDateString(); });
     return `<div class="calendar-day">
       <div class="calendar-day-head ${d.toDateString()===todayStr?'today':''}">${dayNames[i]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</div>
       <div class="calendar-day-appts">${dayAppts.map(k=>{ const c=byId[k.contactId]||{}; const t=new Date(k.appuntamento); const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
