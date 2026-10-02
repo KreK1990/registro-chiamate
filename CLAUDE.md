@@ -89,6 +89,13 @@ Campi principali:
   registrando una chiamata con appuntamento) → `markOfferPresented` segna
   offertaPresentata con la data dell'incontro. `canAutoRender()` evita che gli
   aggiornamenti in tempo reale ridisegnino i moduli mentre si scrive.
+- **Forecast** (voce di menu): solo commesse aperte (`!isLost && !isWon`). Campi sul
+  progetto: `probabilita` (0-100; se assente si usa `FORECAST_DEFAULT_PROB` per fase,
+  mostrata come "suggerita") e `chiusuraPrevista` ('YYYY-MM'). Ponderato = importoOfferta
+  × probabilità. Riepilogo: aperte, forecast ponderato, confermato nell'anno, stima anno
+  (confermato + ponderato con chiusura prevista nell'anno); ripartizione per trimestre.
+  I campi si salvano all'uscita e aggiornano le cifre senza ridisegnare la pagina.
+  Nel codice il blocco "Forecast" sta subito prima del blocco "Progetti".
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,

@@ -139,6 +139,26 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .funnel-num strong{font-size:17px;color:var(--text);}
 .funnel-note{grid-area:note;font-size:12px;color:var(--muted);}
 .proj-code{font-family:var(--mono);font-size:12.5px;color:var(--muted);letter-spacing:.5px;}
+.fc-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.fc-tile{background:var(--panel);border:1px solid var(--border);border-radius:2px;padding:12px 14px;}
+.fc-tile:nth-child(2){border-top:3px solid var(--brand-yellow);}
+.fc-label{font-size:12px;color:var(--muted);}
+.fc-value{font-family:var(--serif);font-size:22px;font-weight:700;color:var(--accent);margin-top:2px;}
+.fc-note{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.fc-q-row{display:grid;grid-template-columns:minmax(170px,230px) 1fr auto;gap:4px 12px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);}
+.fc-q-row:last-child{border-bottom:none;}
+.fc-q-label{font-size:13.5px;font-weight:600;}
+.fc-q-label span{font-weight:400;color:var(--muted);font-size:12px;margin-left:4px;}
+.fc-q-track{height:16px;background:var(--bg);border-radius:2px;overflow:hidden;}
+.fc-q-bar{height:100%;background:var(--accent);}
+.fc-q-num{text-align:right;white-space:nowrap;font-size:13px;}
+.fc-q-num span{display:block;font-size:11.5px;color:var(--muted);}
+.fc-row .fc-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+.fc-row .proj-code{margin-right:6px;}
+.fc-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 14px;align-items:end;}
+.fc-amount{font-size:15px;font-weight:600;padding:8px 0;}
+.fc-weighted{color:var(--accent);}
+.fc-sugg{font-size:10.5px;color:var(--brand-yellow);font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
 .phase-badge{display:inline-block;padding:3px 9px;border-radius:2px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;white-space:nowrap;}
 .phase-badge.done,.phase-badge.won{background:var(--accent);color:var(--on-accent);}
 .phase-badge.lost{background:var(--border);color:var(--muted);}
@@ -281,6 +301,11 @@ h2{color:var(--accent);font-weight:800;}
   .imp-map{grid-template-columns:1fr;gap:3px;}
   .funnel-row{grid-template-columns:1fr auto;grid-template-areas:"label num" "track track" "note note";gap:4px 10px;}
   .timeline li{grid-template-columns:22px 1fr;grid-template-areas:"dot text" ". date" ". extra";}
+  .fc-tiles{grid-template-columns:1fr 1fr;}
+  .fc-value{font-size:19px;}
+  .fc-q-row{grid-template-columns:1fr auto;}
+  .fc-q-track{grid-column:1/-1;grid-row:2;}
+  .fc-grid{grid-template-columns:1fr 1fr;}
   .part-row{grid-template-columns:1fr auto;grid-template-areas:"contact del" "role role";padding-bottom:8px;border-bottom:1px solid var(--border);}
   .imp-map select{margin-bottom:8px;}
   .tel-link{display:inline-block;padding:4px 0;}
@@ -326,6 +351,7 @@ h2{color:var(--accent);font-weight:800;}
         <button id="navFollowup">Follow-up<span id="fuBadge" class="nav-badge hidden"></span></button>
         <button id="navAppt">Appuntamenti</button>
         <button id="navProjects">Progetti</button>
+        <button id="navForecast">Forecast</button>
         <button id="navTable">Tabella chiamate</button>
         <button id="navDashboard">Dashboard</button>
       </div>
@@ -751,6 +777,7 @@ function renderMain(){
     if(cSort) cSort.addEventListener('change', e=>{ sortField=e.target.value; renderMain(); });
     return;
   }
+  if(view==='forecast'){ main.innerHTML = forecastView(); bindForecast(); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -985,6 +1012,145 @@ function renderFooter(){
 }
 
 // ---------------------------------------------------------------------------
+// Forecast: solo commesse aperte (ne' perse ne' con ordine confermato). Valore
+// ponderato = importo offerta x probabilita' di chiusura. Campi sul progetto:
+// probabilita (0-100; se assente si usa quella suggerita per la fase) e
+// chiusuraPrevista ('YYYY-MM', facoltativa).
+// ---------------------------------------------------------------------------
+const FORECAST_DEFAULT_PROB = { none:10, richiesta:10, elaborati:20, propostaTecnica:30, offertaEconomica:40, offertaPresentata:50 };
+let forecastSort = 'id';   // id | weighted | close
+function forecastProb(p){
+  if(p.probabilita!==undefined && p.probabilita!==null && p.probabilita!=='') return { value:Number(p.probabilita), suggested:false };
+  const ph = projectPhase(p);
+  return { value: FORECAST_DEFAULT_PROB[ph ? ph.key : 'none'] ?? 50, suggested:true };
+}
+function forecastWeighted(p){ const v = Number(p.importoOfferta); return isFinite(v) && p.importoOfferta!=null ? v * forecastProb(p).value / 100 : 0; }
+function openForecastProjects(){ return projects.filter(p=>!isLost(p) && !isWon(p)); }
+function quarterKey(ym){ if(!ym) return ''; const y = ym.slice(0,4), m = +ym.slice(5,7); return `${y}-Q${Math.ceil(m/3)}`; }
+function quarterLabel(k){ return k ? `${k.slice(6)}° trimestre ${k.slice(0,4)}` : 'Senza data di chiusura'; }
+function monthLabel(ym){ return ym ? `${MONTHS_LONG[+ym.slice(5,7)-1]} ${ym.slice(0,4)}` : ''; }
+
+function forecastSummaryHtml(){
+  const open = openForecastProjects();
+  const year = String(new Date().getFullYear());
+  const offerte = open.reduce((s,p)=>s+(Number(p.importoOfferta)||0), 0);
+  const ponderato = open.reduce((s,p)=>s+forecastWeighted(p), 0);
+  const confermato = projects.filter(p=>isWon(p) && (p.fasi.confermaOrdine||'').startsWith(year)).reduce((s,p)=>s+(Number(projectAmount(p))||0), 0);
+  const ponderatoAnno = open.filter(p=>(p.chiusuraPrevista||'').startsWith(year)).reduce((s,p)=>s+forecastWeighted(p), 0);
+  const senzaImporto = open.filter(p=>p.importoOfferta==null || p.importoOfferta==='').length;
+  const tile = (label, value, note)=>`<div class="fc-tile"><div class="fc-label">${label}</div><div class="fc-value">${value}</div>${note ? `<div class="fc-note">${note}</div>` : ''}</div>`;
+  return `<div class="fc-tiles">
+      ${tile('Commesse aperte', String(open.length), `offerte per ${fmtEuro(offerte)}`)}
+      ${tile('Forecast ponderato', fmtEuro(ponderato), offerte ? `${Math.round(ponderato*100/offerte)}% del valore in offerta` : '')}
+      ${tile(`Confermato nel ${year}`, fmtEuro(confermato), 'ordini già chiusi')}
+      ${tile(`Stima ${year}`, fmtEuro(confermato + ponderatoAnno), `confermato + forecast con chiusura prevista nel ${year}`)}
+    </div>
+    ${senzaImporto ? `<div style="font-size:12.5px;color:var(--danger);margin-top:8px;">${senzaImporto} ${senzaImporto===1 ? 'commessa aperta non ha' : 'commesse aperte non hanno'} l'importo dell'offerta: non ${senzaImporto===1 ? 'entra' : 'entrano'} nel forecast.</div>` : ''}`;
+}
+function forecastQuartersHtml(){
+  const groups = new Map();
+  openForecastProjects().forEach(p=>{
+    const k = quarterKey(p.chiusuraPrevista||'');
+    const g = groups.get(k) || { n:0, offerta:0, ponderato:0 };
+    g.n++; g.offerta += Number(p.importoOfferta)||0; g.ponderato += forecastWeighted(p);
+    groups.set(k, g);
+  });
+  const keys = [...groups.keys()].sort((a,b)=>(a===''?1:0)-(b===''?1:0) || a.localeCompare(b));
+  if(!keys.length) return '<div class="empty">Nessuna commessa aperta.</div>';
+  const max = Math.max(1, ...keys.map(k=>groups.get(k).ponderato));
+  return keys.map(k=>{ const g = groups.get(k); return `<div class="fc-q-row">
+      <div class="fc-q-label">${quarterLabel(k)} <span>${g.n} ${g.n===1?'commessa':'commesse'}</span></div>
+      <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round(g.ponderato*100/max))}%;"></div></div>
+      <div class="fc-q-num"><strong>${fmtEuro(g.ponderato)}</strong><span>su ${fmtEuro(g.offerta)}</span></div>
+    </div>`; }).join('');
+}
+function forecastRowsHtml(){
+  const list = openForecastProjects().sort((a,b)=>{
+    if(forecastSort==='weighted') return forecastWeighted(b) - forecastWeighted(a) || byProjectId(a,b);
+    if(forecastSort==='close') return ((a.chiusuraPrevista||'9999')).localeCompare(b.chiusuraPrevista||'9999') || byProjectId(a,b);
+    return byProjectId(a,b);
+  });
+  if(!list.length) return '<div class="empty">Nessuna commessa aperta: quando crei un progetto compare qui.</div>';
+  return list.map(p=>{
+    const pr = forecastProb(p);
+    return `<div class="card fc-row" data-fc-project="${p.id}">
+      <div class="fc-head">
+        <div style="min-width:0;"><span class="proj-code">${esc(p.codice||'')}</span>
+          <span class="name-link" data-open-project="${p.id}" style="font-weight:600;">${esc(p.nome || 'Progetto senza nome')}</span>
+          ${p.citta ? `<span style="color:var(--muted);font-size:12.5px;"> · ${esc(p.citta)}</span>` : ''}</div>
+        ${phaseBadge(p)}
+      </div>
+      <div class="fc-grid">
+        <div><label>Offerta</label><div class="fc-amount">${fmtEuro(p.importoOfferta)}</div></div>
+        <div><label>Probabilità${pr.suggested ? ' <span class="fc-sugg">suggerita</span>' : ''}</label>
+          <div style="display:flex;align-items:center;gap:4px;"><input type="number" class="fc-prob" min="0" max="100" step="5" inputmode="numeric" value="${pr.value}" style="max-width:84px;"> %</div></div>
+        <div><label>Ponderato</label><div class="fc-amount fc-weighted">${p.importoOfferta!=null ? fmtEuro(forecastWeighted(p)) : '—'}</div></div>
+        <div><label>Chiusura prevista</label><input type="month" class="fc-close" value="${esc(p.chiusuraPrevista||'')}" style="max-width:170px;"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function forecastView(){
+  return `<h2 style="margin-bottom:6px;">Forecast</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Commesse aperte con la probabilità di chiusura che stimi: il valore ponderato (offerta × probabilità) dà un obiettivo verosimile su ciò che oggi è in corso.</div>
+    <div id="fcSummary">${forecastSummaryHtml()}</div>
+    <div class="card" style="margin-top:14px;">
+      <h3>Forecast per periodo di chiusura prevista</h3>
+      <div id="fcQuarters">${forecastQuartersHtml()}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px;">
+      <label style="margin:0;font-size:13px;color:var(--muted);">Ordina per</label>
+      <select id="fcSort" style="width:auto;">
+        <option value="id" ${forecastSort==='id'?'selected':''}>ID progetto</option>
+        <option value="weighted" ${forecastSort==='weighted'?'selected':''}>Valore ponderato</option>
+        <option value="close" ${forecastSort==='close'?'selected':''}>Chiusura prevista</option>
+      </select>
+    </div>
+    <div id="fcRows">${forecastRowsHtml()}</div>`;
+}
+// Aggiorna riepilogo, trimestri e valore ponderato della riga senza ridisegnare i campi.
+function refreshForecastFigures(p){
+  const s = document.getElementById('fcSummary'); if(s) s.innerHTML = forecastSummaryHtml();
+  const q = document.getElementById('fcQuarters'); if(q) q.innerHTML = forecastQuartersHtml();
+  const row = document.querySelector(`#fcRows [data-fc-project="${p.id}"]`);
+  if(row){
+    row.querySelector('.fc-weighted').textContent = p.importoOfferta!=null ? fmtEuro(forecastWeighted(p)) : '—';
+    const sugg = row.querySelector('.fc-sugg'); if(sugg && !forecastProb(p).suggested) sugg.remove();
+  }
+}
+function bindForecast(){
+  document.getElementById('fcSort').addEventListener('change', e=>{ forecastSort = e.target.value; renderMain(); });
+  document.querySelectorAll('#fcRows [data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
+  const fail = e=>alert('Errore nel salvataggio: '+(e.message||e.code||''));
+  document.querySelectorAll('#fcRows [data-fc-project]').forEach(row=>{
+    const p = projects.find(x=>x.id===row.dataset.fcProject);
+    if(!p) return;
+    // Probabilita': si salva all'uscita dal campo (o con Invio), tra 0 e 100.
+    const prob = row.querySelector('.fc-prob');
+    const saveProb = ()=>{
+      const n = Math.round(Number(prob.value));
+      if(prob.value==='' || !isFinite(n) || n<0 || n>100){ prob.value = forecastProb(p).value; return; }
+      if(!forecastProb(p).suggested && n===Number(p.probabilita)) return;
+      prob.value = n; p.probabilita = n; refreshForecastFigures(p);
+      db.collection('projects').doc(p.id).update({ probabilita:n, updatedAt:Date.now() }).catch(fail);
+    };
+    prob.addEventListener('change', saveProb);
+    prob.addEventListener('keydown', e=>{ if(e.key==='Enter') prob.blur(); });
+    // Chiusura prevista (mese): stesso criterio delle date della timeline, anno 2000-2100.
+    const close = row.querySelector('.fc-close');
+    const saveClose = ()=>{
+      const v = close.value;
+      if(v===(p.chiusuraPrevista||'')) return;
+      if(v && !(/^\d{4}-\d{2}$/.test(v) && +v.slice(0,4)>=2000 && +v.slice(0,4)<=2100)){ close.value = p.chiusuraPrevista||''; return; }
+      p.chiusuraPrevista = v; refreshForecastFigures(p);
+      db.collection('projects').doc(p.id).update({ chiusuraPrevista:v, updatedAt:Date.now() }).catch(fail);
+    };
+    close.addEventListener('blur', saveClose);
+    close.addEventListener('change', ()=>{ if(document.activeElement!==close) saveClose(); });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Progetti (sezione tecnica). Collection "projects": codice (ID progetto, 7 cifre,
 // unico), nome, via, citta, partecipanti [{contactId, ruolo}], importoOfferta,
 // importoDeliberato (confermato alla conferma d'ordine), offertaUrl (link al PDF),
@@ -1008,7 +1174,11 @@ const PROJECT_PHASES = [
 const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale','Impresa esecutrice','Committente','Direzione lavori','Altro'];
 
 // Gli aggiornamenti in tempo reale non ridisegnano i moduli mentre si scrive.
-function canAutoRender(){ return view!=='new' && view!=='projectForm' && !(view==='call' && callStep==='entry'); }
+// Nel Forecast non si ridisegna mentre si sta scrivendo in un campo (le cifre si aggiornano a parte).
+function canAutoRender(){
+  const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main input');
+  return view!=='new' && view!=='projectForm' && !(view==='call' && callStep==='entry') && !(view==='forecast' && typing);
+}
 function onProjectsSnapshot(snap){
   projects = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   if(canAutoRender()) renderMain();
@@ -1287,6 +1457,7 @@ function projectDetailView(){
       <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:12px;">
         <div><label>Importo offerta</label><div style="font-size:16px;font-weight:600;">${fmtEuro(p.importoOfferta)}</div></div>
         <div><label>Importo deliberato</label><div style="font-size:16px;font-weight:600;">${f.confermaOrdine ? (p.importoDeliberato!=null ? fmtEuro(p.importoDeliberato) : '<span style="color:var(--danger);font-size:13px;">da confermare</span>') : '—'}</div></div>
+        ${!isLost(p) && !isWon(p) && p.importoOfferta!=null ? `<div><label>Forecast</label><div style="font-size:16px;font-weight:600;">${fmtEuro(forecastWeighted(p))} <span style="font-size:12.5px;color:var(--muted);font-weight:400;">${forecastProb(p).value}%${forecastProb(p).suggested ? ' suggerita' : ''}${p.chiusuraPrevista ? ' · chiusura ' + monthLabel(p.chiusuraPrevista) : ''}</span></div></div>` : ''}
         ${p.offertaUrl ? `<div><label>Offerta</label><div style="font-size:14px;"><a href="${esc(p.offertaUrl)}" target="_blank" rel="noopener" class="addr-link">Apri il PDF dell'offerta</a></div></div>` : ''}
       </div>
       ${p.note ? `<div style="margin-top:10px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(p.note)}</div>` : ''}
@@ -3177,7 +3348,7 @@ function followUpBadge(dateStr, big){
   return `<span class="followup ${due?'due':'ok'}" style="${big?'display:inline-block;':''}">${label}</span>`;
 }
 
-const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navTable','navDashboard'];
+const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navForecast','navTable','navDashboard'];
 function setActiveTab(id){
   NAV_TABS.forEach(t=>document.getElementById(t).classList.toggle('active', t===id));
   const title = document.getElementById('topbarTitle');
@@ -3214,6 +3385,11 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{ firebase.au
 document.getElementById('navAgenda').addEventListener('click', ()=>{
   view='agenda'; tableDetailCallId=null;
   setActiveTab('navAgenda');
+  renderMain();
+});
+document.getElementById('navForecast').addEventListener('click', ()=>{
+  view='forecast'; tableDetailCallId=null;
+  setActiveTab('navForecast');
   renderMain();
 });
 document.getElementById('navProjects').addEventListener('click', ()=>{
