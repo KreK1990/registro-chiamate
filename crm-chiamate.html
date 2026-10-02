@@ -130,7 +130,17 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .funnel-note{grid-area:note;font-size:12px;color:var(--muted);}
 .proj-code{font-family:var(--mono);font-size:12.5px;color:var(--muted);letter-spacing:.5px;}
 .phase-badge{display:inline-block;padding:3px 9px;border-radius:2px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;white-space:nowrap;}
-.phase-badge.done{background:var(--accent);color:var(--on-accent);}
+.phase-badge.done,.phase-badge.won{background:var(--accent);color:var(--on-accent);}
+.phase-badge.lost{background:var(--border);color:var(--muted);}
+.card.proj-won{border-left:4px solid var(--brand-yellow);background:color-mix(in srgb, var(--brand-yellow) 9%, var(--panel));}
+.card.proj-lost{opacity:.55;filter:grayscale(1);}
+.card.proj-lost:hover{opacity:.8;}
+tr.proj-lost td{opacity:.5;}
+tr.proj-won td{background:color-mix(in srgb, var(--brand-yellow) 12%, transparent);}
+tr.proj-won td:first-child{box-shadow:inset 4px 0 0 var(--brand-yellow);}
+.proj-state-banner{font-size:14px;}
+.proj-state-banner.lost{background:var(--bg);border-color:var(--border-strong);color:var(--muted);}
+.proj-state-banner.won{border-left:4px solid var(--brand-yellow);background:color-mix(in srgb, var(--brand-yellow) 12%, var(--panel));}
 .timeline{list-style:none;margin:0;padding:0;}
 .timeline li{display:grid;grid-template-columns:22px 1fr auto;grid-template-areas:"dot text date" ". extra extra";gap:4px 10px;align-items:center;padding:9px 0;position:relative;}
 .timeline li::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:var(--border);}
@@ -701,11 +711,13 @@ function renderFooter(){
 // Progetti (sezione tecnica). Collection "projects": codice (ID progetto, 7 cifre,
 // unico), nome, via, citta, partecipanti [{contactId, ruolo}], importoOfferta,
 // importoDeliberato (confermato alla conferma d'ordine), offertaUrl (link al PDF),
-// note, fasi {chiave fase: 'YYYY-MM-DD'}, createdAt, updatedAt.
+// note, fasi {chiave fase: 'YYYY-MM-DD'}, createdAt, updatedAt; commessa persa:
+// esito 'persa', persaIl, motivoPerdita, notePerdita.
 // Le chiamate con appuntamento possono indicare progetti (calls.progetti) e la
 // consegna dell'offerta (calls.consegnaOfferta), che segna la fase offertaPresentata.
 // ---------------------------------------------------------------------------
-let projects = [], selectedProjectId = null, projectsSearch = '', projectsPhaseFilter = '', confirmDeleteProjectId = null;
+let projects = [], selectedProjectId = null, projectsSearch = '', projectsPhaseFilter = '', confirmDeleteProjectId = null, loseFormProjectId = null;
+const LOSS_REASONS = ['Prezzo','Scelta di un concorrente','Progetto annullato o sospeso','Soluzione tecnica diversa','Nessuna risposta del cliente','Altro'];
 const PROJECT_PHASES = [
   { key:'richiesta',         label:'Richiesta' },
   { key:'elaborati',         label:'Elaborati ricevuti' },
@@ -741,30 +753,42 @@ function parseEuro(s){
   return isFinite(n) ? Math.round(n*100)/100 : NaN;
 }
 function projectsOfContact(contactId){ return projects.filter(p=>(p.partecipanti||[]).some(x=>x.contactId===contactId)); }
+// Commessa persa (chiusa) / chiusa con ordine confermato / in corso.
+function isLost(p){ return p.esito==='persa'; }
+function isWon(p){ return !isLost(p) && phaseDone(p, 'confermaOrdine'); }
+function projectStateClass(p){ return isLost(p) ? 'proj-lost' : isWon(p) ? 'proj-won' : ''; }
 function phaseBadge(p){
+  if(isLost(p)) return '<span class="phase-badge lost">Persa</span>';
   const ph = projectPhase(p);
-  return `<span class="phase-badge ${ph && ph.key==='cantiereFinito' ? 'done' : ''}">${ph ? esc(ph.label) : 'Da avviare'}</span>`;
+  return `<span class="phase-badge ${isWon(p) ? 'won' : ''}">${ph ? esc(ph.label) : 'Da avviare'}</span>`;
 }
 function guessRole(c){
   const pr = normName(c.professione);
   return pr==='architetto' ? 'Progettazione architettonica' : pr==='ingegnere' ? 'Progettazione strutturale' : '';
 }
-function openProject(id){ selectedProjectId = id; confirmDeleteProjectId = null; tableDetailCallId = null; view = 'projectDetail'; setActiveTab('navProjects'); renderMain(); }
+function openProject(id){ selectedProjectId = id; confirmDeleteProjectId = null; loseFormProjectId = null; tableDetailCallId = null; view = 'projectDetail'; setActiveTab('navProjects'); renderMain(); }
 
 // ---- elenco progetti ----
 function projectsListHtml(){
   const q = normName(projectsSearch);
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const f = projectsPhaseFilter;
   const list = projects.filter(p=>{
-    if(projectsPhaseFilter){ const ph = projectPhase(p); if((ph ? ph.key : 'none')!==projectsPhaseFilter) return false; }
+    if(f==='open' && (isLost(p) || isWon(p))) return false;
+    if(f==='won' && !isWon(p)) return false;
+    if(f==='lost' && !isLost(p)) return false;
+    if(f && !['open','won','lost'].includes(f)){
+      if(isLost(p)) return false;                       // le fasi riguardano le commesse non perse
+      const ph = projectPhase(p); if((ph ? ph.key : 'none')!==f) return false;
+    }
     if(!q) return true;
     const people = (p.partecipanti||[]).map(x=>{ const c = byId[x.contactId]; return c ? fullName(c)+' '+(c.azienda||'') : ''; });
     return normName([p.codice, p.nome, p.via, p.citta, ...people].join(' ')).includes(q);
-  }).sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
+  }).sort((a,b)=>(isLost(a)?1:0)-(isLost(b)?1:0) || (b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
   if(!list.length) return `<div class="empty">${projects.length ? 'Nessun progetto corrisponde alla ricerca.' : 'Nessun progetto: crea il primo con "+ Nuovo progetto".'}</div>`;
   return list.map(p=>{
     const people = (p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).map(fullName);
-    return `<div class="card" data-project-id="${p.id}" style="cursor:pointer;">
+    return `<div class="card ${projectStateClass(p)}" data-project-id="${p.id}" style="cursor:pointer;">
       <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="min-width:0;flex:1 1 220px;">
           <div class="proj-code">${esc(p.codice||'')}</div>
@@ -781,17 +805,25 @@ function projectsListHtml(){
 }
 function projectsListView(){
   const sum = keyFn=>projects.filter(keyFn).reduce((s,p)=>s+(Number(projectAmount(p))||0), 0);
-  const inOfferta = sum(p=>phaseDone(p, 'offertaPresentata') && !phaseDone(p, 'confermaOrdine'));
-  const confermati = sum(p=>phaseDone(p, 'confermaOrdine'));
+  const inOfferta = sum(p=>!isLost(p) && phaseDone(p, 'offertaPresentata') && !phaseDone(p, 'confermaOrdine'));
+  const confermati = sum(isWon);
+  const nWon = projects.filter(isWon).length, nLost = projects.filter(isLost).length;
   return `<h2 style="margin-bottom:6px;">Progetti (${projects.length})</h2>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Offerte presentate in attesa: <strong style="color:var(--text);">${fmtEuro(inOfferta)}</strong> · Ordini confermati: <strong style="color:var(--text);">${fmtEuro(confermati)}</strong></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6;">Offerte presentate in attesa: <strong style="color:var(--text);">${fmtEuro(inOfferta)}</strong>
+      · Ordini confermati: <strong style="color:var(--text);">${nWon}</strong> per <strong style="color:var(--text);">${fmtEuro(confermati)}</strong>
+      · Perse: <strong style="color:var(--text);">${nLost}</strong> per ${fmtEuro(sum(isLost))}</div>
     <div class="card" style="padding:14px 16px;">
       <div class="field-row" style="grid-template-columns:2fr 1fr;">
         <div><label>Cerca</label><input id="projSearch" value="${esc(projectsSearch)}" placeholder="ID, nome, città, cliente..."></div>
-        <div><label>Fase</label><select id="projPhaseFilter">
+        <div><label>Mostra</label><select id="projPhaseFilter">
           <option value="">Tutte</option>
-          <option value="none" ${projectsPhaseFilter==='none'?'selected':''}>Da avviare</option>
-          ${PROJECT_PHASES.map(ph=>`<option value="${ph.key}" ${projectsPhaseFilter===ph.key?'selected':''}>${esc(ph.label)}</option>`).join('')}
+          <option value="open" ${projectsPhaseFilter==='open'?'selected':''}>In corso</option>
+          <option value="won" ${projectsPhaseFilter==='won'?'selected':''}>Ordini confermati</option>
+          <option value="lost" ${projectsPhaseFilter==='lost'?'selected':''}>Commesse perse</option>
+          <optgroup label="Fase (commesse non perse)">
+            <option value="none" ${projectsPhaseFilter==='none'?'selected':''}>Da avviare</option>
+            ${PROJECT_PHASES.map(ph=>`<option value="${ph.key}" ${projectsPhaseFilter===ph.key?'selected':''}>${esc(ph.label)}</option>`).join('')}
+          </optgroup>
         </select></div>
       </div>
       <button class="btn" id="newProjectBtn" style="margin-top:4px;">+ Nuovo progetto</button>
@@ -918,11 +950,34 @@ function projectDetailView(){
           <span style="color:var(--danger);font-size:13px;font-weight:600;align-self:center;">Eliminare il progetto ${esc(p.codice)}?</span>
           <button class="btn small" id="projDeleteConfirmBtn" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì, elimina</button>
           <button class="btn secondary small" id="projDeleteCancelBtn">Annulla</button>` : `
+          ${!isLost(p) && !isWon(p) && loseFormProjectId!==p.id ? '<button class="btn secondary small" id="projLoseBtn">Segna come persa</button>' : ''}
           <button class="btn secondary small" id="projEditBtn">Modifica</button>
           <button class="btn small" id="projDeleteBtn" style="background:var(--danger);border-color:var(--danger);color:#fff;">Elimina</button>`}
       </div>
     </div>
-    <div class="card">
+    ${loseFormProjectId===p.id ? `<div class="card" style="border-color:var(--muted);">
+      <h3>Segna la commessa come persa</h3>
+      <div class="field-row">
+        <div><label>Data</label><input type="date" id="loseDate" value="${today}"></div>
+        <div><label>Motivo</label><select id="loseReason"><option value="">— motivo —</option>${LOSS_REASONS.map(m=>`<option>${m}</option>`).join('')}</select></div>
+      </div>
+      <label>Note (facoltative)</label>
+      <textarea id="loseNote" placeholder="Es. scelto un sistema concorrente, prezzo più basso del 10%"></textarea>
+      <div id="loseErr" style="color:var(--danger);font-size:13px;margin-top:6px;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn" id="loseConfirmBtn">Conferma commessa persa</button>
+        <button class="btn secondary" id="loseCancelBtn">Annulla</button>
+      </div>
+    </div>` : ''}
+    ${isLost(p) ? `<div class="card proj-state-banner lost">
+      <strong>Commessa persa</strong>${p.persaIl ? ` il ${fmtDate(p.persaIl)}` : ''}${p.motivoPerdita ? ` · ${esc(p.motivoPerdita)}` : ''}
+      ${p.notePerdita ? `<div style="font-size:13px;margin-top:4px;white-space:pre-wrap;">${esc(p.notePerdita)}</div>` : ''}
+      <div style="margin-top:8px;"><button class="btn secondary small" id="projReopenBtn">Riapri commessa</button></div>
+    </div>` : ''}
+    ${isWon(p) ? `<div class="card proj-state-banner won">
+      <strong>Ordine confermato</strong> il ${fmtDate(f.confermaOrdine)} · ${p.importoDeliberato!=null ? fmtEuro(p.importoDeliberato) : 'importo deliberato da confermare'}
+    </div>` : ''}
+    <div class="card ${isLost(p) ? 'proj-lost' : ''}">
       <div class="proj-code">ID ${esc(p.codice||'')}</div>
       <h2>${esc(p.nome || 'Progetto senza nome')}</h2>
       ${p.via||p.citta ? `<div style="font-size:14px;margin-top:2px;"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc([p.via, p.citta].filter(Boolean).join(', '))} · Indicazioni</a></div>` : ''}
@@ -990,6 +1045,21 @@ function bindProjectDetail(){
   document.getElementById('projDeleteConfirmBtn')?.addEventListener('click', async ()=>{
     try{ await db.collection('projects').doc(p.id).delete(); confirmDeleteProjectId = null; selectedProjectId = null; view = 'projects'; renderMain(); }catch(e){ fail(e); }
   });
+  // Commessa persa: modulo con data, motivo e note; "Riapri commessa" annulla.
+  document.getElementById('projLoseBtn')?.addEventListener('click', ()=>{ loseFormProjectId = p.id; renderMain(); });
+  document.getElementById('loseCancelBtn')?.addEventListener('click', ()=>{ loseFormProjectId = null; renderMain(); });
+  document.getElementById('loseConfirmBtn')?.addEventListener('click', async ()=>{
+    const date = document.getElementById('loseDate').value;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || +date.slice(0,4)<2000){ document.getElementById('loseErr').textContent = 'Indica una data valida.'; return; }
+    try{
+      await db.collection('projects').doc(p.id).update({ esito:'persa', persaIl:date, motivoPerdita:document.getElementById('loseReason').value,
+        notePerdita:document.getElementById('loseNote').value.trim(), updatedAt:Date.now() });
+      loseFormProjectId = null; renderMain();
+    }catch(e){ fail(e); }
+  });
+  document.getElementById('projReopenBtn')?.addEventListener('click', async ()=>{
+    try{ await db.collection('projects').doc(p.id).update({ esito:'', persaIl:'', motivoPerdita:'', notePerdita:'', updatedAt:Date.now() }); }catch(e){ fail(e); }
+  });
   // Date della timeline: mentre si scrive l'anno a mano il campo produce date intermedie
   // (0002, 0020, 0202...), quindi si salva solo all'uscita dal campo o dopo una pausa,
   // e solo con un anno plausibile; altrimenti si torna al valore salvato.
@@ -1036,7 +1106,7 @@ function contactProjectsHtml(c){
     </div>
     ${list.length ? `<div class="table-wrap"><table class="calls-table">
       <thead><tr><th>ID</th><th>Progetto</th><th>Ruolo</th><th>Fase</th><th>Importo</th></tr></thead>
-      <tbody>${list.map(p=>`<tr data-project-id="${p.id}" style="cursor:pointer;">
+      <tbody>${list.map(p=>`<tr data-project-id="${p.id}" class="${projectStateClass(p)}" style="cursor:pointer;">
         <td style="font-family:var(--mono);">${esc(p.codice||'')}</td>
         <td>${esc(p.nome||'—')}${p.citta ? `<div style="font-size:11.5px;color:var(--muted);">${esc(p.citta)}</div>` : ''}</td>
         <td>${esc(((p.partecipanti||[]).find(x=>x.contactId===c.id)||{}).ruolo||'')}</td>
@@ -1056,7 +1126,7 @@ function bindContactProjects(c){
 
 // ---- progetto dell'incontro nella registrazione della chiamata ----
 function apptProjectsHtml(contactId){
-  const list = projectsOfContact(contactId).filter(p=>!(p.fasi && p.fasi.cantiereFinito));
+  const list = projectsOfContact(contactId).filter(p=>!isLost(p) && !(p.fasi && p.fasi.cantiereFinito));
   if(!list.length) return '<div style="font-size:12.5px;color:var(--muted);margin-top:6px;">Nessun progetto aperto collegato a questo cliente.</div>';
   return `<div style="margin-top:8px;">
     <label>Progetto dell'incontro</label>
