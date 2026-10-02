@@ -138,6 +138,27 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .funnel-num{grid-area:num;text-align:right;font-size:13px;color:var(--muted);white-space:nowrap;}
 .funnel-num strong{font-size:17px;color:var(--text);}
 .funnel-note{grid-area:note;font-size:12px;color:var(--muted);}
+.proj-code{font-family:var(--mono);font-size:12.5px;color:var(--muted);letter-spacing:.5px;}
+.phase-badge{display:inline-block;padding:3px 9px;border-radius:2px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;white-space:nowrap;}
+.phase-badge.done{background:var(--accent);color:var(--on-accent);}
+.timeline{list-style:none;margin:0;padding:0;}
+.timeline li{display:grid;grid-template-columns:22px 1fr auto;grid-template-areas:"dot text date" ". extra extra";gap:4px 10px;align-items:center;padding:9px 0;position:relative;}
+.timeline li::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:var(--border);}
+.timeline li:first-child::before{top:50%;}
+.timeline li:last-child::before{bottom:50%;}
+.timeline .dot{grid-area:dot;width:14px;height:14px;border-radius:50%;border:2px solid var(--border-strong);background:var(--panel);justify-self:center;position:relative;z-index:1;}
+.timeline li.done .dot{background:var(--accent);border-color:var(--accent);}
+.timeline li.planned .dot{border-color:var(--brand-yellow);}
+.timeline .ph-label{font-weight:600;font-size:14px;}
+.timeline li:not(.done):not(.planned) .ph-label{color:var(--muted);font-weight:500;}
+.timeline .ph-owner{font-size:12px;color:var(--muted);}
+.timeline .ph-date{grid-area:date;display:flex;gap:6px;align-items:center;}
+.timeline .ph-date input{width:auto;}
+.timeline .ph-extra{grid-area:extra;background:var(--bg);padding:8px 10px;border-radius:2px;}
+.part-row{display:grid;grid-template-columns:1fr 230px auto;grid-template-areas:"contact role del";gap:8px;margin-bottom:8px;}
+.part-row .part-contact{grid-area:contact;}
+.part-row .part-role{grid-area:role;}
+.part-row .part-del{grid-area:del;}
 .imp-map label{margin:0;font-size:13px;color:var(--text);}
 .name-link{cursor:pointer;color:var(--accent);}
 .name-link:hover,[data-contact-id]:hover .name-link{text-decoration:underline;}
@@ -229,6 +250,8 @@ h2{color:var(--accent);font-weight:800;}
   .map-embed{height:200px;}
   .imp-map{grid-template-columns:1fr;gap:3px;}
   .funnel-row{grid-template-columns:1fr auto;grid-template-areas:"label num" "track track" "note note";gap:4px 10px;}
+  .timeline li{grid-template-columns:22px 1fr;grid-template-areas:"dot text" ". date" ". extra";}
+  .part-row{grid-template-columns:1fr auto;grid-template-areas:"contact del" "role role";padding-bottom:8px;border-bottom:1px solid var(--border);}
   .imp-map select{margin-bottom:8px;}
   .tel-link{display:inline-block;padding:4px 0;}
   /* Settimana appuntamenti: un giorno per riga invece di 7 colonne */
@@ -272,6 +295,7 @@ h2{color:var(--accent);font-weight:800;}
         <button id="navCall">Chiamata</button>
         <button id="navFollowup">Follow-up<span id="fuBadge" class="nav-badge hidden"></span></button>
         <button id="navAppt">Appuntamenti</button>
+        <button id="navProjects">Progetti</button>
         <button id="navTable">Tabella chiamate</button>
         <button id="navDashboard">Dashboard</button>
       </div>
@@ -385,7 +409,7 @@ function boot(){
 
 // All'uscita non deve restare nulla dei dati dell'utente precedente.
 function resetSession(){
-  contacts = []; calls = []; db = null;
+  contacts = []; calls = []; projects = []; selectedProjectId = null; db = null;
   selectedId = null; view = 'agenda'; callStep = 'pick'; tableDetailCallId = null; editingCallId = null;
   confirmDeleteId = null; confirmDeleteCallId = null; dashboardDrilldown = null; contactsSearchQuery = '';
   notifiedFollowUps.clear(); notifiedAppts.clear();
@@ -515,17 +539,18 @@ function startApp(uid){
   renderSidebarToday();
   unsubscribers.push(db.collection('contacts').onSnapshot(snap=>{
     contacts = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    if(view!=='new' && !(view==='call' && callStep==='entry')) renderMain();
+    if(canAutoRender()) renderMain();
     renderFooter();
     renderSidebarToday();
     updateNavBadges();
   }, showDataError));
   unsubscribers.push(db.collection('calls').onSnapshot(snap=>{
     calls = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
-    if(view!=='new' && !(view==='call' && callStep==='entry')) renderMain();
+    if(canAutoRender()) renderMain();
     renderFooter();
     renderSidebarToday();
   }, showDataError));
+  unsubscribers.push(db.collection('projects').onSnapshot(onProjectsSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -696,6 +721,9 @@ function renderMain(){
     if(cSort) cSort.addEventListener('change', e=>{ sortField=e.target.value; renderMain(); });
     return;
   }
+  if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
+  if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
+  if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
   if(view==='import'){ main.innerHTML = importView(); bindImport(); return; }
   if(view==='new'){ main.innerHTML = newContactForm(); bindNewForm(); return; }
   if(view==='detail' && selectedId){
@@ -727,6 +755,7 @@ function renderMain(){
         ${followUpBadge(c.followUp,true)}
       </div>
       ${studioColleaguesHtml(c)}
+      ${contactProjectsHtml(c)}
       <div class="card">
         <h3>Storico chiamate (${myCalls.length})</h3>
         ${myCalls.length? `<div class="table-wrap"><table class="calls-table">
@@ -761,6 +790,7 @@ function renderMain(){
             <div><label>Data</label><input type="date" id="callApptDate"></div>
             <div><label>Ora</label><select id="callApptTime">${timeOptions('')}</select></div>
           </div>
+          ${apptProjectsHtml(c.id)}
         </div>
         <label style="margin-top:10px;">Prossimo follow-up (opzionale)</label>
         <div class="field-row">
@@ -770,6 +800,7 @@ function renderMain(){
         <button class="btn block" id="saveCallBtn">Salva chiamata</button>
       </div>`;
     document.getElementById('saveCallBtn').addEventListener('click', saveCall);
+    bindContactProjects(c);
     main.querySelectorAll('[data-contact-id]').forEach(el=>{
       el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; confirmDeleteId=null; renderMain(); main.scrollTop=0; });
     });
@@ -921,6 +952,365 @@ function renderFooter(){
   el.querySelectorAll('[data-appt-call-id]').forEach(row=>{
     row.addEventListener('click', ()=>{ tableDetailCallId=row.dataset.apptCallId; renderMain(); });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Progetti (sezione tecnica). Collection "projects": codice (ID progetto, 7 cifre,
+// unico), nome, via, citta, partecipanti [{contactId, ruolo}], importoOfferta,
+// importoDeliberato (confermato alla conferma d'ordine), offertaUrl (link al PDF),
+// note, fasi {chiave fase: 'YYYY-MM-DD'}, createdAt, updatedAt.
+// Le chiamate con appuntamento possono indicare progetti (calls.progetti) e la
+// consegna dell'offerta (calls.consegnaOfferta), che segna la fase offertaPresentata.
+// ---------------------------------------------------------------------------
+let projects = [], selectedProjectId = null, projectsSearch = '', projectsPhaseFilter = '', confirmDeleteProjectId = null;
+const PROJECT_PHASES = [
+  { key:'richiesta',         label:'Richiesta' },
+  { key:'elaborati',         label:'Elaborati ricevuti' },
+  { key:'propostaTecnica',   label:'Proposta tecnica', owner:'Michael' },
+  { key:'offertaEconomica',  label:'Offerta economica', owner:'Claudia' },
+  { key:'offertaPresentata', label:'Offerta presentata' },
+  { key:'confermaOrdine',    label:'Conferma d\'ordine' },
+  { key:'merceCantiere',     label:'Merce arrivata in cantiere' },
+  { key:'cantiereFinito',    label:'Cantiere finito' }
+];
+const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale','Impresa esecutrice','Committente','Direzione lavori','Altro'];
+
+// Gli aggiornamenti in tempo reale non ridisegnano i moduli mentre si scrive.
+function canAutoRender(){ return view!=='new' && view!=='projectForm' && !(view==='call' && callStep==='entry'); }
+function onProjectsSnapshot(snap){
+  projects = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  if(canAutoRender()) renderMain();
+}
+// Una fase conta come raggiunta solo se la sua data e' oggi o passata (le date future sono "previste").
+function phaseDone(p, key){ const d = p.fasi && p.fasi[key]; return !!d && d <= todayISO(); }
+function projectPhase(p){ let cur = null; PROJECT_PHASES.forEach(ph=>{ if(phaseDone(p, ph.key)) cur = ph; }); return cur; }
+function projectTitle(p){ return p.nome ? `${p.codice} · ${p.nome}` : (p.codice||''); }
+function projectAmount(p){ return (phaseDone(p, 'confermaOrdine') && p.importoDeliberato!=null) ? p.importoDeliberato : p.importoOfferta; }
+function fmtEuro(v){ return (v===null || v===undefined || v==='' || isNaN(v)) ? '—' : new Intl.NumberFormat('it-IT', { style:'currency', currency:'EUR', useGrouping:'always' }).format(v); }
+function fmtNum(v){ return (v===null || v===undefined || v==='' || isNaN(v)) ? '' : new Intl.NumberFormat('it-IT', { minimumFractionDigits:2, maximumFractionDigits:2, useGrouping:'always' }).format(v); }
+// "12.345,67" / "12345.67" / "12.345" / "€ 1.200" -> numero; '' -> null; testo non valido -> NaN
+function parseEuro(s){
+  s = String(s||'').replace(/[€\s]/g,'');
+  if(!s) return null;
+  if(s.includes(',')) s = s.replace(/\./g,'').replace(',', '.');
+  else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g,'');
+  const n = Number(s);
+  return isFinite(n) ? Math.round(n*100)/100 : NaN;
+}
+function projectsOfContact(contactId){ return projects.filter(p=>(p.partecipanti||[]).some(x=>x.contactId===contactId)); }
+function phaseBadge(p){
+  const ph = projectPhase(p);
+  return `<span class="phase-badge ${ph && ph.key==='cantiereFinito' ? 'done' : ''}">${ph ? esc(ph.label) : 'Da avviare'}</span>`;
+}
+function guessRole(c){
+  const pr = normName(c.professione);
+  return pr==='architetto' ? 'Progettazione architettonica' : pr==='ingegnere' ? 'Progettazione strutturale' : '';
+}
+function openProject(id){ selectedProjectId = id; confirmDeleteProjectId = null; tableDetailCallId = null; view = 'projectDetail'; setActiveTab('navProjects'); renderMain(); }
+
+// ---- elenco progetti ----
+function projectsListHtml(){
+  const q = normName(projectsSearch);
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const list = projects.filter(p=>{
+    if(projectsPhaseFilter){ const ph = projectPhase(p); if((ph ? ph.key : 'none')!==projectsPhaseFilter) return false; }
+    if(!q) return true;
+    const people = (p.partecipanti||[]).map(x=>{ const c = byId[x.contactId]; return c ? fullName(c)+' '+(c.azienda||'') : ''; });
+    return normName([p.codice, p.nome, p.via, p.citta, ...people].join(' ')).includes(q);
+  }).sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
+  if(!list.length) return `<div class="empty">${projects.length ? 'Nessun progetto corrisponde alla ricerca.' : 'Nessun progetto: crea il primo con "+ Nuovo progetto".'}</div>`;
+  return list.map(p=>{
+    const people = (p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).map(fullName);
+    return `<div class="card" data-project-id="${p.id}" style="cursor:pointer;">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="min-width:0;flex:1 1 220px;">
+          <div class="proj-code">${esc(p.codice||'')}</div>
+          <div class="name-link" style="font-weight:600;font-size:15px;">${esc(p.nome || 'Progetto senza nome')}</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc([p.via, p.citta].filter(Boolean).join(', '))}${people.length ? `${p.via||p.citta ? ' · ' : ''}${esc(people.slice(0,3).join(', '))}${people.length>3 ? ' e altri' : ''}` : ''}</div>
+        </div>
+        <div style="text-align:right;">
+          ${phaseBadge(p)}
+          <div style="font-weight:600;margin-top:6px;">${fmtEuro(projectAmount(p))}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function projectsListView(){
+  const sum = keyFn=>projects.filter(keyFn).reduce((s,p)=>s+(Number(projectAmount(p))||0), 0);
+  const inOfferta = sum(p=>phaseDone(p, 'offertaPresentata') && !phaseDone(p, 'confermaOrdine'));
+  const confermati = sum(p=>phaseDone(p, 'confermaOrdine'));
+  return `<h2 style="margin-bottom:6px;">Progetti (${projects.length})</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Offerte presentate in attesa: <strong style="color:var(--text);">${fmtEuro(inOfferta)}</strong> · Ordini confermati: <strong style="color:var(--text);">${fmtEuro(confermati)}</strong></div>
+    <div class="card" style="padding:14px 16px;">
+      <div class="field-row" style="grid-template-columns:2fr 1fr;">
+        <div><label>Cerca</label><input id="projSearch" value="${esc(projectsSearch)}" placeholder="ID, nome, città, cliente..."></div>
+        <div><label>Fase</label><select id="projPhaseFilter">
+          <option value="">Tutte</option>
+          <option value="none" ${projectsPhaseFilter==='none'?'selected':''}>Da avviare</option>
+          ${PROJECT_PHASES.map(ph=>`<option value="${ph.key}" ${projectsPhaseFilter===ph.key?'selected':''}>${esc(ph.label)}</option>`).join('')}
+        </select></div>
+      </div>
+      <button class="btn" id="newProjectBtn" style="margin-top:4px;">+ Nuovo progetto</button>
+    </div>
+    <div id="projList">${projectsListHtml()}</div>`;
+}
+function bindProjectsList(){
+  const bindCards = ()=>document.querySelectorAll('#projList [data-project-id]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.projectId)));
+  bindCards();
+  document.getElementById('projSearch').addEventListener('input', e=>{
+    projectsSearch = e.target.value;
+    document.getElementById('projList').innerHTML = projectsListHtml();
+    bindCards();
+  });
+  document.getElementById('projPhaseFilter').addEventListener('change', e=>{ projectsPhaseFilter = e.target.value; renderMain(); });
+  document.getElementById('newProjectBtn').addEventListener('click', ()=>{ window.__editingProject = { partecipanti:[] }; view = 'projectForm'; renderMain(); });
+}
+
+// ---- modulo nuovo / modifica progetto ----
+function contactLabel(c){ return fullName(c) + (c.azienda ? ' · '+c.azienda : ''); }
+function participantRowHtml(x){
+  const c = x && x.contactId ? contacts.find(k=>k.id===x.contactId) : null;
+  return `<div class="part-row">
+    <input class="part-contact" list="projContactsList" value="${c ? esc(contactLabel(c)) : ''}" placeholder="Scrivi per cercare tra i contatti">
+    <select class="part-role"><option value="">— ruolo —</option>${PROJECT_ROLES.map(r=>`<option ${x && x.ruolo===r ? 'selected' : ''}>${r}</option>`).join('')}</select>
+    <button class="btn secondary small part-del" type="button" aria-label="Rimuovi">&times;</button>
+  </div>`;
+}
+function projectFormView(){
+  const p = window.__editingProject || {};
+  const isNew = !p.id;
+  const parts = (p.partecipanti && p.partecipanti.length) ? p.partecipanti : [{}];
+  return `<div class="top-actions" style="justify-content:space-between;"><button class="btn secondary small" id="projFormCancelTop">← Annulla</button></div>
+    <div class="card">
+      <h3>${isNew ? 'Nuovo progetto' : 'Modifica progetto'}</h3>
+      <div class="field-row">
+        <div><label>ID progetto * (7 cifre)</label><input id="fPCodice" inputmode="numeric" maxlength="7" value="${esc(p.codice||'')}" placeholder="es. 4798381"></div>
+        <div><label>Nome del progetto</label><input id="fPNome" value="${esc(p.nome||'')}" placeholder="es. Terrazze E-Green"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Indirizzo</label><input id="fPVia" value="${esc(p.via||'')}" placeholder="es. Via Bellardi 12"></div>
+        <div><label>Città</label><input id="fPCitta" value="${esc(p.citta||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Importo offerta (€)</label><input id="fPImporto" inputmode="decimal" value="${esc(fmtNum(p.importoOfferta))}" placeholder="es. 12.500,00"></div>
+        <div><label>Link al PDF dell'offerta</label><input id="fPUrl" type="url" value="${esc(p.offertaUrl||'')}" placeholder="https://… (OneDrive, SharePoint…)"></div>
+      </div>
+      ${isNew ? `<div class="field-row"><div><label>Data della richiesta</label><input type="date" id="fPRichiesta" value="${todayISO()}"></div><div></div></div>` : ''}
+      <label style="margin-top:6px;">Figure coinvolte</label>
+      <div id="fPParts">${parts.map(participantRowHtml).join('')}</div>
+      <button class="btn secondary small" type="button" id="fPAddPart">+ Aggiungi figura</button>
+      <datalist id="projContactsList">${[...contacts].sort((a,b)=>fullName(a).localeCompare(fullName(b))).map(c=>`<option value="${esc(contactLabel(c))}"></option>`).join('')}</datalist>
+      <label style="margin-top:12px;">Note</label>
+      <textarea id="fPNote">${esc(p.note||'')}</textarea>
+      <div id="projFormErr" style="color:var(--danger);font-size:13px;margin-top:8px;"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn" id="saveProjectBtn">Salva progetto</button>
+        <button class="btn secondary" id="projFormCancel">Annulla</button>
+      </div>
+    </div>`;
+}
+function bindProjectForm(){
+  const p = window.__editingProject || {};
+  const cancel = ()=>{ window.__editingProject = null; view = p.id ? 'projectDetail' : (p.fromContactId ? 'detail' : 'projects'); if(p.fromContactId){ selectedId = p.fromContactId; setActiveTab('navContacts'); } renderMain(); };
+  document.getElementById('projFormCancel').addEventListener('click', cancel);
+  document.getElementById('projFormCancelTop').addEventListener('click', cancel);
+  const box = document.getElementById('fPParts');
+  box.addEventListener('click', e=>{ const b = e.target.closest('.part-del'); if(b){ b.closest('.part-row').remove(); } });
+  document.getElementById('fPAddPart').addEventListener('click', ()=>{ box.insertAdjacentHTML('beforeend', participantRowHtml({})); box.lastElementChild.querySelector('.part-contact').focus(); });
+  document.getElementById('fPCodice').addEventListener('input', e=>{ e.target.value = e.target.value.replace(/\D/g,'').slice(0,7); });
+  document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
+}
+async function saveProject(){
+  const p = window.__editingProject || {};
+  const err = msg=>{ document.getElementById('projFormErr').textContent = msg; };
+  const codice = document.getElementById('fPCodice').value.trim();
+  if(!/^\d{7}$/.test(codice)) return err('L\'ID progetto deve essere di 7 cifre.');
+  const dup = projects.find(x=>x.codice===codice && x.id!==p.id);
+  if(dup) return err(`Esiste già un progetto con ID ${codice}${dup.nome ? ' ('+dup.nome+')' : ''}.`);
+  const importo = parseEuro(document.getElementById('fPImporto').value);
+  if(Number.isNaN(importo)) return err('Importo dell\'offerta non valido (es. 12.500,00).');
+  const byLabel = new Map(contacts.map(c=>[normName(contactLabel(c)), c.id]));
+  const partecipanti = [], problems = [];
+  document.querySelectorAll('#fPParts .part-row').forEach(row=>{
+    const txt = row.querySelector('.part-contact').value.trim();
+    const ruolo = row.querySelector('.part-role').value;
+    if(!txt) return;
+    const id = byLabel.get(normName(txt));
+    if(!id) problems.push(`"${txt}" non è nell'elenco contatti (sceglilo dai suggerimenti o crealo prima in Contatti)`);
+    else if(!ruolo) problems.push(`indica il ruolo di ${txt}`);
+    else partecipanti.push({ contactId:id, ruolo });
+  });
+  if(problems.length) return err(problems.join('; ')+'.');
+  const data = {
+    codice, nome: document.getElementById('fPNome').value.trim(),
+    via: document.getElementById('fPVia').value.trim(), citta: document.getElementById('fPCitta').value.trim(),
+    importoOfferta: importo, offertaUrl: document.getElementById('fPUrl').value.trim(),
+    note: document.getElementById('fPNote').value.trim(), partecipanti, updatedAt: Date.now()
+  };
+  try{
+    if(p.id){ await db.collection('projects').doc(p.id).update(data); selectedProjectId = p.id; }
+    else{
+      const rich = document.getElementById('fPRichiesta').value;
+      const ref = await db.collection('projects').add({ ...data, fasi: rich ? { richiesta: rich } : {}, importoDeliberato: null, createdAt: Date.now() });
+      selectedProjectId = ref.id;
+    }
+    window.__editingProject = null; view = 'projectDetail'; setActiveTab('navProjects'); renderMain();
+  }catch(e){ err('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+
+// ---- scheda progetto con timeline ----
+function projectDetailView(){
+  const p = projects.find(x=>x.id===selectedProjectId);
+  if(!p) return '<div class="empty">Progetto non trovato.</div>';
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const f = p.fasi || {};
+  const linked = calls.filter(k=>(k.progetti||[]).includes(p.id)).sort((a,b)=>(b.appuntamento||b.data||'').localeCompare(a.appuntamento||a.data||''));
+  const today = todayISO();
+  const deliberatoDaConfermare = f.confermaOrdine && p.importoDeliberato==null;
+  return `<div class="top-actions" style="justify-content:space-between;">
+      <button class="btn secondary small" id="projBackBtn">← Progetti</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${confirmDeleteProjectId===p.id ? `
+          <span style="color:var(--danger);font-size:13px;font-weight:600;align-self:center;">Eliminare il progetto ${esc(p.codice)}?</span>
+          <button class="btn small" id="projDeleteConfirmBtn" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì, elimina</button>
+          <button class="btn secondary small" id="projDeleteCancelBtn">Annulla</button>` : `
+          <button class="btn secondary small" id="projEditBtn">Modifica</button>
+          <button class="btn small" id="projDeleteBtn" style="background:var(--danger);border-color:var(--danger);color:#fff;">Elimina</button>`}
+      </div>
+    </div>
+    <div class="card">
+      <div class="proj-code">ID ${esc(p.codice||'')}</div>
+      <h2>${esc(p.nome || 'Progetto senza nome')}</h2>
+      ${p.via||p.citta ? `<div style="font-size:14px;margin-top:2px;"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc([p.via, p.citta].filter(Boolean).join(', '))} · Indicazioni</a></div>` : ''}
+      <div style="margin-top:10px;">${phaseBadge(p)}</div>
+      <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:12px;">
+        <div><label>Importo offerta</label><div style="font-size:16px;font-weight:600;">${fmtEuro(p.importoOfferta)}</div></div>
+        <div><label>Importo deliberato</label><div style="font-size:16px;font-weight:600;">${f.confermaOrdine ? (p.importoDeliberato!=null ? fmtEuro(p.importoDeliberato) : '<span style="color:var(--danger);font-size:13px;">da confermare</span>') : '—'}</div></div>
+        ${p.offertaUrl ? `<div><label>Offerta</label><div style="font-size:14px;"><a href="${esc(p.offertaUrl)}" target="_blank" rel="noopener" class="addr-link">Apri il PDF dell'offerta</a></div></div>` : ''}
+      </div>
+      ${p.note ? `<div style="margin-top:10px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(p.note)}</div>` : ''}
+    </div>
+    <div class="card">
+      <h3>Figure coinvolte (${(p.partecipanti||[]).length})</h3>
+      ${(p.partecipanti||[]).length ? (p.partecipanti||[]).map(x=>{ const c = byId[x.contactId];
+        return `<div class="mini-row" ${c ? `data-contact-id="${c.id}"` : ''} style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <span>${c ? `<span class="name-link" style="font-weight:600;">${esc(fullName(c))}</span>${c.azienda ? ` <span style="color:var(--muted);">· ${esc(c.azienda)}</span>` : ''}` : '<span style="color:var(--muted);">(contatto eliminato)</span>'}</span>
+          <span style="color:var(--muted);">${esc(x.ruolo||'')}</span>
+          ${c && (c.cellulare||c.telefono) ? `<span style="flex-basis:100%;">${phoneLinks(c,'font-size:12.5px;')}</span>` : ''}
+        </div>`; }).join('') : '<div class="empty">Nessuna figura: aggiungile con "Modifica".</div>'}
+    </div>
+    <div class="card">
+      <h3>Fasi del progetto</h3>
+      <ol class="timeline">
+        ${PROJECT_PHASES.map(ph=>{ const d = f[ph.key] || ''; return `<li class="${d ? (d>today ? 'planned' : 'done') : ''}">
+          <span class="dot"></span>
+          <div><div class="ph-label">${esc(ph.label)}</div>${ph.owner ? `<div class="ph-owner">a cura di ${esc(ph.owner)}</div>` : ''}${d && d>today ? '<div class="ph-owner">prevista</div>' : ''}</div>
+          <div class="ph-date"><input type="date" data-phase="${ph.key}" value="${d}">${d ? '' : `<button class="btn secondary small" data-phase-today="${ph.key}">Oggi</button>`}</div>
+          ${ph.key==='confermaOrdine' && d ? `<div class="ph-extra">
+            <label>Importo deliberato (€)</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input id="projDeliberato" inputmode="decimal" style="max-width:180px;" value="${esc(fmtNum(p.importoDeliberato!=null ? p.importoDeliberato : p.importoOfferta))}">
+              <button class="btn small" id="projDeliberatoBtn">${deliberatoDaConfermare ? 'Conferma importo' : 'Aggiorna importo'}</button>
+              ${deliberatoDaConfermare ? '<span style="font-size:12.5px;color:var(--danger);">conferma o modifica l\'importo dell\'offerta</span>' : ''}
+            </div>
+            <div id="projDeliberatoErr" style="color:var(--danger);font-size:12.5px;"></div>
+          </div>` : ''}
+        </li>`; }).join('')}
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Incontri collegati (${linked.length})</h3>
+      ${linked.length ? linked.map(k=>{ const c = byId[k.contactId]||{}; return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
+        <span class="date">${k.appuntamento ? fmtDateTime(k.appuntamento) : fmtDate(k.data)}</span> ${k.consegnaOfferta ? '<span class="esito-tag appt">Consegna offerta</span>' : ''}
+        <div style="font-weight:600;font-size:14px;margin-top:4px;">${esc(fullName(c))}</div>
+        ${k.noteIncontro||k.note ? `<div style="font-size:13px;color:var(--muted);">${esc(k.noteIncontro||k.note)}</div>` : ''}
+      </div>`; }).join('') : '<div class="empty">Nessun incontro collegato. Quando registri una chiamata con appuntamento puoi scegliere questo progetto.</div>'}
+    </div>`;
+}
+async function setProjectPhase(p, key, date){
+  const fasi = { ...(p.fasi||{}) };
+  if(date) fasi[key] = date; else delete fasi[key];
+  const upd = { fasi, updatedAt: Date.now() };
+  if(key==='confermaOrdine' && !date) upd.importoDeliberato = null;
+  await db.collection('projects').doc(p.id).update(upd);
+}
+function bindProjectDetail(){
+  const p = projects.find(x=>x.id===selectedProjectId);
+  document.getElementById('projBackBtn')?.addEventListener('click', ()=>{ view = 'projects'; renderMain(); });
+  if(!p) return;
+  const fail = e=>alert('Errore nel salvataggio: '+(e.message||e.code||''));
+  document.getElementById('projEditBtn')?.addEventListener('click', ()=>{ window.__editingProject = { ...p }; view = 'projectForm'; renderMain(); });
+  document.getElementById('projDeleteBtn')?.addEventListener('click', ()=>{ confirmDeleteProjectId = p.id; renderMain(); });
+  document.getElementById('projDeleteCancelBtn')?.addEventListener('click', ()=>{ confirmDeleteProjectId = null; renderMain(); });
+  document.getElementById('projDeleteConfirmBtn')?.addEventListener('click', async ()=>{
+    try{ await db.collection('projects').doc(p.id).delete(); confirmDeleteProjectId = null; selectedProjectId = null; view = 'projects'; renderMain(); }catch(e){ fail(e); }
+  });
+  document.querySelectorAll('#main [data-phase]').forEach(inp=>inp.addEventListener('change', ()=>setProjectPhase(p, inp.dataset.phase, inp.value).catch(fail)));
+  document.querySelectorAll('#main [data-phase-today]').forEach(b=>b.addEventListener('click', ()=>setProjectPhase(p, b.dataset.phaseToday, todayISO()).catch(fail)));
+  document.getElementById('projDeliberatoBtn')?.addEventListener('click', async ()=>{
+    const v = parseEuro(document.getElementById('projDeliberato').value);
+    if(v===null || Number.isNaN(v)){ document.getElementById('projDeliberatoErr').textContent = 'Importo non valido (es. 12.500,00).'; return; }
+    try{ await db.collection('projects').doc(p.id).update({ importoDeliberato: v, updatedAt: Date.now() }); }catch(e){ fail(e); }
+  });
+  document.querySelectorAll('#main .mini-row[data-contact-id]').forEach(el=>el.addEventListener('click', e=>{
+    if(e.target.closest('a')) return;
+    selectedId = el.dataset.contactId; view = 'detail'; confirmDeleteId = null; setActiveTab('navContacts'); renderMain();
+  }));
+  document.querySelectorAll('#main [data-appt-call-id]').forEach(el=>el.addEventListener('click', ()=>{ tableDetailCallId = el.dataset.apptCallId; renderMain(); }));
+}
+
+// ---- progetti nella scheda del contatto ----
+function contactProjectsHtml(c){
+  const list = projectsOfContact(c.id);
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <h3 style="margin:0;">Progetti (${list.length})</h3>
+      <button class="btn secondary small" id="newProjectForContactBtn">+ Nuovo progetto</button>
+    </div>
+    ${list.length ? `<div class="table-wrap"><table class="calls-table">
+      <thead><tr><th>ID</th><th>Progetto</th><th>Ruolo</th><th>Fase</th><th>Importo</th></tr></thead>
+      <tbody>${list.map(p=>`<tr data-project-id="${p.id}" style="cursor:pointer;">
+        <td style="font-family:var(--mono);">${esc(p.codice||'')}</td>
+        <td>${esc(p.nome||'—')}${p.citta ? `<div style="font-size:11.5px;color:var(--muted);">${esc(p.citta)}</div>` : ''}</td>
+        <td>${esc(((p.partecipanti||[]).find(x=>x.contactId===c.id)||{}).ruolo||'')}</td>
+        <td>${phaseBadge(p)}</td>
+        <td style="white-space:nowrap;">${fmtEuro(projectAmount(p))}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div class="empty" style="padding:4px 0;">Nessun progetto collegato.</div>'}
+  </div>`;
+}
+function bindContactProjects(c){
+  document.querySelectorAll('#main tr[data-project-id]').forEach(tr=>tr.addEventListener('click', ()=>openProject(tr.dataset.projectId)));
+  document.getElementById('newProjectForContactBtn')?.addEventListener('click', ()=>{
+    window.__editingProject = { partecipanti:[{ contactId:c.id, ruolo:guessRole(c) }], fromContactId:c.id };
+    view = 'projectForm'; setActiveTab('navProjects'); renderMain();
+  });
+}
+
+// ---- progetto dell'incontro nella registrazione della chiamata ----
+function apptProjectsHtml(contactId){
+  const list = projectsOfContact(contactId).filter(p=>!(p.fasi && p.fasi.cantiereFinito));
+  if(!list.length) return '<div style="font-size:12.5px;color:var(--muted);margin-top:6px;">Nessun progetto aperto collegato a questo cliente.</div>';
+  return `<div style="margin-top:8px;">
+    <label>Progetto dell'incontro</label>
+    ${list.map(p=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin:4px 0;"><input type="checkbox" data-appt-project value="${p.id}" style="width:auto;">${esc(projectTitle(p))} <span style="color:var(--muted);font-size:12px;">· ${esc((projectPhase(p)||{label:'Da avviare'}).label)}</span></label>`).join('')}
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin-top:8px;"><input type="checkbox" data-appt-offer style="width:auto;">Consegno l'offerta (segna "Offerta presentata")</label>
+  </div>`;
+}
+function readApptProjects(appuntamento){
+  if(!appuntamento) return { progetti:[], consegnaOfferta:false };
+  const ids = [...document.querySelectorAll('#main [data-appt-project]:checked')].map(e=>e.value);
+  const offer = !!document.querySelector('#main [data-appt-offer]:checked');
+  return { progetti: ids, consegnaOfferta: offer && ids.length>0 };
+}
+async function markOfferPresented(sel, appuntamento){
+  if(!sel.consegnaOfferta) return;
+  const date = appuntamento.slice(0,10);
+  for(const id of sel.progetti){
+    const p = projects.find(x=>x.id===id);
+    if(p) await db.collection('projects').doc(id).update({ fasi: { ...(p.fasi||{}), offertaPresentata: date }, updatedAt: Date.now() });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2050,6 +2440,7 @@ function renderCallFlow(){
           <div><label>Data</label><input type="date" id="qcApptDate"></div>
           <div><label>Ora</label><select id="qcApptTime">${timeOptions('')}</select></div>
         </div>
+        ${apptProjectsHtml(c.id)}
       </div>
       <div style="margin-top:10px;"></div>
       <label>Follow up</label>
@@ -2093,7 +2484,9 @@ async function saveQuickCall(){
   const mail = readCallMailFields('qcEmail', 'qcMailCheck');
   if(!mail) return;
   try{
-    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', createdAt: Date.now() });
+    const apptProj = readApptProjects(appuntamento);
+    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() });
+    await markOfferPresented(apptProj, appuntamento);
     await db.collection('contacts').doc(selectedId).update(contactUpdateAfterCall(selectedId, followUp, mail.email));
     selectedId=null; callStep='pick'; renderCallFlow();
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
@@ -2189,6 +2582,7 @@ function tableDetailView(){
         ${k.esito?`<div><label>Esito</label><div style="font-size:14px;">${esc(k.esito)}</div></div>`:''}
         ${k.progetto?`<div><label>Progetto</label><div style="font-size:14px;">${esc(k.progetto)}</div></div>`:''}
         ${k.appuntamento?`<div><label>Appuntamento</label><div style="font-size:14px;">${fmtDateTime(k.appuntamento)}</div></div>`:''}
+        ${(k.progetti||[]).length ? `<div><label>Progetti</label><div style="font-size:14px;">${k.progetti.map(id=>{ const pr = projects.find(x=>x.id===id); return pr ? `<a href="#" class="addr-link" data-open-project="${pr.id}">${esc(projectTitle(pr))}</a>` : ''; }).filter(Boolean).join('<br>')}${k.consegnaOfferta ? ' <span class="esito-tag appt">Consegna offerta</span>' : ''}</div></div>` : ''}
         ${k.mailDaInviare?`<div><label>Mail informativa</label><div style="font-size:14px;">${k.mailInviataIl ? `inviata il ${fmtDate(k.mailInviataIl)}` : `<span style="color:var(--danger);font-weight:600;">da inviare</span> <button class="btn secondary small" id="markMailSentBtn" style="margin-left:6px;">Segna come inviata</button>`}</div></div>`:''}
       </div>
       <div style="margin-top:14px;">
@@ -2254,6 +2648,7 @@ function bindTableDetail(){
     renderMain();
   };
   document.getElementById('openCallContactBtn')?.addEventListener('click', openContact);
+  document.querySelectorAll('#main [data-open-project]').forEach(a=>a.addEventListener('click', e=>{ e.preventDefault(); openProject(a.dataset.openProject); }));
   document.getElementById('markMailSentBtn')?.addEventListener('click', async ()=>{
     try{ await db.collection('calls').doc(tableDetailCallId).update({ mailInviataIl: todayISO() }); }
     catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
@@ -2551,7 +2946,9 @@ async function saveCall(){
   const mail = readCallMailFields('callEmail', 'callMailCheck');
   if(!mail) return;
   try{
-    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', createdAt: Date.now() });
+    const apptProj = readApptProjects(appuntamento);
+    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() });
+    await markOfferPresented(apptProj, appuntamento);
     await db.collection('contacts').doc(selectedId).update(contactUpdateAfterCall(selectedId, followUp, mail.email));
     document.getElementById('callNote').value='';
     document.getElementById('callMailCheck').checked = false;
@@ -2628,7 +3025,7 @@ function followUpBadge(dateStr, big){
   return `<span class="followup ${due?'due':'ok'}" style="${big?'display:inline-block;':''}">${label}</span>`;
 }
 
-const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navTable','navDashboard'];
+const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navTable','navDashboard'];
 function setActiveTab(id){
   NAV_TABS.forEach(t=>document.getElementById(t).classList.toggle('active', t===id));
   const title = document.getElementById('topbarTitle');
@@ -2665,6 +3062,11 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{ firebase.au
 document.getElementById('navAgenda').addEventListener('click', ()=>{
   view='agenda'; tableDetailCallId=null;
   setActiveTab('navAgenda');
+  renderMain();
+});
+document.getElementById('navProjects').addEventListener('click', ()=>{
+  view='projects'; tableDetailCallId=null;
+  setActiveTab('navProjects');
   renderMain();
 });
 document.getElementById('navContacts').addEventListener('click', ()=>{

@@ -75,6 +75,17 @@ Campi principali:
   `callEditView`). Dashboard → "Clienti" (`clientStatuses`): conta clienti, non chiamate;
   "non raggiunto" = solo esiti in `ESITI_NON_RAGGIUNTO`; chiamate senza esito contano
   come raggiunto; un appuntamento implica raggiunto.
+- **projects** (sezione tecnica, voce di menu "Progetti"): codice (ID progetto, 7 cifre,
+  unico), nome, via, citta, partecipanti [{contactId, ruolo}] (ruoli in `PROJECT_ROLES`),
+  importoOfferta, importoDeliberato (chiesto alla conferma d'ordine, precompilato con
+  l'offerta), offertaUrl (link al PDF; niente upload: Firebase Storage richiederebbe il
+  piano a consumo), note, fasi {chiave: 'YYYY-MM-DD'} secondo `PROJECT_PHASES`
+  (propostaTecnica a cura di Michael, offertaEconomica di Claudia), createdAt, updatedAt.
+  Fase attuale = ultima fase con data <= oggi (`phaseDone`); le date future sono
+  "previste". Nelle chiamate: `progetti` [projectId] e `consegnaOfferta` (scelti
+  registrando una chiamata con appuntamento) → `markOfferPresented` segna
+  offertaPresentata con la data dell'incontro. `canAutoRender()` evita che gli
+  aggiornamenti in tempo reale ridisegnino i moduli mentre si scrive.
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
