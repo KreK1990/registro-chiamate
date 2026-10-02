@@ -1736,13 +1736,16 @@ function bindContactProjects(c){
 }
 
 // ---- progetto dell'incontro nella registrazione della chiamata ----
-function apptProjectsHtml(contactId){
-  const list = projectsOfContact(contactId).filter(p=>!isLost(p) && !(p.fasi && p.fasi.cantiereFinito));
+// selected / consegna: per la modifica di un appuntamento gia' registrato (i progetti gia'
+// collegati restano in elenco anche se nel frattempo chiusi o persi).
+function apptProjectsHtml(contactId, selected, consegna){
+  const sel = selected || [];
+  const list = projectsOfContact(contactId).filter(p=>sel.includes(p.id) || (!isLost(p) && !(p.fasi && p.fasi.cantiereFinito)));
   if(!list.length) return '<div style="font-size:12.5px;color:var(--muted);margin-top:6px;">Nessun progetto aperto collegato a questo cliente.</div>';
   return `<div style="margin-top:8px;">
     <label>Progetto dell'incontro</label>
-    ${list.map(p=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin:4px 0;"><input type="checkbox" data-appt-project value="${p.id}" style="width:auto;">${esc(projectTitle(p))} <span style="color:var(--muted);font-size:12px;">· ${esc((projectPhase(p)||{label:'Da avviare'}).label)}</span></label>`).join('')}
-    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin-top:8px;"><input type="checkbox" data-appt-offer style="width:auto;">Consegno l'offerta (segna "Offerta presentata")</label>
+    ${list.map(p=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin:4px 0;"><input type="checkbox" data-appt-project value="${p.id}" style="width:auto;" ${sel.includes(p.id) ? 'checked' : ''}>${esc(projectTitle(p))} <span style="color:var(--muted);font-size:12px;">· ${isLost(p) ? 'Persa' : esc((projectPhase(p)||{label:'Da avviare'}).label)}</span></label>`).join('')}
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin-top:8px;"><input type="checkbox" data-appt-offer style="width:auto;" ${consegna ? 'checked' : ''}>Consegno l'offerta (segna "Offerta presentata")</label>
   </div>`;
 }
 function readApptProjects(appuntamento){
@@ -1756,7 +1759,9 @@ async function markOfferPresented(sel, appuntamento){
   const date = appuntamento.slice(0,10);
   for(const id of sel.progetti){
     const p = projects.find(x=>x.id===id);
-    if(p) await db.collection('projects').doc(id).update({ fasi: { ...(p.fasi||{}), offertaPresentata: date }, updatedAt: Date.now() });
+    const prev = p && p.fasi && p.fasi.offertaPresentata;
+    // se l'offerta risulta gia' presentata in una data precedente, quella resta
+    if(p && (!prev || date < prev)) await db.collection('projects').doc(id).update({ fasi: { ...(p.fasi||{}), offertaPresentata: date }, updatedAt: Date.now() });
   }
 }
 
@@ -3063,6 +3068,7 @@ function callEditView(k,c){
           <div><label>Data</label><input type="date" id="ecApptDate" value="${splitDT(k.appuntamento).date}"></div>
           <div><label>Ora</label><select id="ecApptTime">${timeOptions(splitDT(k.appuntamento).time)}</select></div>
         </div>
+        ${apptProjectsHtml(c.id, k.progetti||[], !!k.consegnaOfferta)}
         <label style="margin-top:10px;">Note dell'incontro</label>
         <textarea id="ecNoteIncontro" placeholder="Come è andato l'incontro...">${esc(k.noteIncontro||'')}</textarea>
       </div>
@@ -3121,7 +3127,9 @@ async function saveCallEdit(){
   if(!data){ alert('Inserisci la data.'); return; }
   try{
     const k = calls.find(x=>x.id===tableDetailCallId);
-    await db.collection('calls').doc(tableDetailCallId).update({ data, esito, progetto, note, appuntamento, noteIncontro });
+    const apptProj = readApptProjects(appuntamento);
+    await db.collection('calls').doc(tableDetailCallId).update({ data, esito, progetto, note, appuntamento, noteIncontro, progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta });
+    await markOfferPresented(apptProj, appuntamento);
     if(k) await db.collection('contacts').doc(k.contactId).update({ followUp });
     editingCallId=null; renderMain();
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
