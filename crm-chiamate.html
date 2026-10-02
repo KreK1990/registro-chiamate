@@ -961,6 +961,7 @@ function projectDetailView(){
           </div>` : ''}
         </li>`; }).join('')}
       </ol>
+      <div id="phaseErr" style="color:var(--danger);font-size:13px;"></div>
     </div>
     <div class="card">
       <h3>Incontri collegati (${linked.length})</h3>
@@ -989,7 +990,29 @@ function bindProjectDetail(){
   document.getElementById('projDeleteConfirmBtn')?.addEventListener('click', async ()=>{
     try{ await db.collection('projects').doc(p.id).delete(); confirmDeleteProjectId = null; selectedProjectId = null; view = 'projects'; renderMain(); }catch(e){ fail(e); }
   });
-  document.querySelectorAll('#main [data-phase]').forEach(inp=>inp.addEventListener('change', ()=>setProjectPhase(p, inp.dataset.phase, inp.value).catch(fail)));
+  // Date della timeline: mentre si scrive l'anno a mano il campo produce date intermedie
+  // (0002, 0020, 0202...), quindi si salva solo all'uscita dal campo o dopo una pausa,
+  // e solo con un anno plausibile; altrimenti si torna al valore salvato.
+  const phaseErr = msg=>{ const el = document.getElementById('phaseErr'); if(el) el.textContent = msg; };
+  const validDate = v=>/^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0,4)>=2000 && +v.slice(0,4)<=2100;
+  document.querySelectorAll('#main [data-phase]').forEach(inp=>{
+    let timer = null;
+    const commit = ()=>{
+      clearTimeout(timer);
+      const cur = projects.find(x=>x.id===selectedProjectId);
+      if(!cur) return;
+      const saved = (cur.fasi||{})[inp.dataset.phase] || '';
+      if(inp.value===saved) return;
+      if(inp.value && !validDate(inp.value)){ phaseErr('Data non valida: controlla l\'anno (es. 2026).'); inp.value = saved; return; }
+      phaseErr('');
+      setProjectPhase(cur, inp.dataset.phase, inp.value).catch(fail);
+    };
+    inp.addEventListener('change', ()=>{
+      clearTimeout(timer);
+      if(!inp.value || validDate(inp.value)) timer = setTimeout(()=>{ if(document.activeElement!==inp || validDate(inp.value)) commit(); }, 1200);
+    });
+    inp.addEventListener('blur', commit);
+  });
   document.querySelectorAll('#main [data-phase-today]').forEach(b=>b.addEventListener('click', ()=>setProjectPhase(p, b.dataset.phaseToday, todayISO()).catch(fail)));
   document.getElementById('projDeliberatoBtn')?.addEventListener('click', async ()=>{
     const v = parseEuro(document.getElementById('projDeliberato').value);
