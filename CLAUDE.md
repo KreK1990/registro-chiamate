@@ -79,7 +79,10 @@ Campi principali:
   unico), nome, via, citta, partecipanti [{contactId, ruolo}] (ruoli in `PROJECT_ROLES`, compreso Termotecnico),
   importoOfferta, importoDeliberato (chiesto alla conferma d'ordine, precompilato con
   l'offerta), offertaUrl (link al PDF; niente upload: Firebase Storage richiederebbe il
-  piano a consumo), note, fasi {chiave: 'YYYY-MM-DD'} secondo `PROJECT_PHASES`
+  piano a consumo), ordini [{id, data, numero, importo, consegna, note}] (consegne
+  parziali: il primo ordine segna confermaOrdine e la prima consegna passata merceCantiere
+  se vuote; `projectAmount` per le confermate = max(deliberato o offerta, totale ordinato)),
+  note, fasi {chiave: 'YYYY-MM-DD'} secondo `PROJECT_PHASES`
   (propostaTecnica a cura di Michael, offertaEconomica di Claudia), createdAt, updatedAt.
   Fase attuale = ultima fase con data <= oggi (`phaseDone`); le date future sono
   "previste". L'elenco si apre filtrato su "In corso" (`projectsPhaseFilter = 'open'`). Commessa persa: esito 'persa', persaIl, motivoPerdita (`LOSS_REASONS`),
