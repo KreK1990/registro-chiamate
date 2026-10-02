@@ -224,6 +224,9 @@ details[open] > summary .part-toggle::before{content:"\25BE  ";}
 .order-form{background:var(--bg);padding:10px 12px;border-radius:2px;margin:8px 0;}
 .appt-search{display:flex;gap:8px;align-items:center;margin:0 0 14px;}
 .appt-search input{flex:1;}
+.proj-chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);padding:4px 4px 4px 9px;border-radius:2px;font-size:13px;font-weight:600;margin:0 6px 6px 0;}
+.proj-chip button{border:none;background:transparent;color:inherit;font-size:17px;line-height:1;cursor:pointer;padding:0 5px;}
+.appt-proj-chips:empty{display:none;}
 
 
 .imp-map label{margin:0;font-size:13px;color:var(--text);}
@@ -1745,21 +1748,72 @@ function bindContactProjects(c){
 }
 
 // ---- progetto dell'incontro nella registrazione della chiamata ----
-// selected / consegna: per la modifica di un appuntamento gia' registrato (i progetti gia'
-// collegati restano in elenco anche se nel frattempo chiusi o persi).
+// Progetti dell'incontro: ricerca con aggiunta (etichette rimovibili), su tutti i progetti
+// non persi; a campo vuoto propone quelli in cui il cliente e' coinvolto.
+// selected / consegna: per la modifica di un appuntamento gia' registrato.
+function projChipHtml(p){
+  return `<span class="proj-chip" data-appt-sel="${p.id}">${esc(projectTitle(p))}<button type="button" data-unpick aria-label="Togli">&times;</button></span>`;
+}
 function apptProjectsHtml(contactId, selected, consegna){
-  const sel = selected || [];
-  const list = projectsOfContact(contactId).filter(p=>sel.includes(p.id) || (!isLost(p) && !(p.fasi && p.fasi.cantiereFinito)));
-  if(!list.length) return '<div style="font-size:12.5px;color:var(--muted);margin-top:6px;">Nessun progetto aperto collegato a questo cliente.</div>';
-  return `<div style="margin-top:8px;">
-    <label>Progetto dell'incontro</label>
-    ${list.map(p=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin:4px 0;"><input type="checkbox" data-appt-project value="${p.id}" style="width:auto;" ${sel.includes(p.id) ? 'checked' : ''}>${esc(projectTitle(p))} <span style="color:var(--muted);font-size:12px;">· ${isLost(p) ? 'Persa' : esc((projectPhase(p)||{label:'Da avviare'}).label)}</span></label>`).join('')}
-    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin-top:8px;"><input type="checkbox" data-appt-offer style="width:auto;" ${consegna ? 'checked' : ''}>Consegno l'offerta (segna "Offerta presentata")</label>
+  const sel = (selected || []).map(id=>projects.find(p=>p.id===id)).filter(Boolean);
+  return `<div class="appt-proj" data-contact="${esc(contactId||'')}">
+    <label style="margin-top:8px;">Progetti dell'incontro</label>
+    <div class="appt-proj-chips">${sel.map(projChipHtml).join('')}</div>
+    <div class="ac-wrap">
+      <input class="appt-proj-input" autocomplete="off" placeholder="${projects.length ? 'Cerca per ID, nome, città o cliente e aggiungi…' : 'Nessun progetto in archivio'}" ${projects.length ? '' : 'disabled'}>
+      <div class="ac-list hidden appt-proj-list"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13.5px;color:var(--text);margin-top:8px;"><input type="checkbox" data-appt-offer style="width:auto;" ${consegna ? 'checked' : ''}>Consegno l'offerta (segna "Offerta presentata" sui progetti aggiunti)</label>
   </div>`;
 }
+function apptProjectSuggestions(box, query){
+  const contactId = box.dataset.contact;
+  const chosen = new Set([...box.querySelectorAll('[data-appt-sel]')].map(e=>e.dataset.apptSel));
+  const mine = new Set(projectsOfContact(contactId).map(p=>p.id));
+  const words = normName(query).split(' ').filter(Boolean);
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  return projects.filter(p=>!isLost(p) && !chosen.has(p.id)).filter(p=>{
+    if(!words.length) return mine.has(p.id) && !(p.fasi && p.fasi.cantiereFinito);
+    const people = (p.partecipanti||[]).map(x=>{ const c = byId[x.contactId]; return c ? fullName(c)+' '+(c.azienda||'') : ''; });
+    const hay = normName([p.codice, p.nome, p.via, p.citta, ...people].join(' '));
+    return words.every(w=>hay.includes(w));
+  }).sort((a,b)=>(mine.has(b.id)?1:0)-(mine.has(a.id)?1:0) || byProjectId(a,b)).slice(0,8).map(p=>({ p, mine:mine.has(p.id) }));
+}
+(function bindApptProjectPicker(){
+  const main = document.getElementById('main');
+  const show = input=>{
+    const box = input.closest('.appt-proj'), list = box.querySelector('.appt-proj-list');
+    const items = apptProjectSuggestions(box, input.value);
+    if(!items.length){
+      list.innerHTML = input.value.trim() ? '<div class="ac-item" style="cursor:default;"><div class="ac-sub">Nessun progetto corrisponde</div></div>' : '';
+      list.classList.toggle('hidden', !input.value.trim()); return;
+    }
+    list.innerHTML = items.map(({p, mine})=>`<div class="ac-item" data-pick="${p.id}"><div class="ac-name">${esc(projectTitle(p))}</div>
+      <div class="ac-sub">${esc([p.citta, (projectPhase(p)||{label:'Da avviare'}).label].filter(Boolean).join(' · '))}${mine ? ' · cliente coinvolto' : ''}</div></div>`).join('');
+    list.classList.remove('hidden');
+  };
+  const hide = input=>{ const l = input.closest('.appt-proj')?.querySelector('.appt-proj-list'); if(l){ l.classList.add('hidden'); l.innerHTML = ''; } };
+  const pick = item=>{
+    const box = item.closest('.appt-proj'), input = box.querySelector('.appt-proj-input');
+    const p = projects.find(x=>x.id===item.dataset.pick);
+    if(p && !box.querySelector(`[data-appt-sel="${p.id}"]`)) box.querySelector('.appt-proj-chips').insertAdjacentHTML('beforeend', projChipHtml(p));
+    input.value = ''; hide(input);
+  };
+  main.addEventListener('focusin', e=>{ if(e.target.matches('.appt-proj-input')) show(e.target); });
+  main.addEventListener('input', e=>{ if(e.target.matches('.appt-proj-input')) show(e.target); });
+  main.addEventListener('focusout', e=>{ if(e.target.matches('.appt-proj-input')) setTimeout(()=>hide(e.target), 150); });
+  // pointerdown: scatta prima che il campo perda il focus (anche al tocco su iPhone)
+  main.addEventListener('pointerdown', e=>{ const it = e.target.closest('.appt-proj-list [data-pick]'); if(it){ e.preventDefault(); pick(it); } });
+  main.addEventListener('click', e=>{ const x = e.target.closest('.proj-chip [data-unpick]'); if(x){ e.preventDefault(); x.closest('.proj-chip').remove(); } });
+  main.addEventListener('keydown', e=>{
+    if(!e.target.matches('.appt-proj-input')) return;
+    if(e.key==='Escape') hide(e.target);
+    if(e.key==='Enter'){ const first = e.target.closest('.appt-proj').querySelector('.appt-proj-list [data-pick]'); if(first){ e.preventDefault(); pick(first); } }
+  });
+})();
 function readApptProjects(appuntamento){
   if(!appuntamento) return { progetti:[], consegnaOfferta:false };
-  const ids = [...document.querySelectorAll('#main [data-appt-project]:checked')].map(e=>e.value);
+  const ids = [...document.querySelectorAll('#main .appt-proj [data-appt-sel]')].map(e=>e.dataset.apptSel);
   const offer = !!document.querySelector('#main [data-appt-offer]:checked');
   return { progetti: ids, consegnaOfferta: offer && ids.length>0 };
 }

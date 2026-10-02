@@ -88,8 +88,9 @@ Campi principali:
   "previste". L'elenco si apre filtrato su "In corso" (`projectsPhaseFilter = 'open'`). Commessa persa: esito 'persa', persaIl, motivoPerdita (`LOSS_REASONS`),
   notePerdita; "Riapri commessa" li svuota. `isLost` / `isWon` (= non persa e conferma
   d'ordine raggiunta) guidano stile (`.proj-lost` grigio e sbiadito, `.proj-won` banda e
-  sfondo giallo), filtri, totali ed esclusione dalla scelta del progetto negli incontri. Nelle chiamate: `progetti` [projectId] e `consegnaOfferta` (scelti
-  registrando una chiamata con appuntamento) → `markOfferPresented` segna
+  sfondo giallo), filtri, totali ed esclusione dalla scelta del progetto negli incontri. Nelle chiamate: `progetti` [projectId] e `consegnaOfferta` (scelti con
+  la ricerca "Progetti dell'incontro" registrando o modificando un appuntamento: tutti i
+  progetti non persi, a campo vuoto quelli del cliente) → `markOfferPresented` segna
   offertaPresentata con la data dell'incontro. `canAutoRender()` evita che gli
   aggiornamenti in tempo reale ridisegnino i moduli mentre si scrive.
 - **Forecast** (voce di menu): solo commesse aperte (`!isLost && !isWon`). Campi sul
