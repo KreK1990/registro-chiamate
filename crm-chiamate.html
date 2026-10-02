@@ -215,6 +215,7 @@ details[open] > summary .part-toggle::before{content:"\25BE  ";}
 .appt-search{display:flex;gap:8px;align-items:center;margin:0 0 14px;}
 .appt-search input{flex:1;}
 .proj-chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);padding:4px 4px 4px 9px;border-radius:2px;font-size:13px;font-weight:600;margin:0 6px 6px 0;}
+.proj-chip-addr{display:block;font-weight:400;font-size:11.5px;color:var(--muted);}
 .proj-chip button{border:none;background:transparent;color:inherit;font-size:17px;line-height:1;cursor:pointer;padding:0 5px;}
 .appt-proj-chips:empty{display:none;}
 
@@ -1494,8 +1495,10 @@ function bindContactProjects(c){
 // Progetti dell'incontro: ricerca con aggiunta (etichette rimovibili), su tutti i progetti
 // non persi; a campo vuoto propone quelli in cui il cliente e' coinvolto.
 // selected / consegna: per la modifica di un appuntamento gia' registrato.
+function projectAddress(p){ return [p.via, p.citta].filter(Boolean).join(', '); }
 function projChipHtml(p){
-  return `<span class="proj-chip" data-appt-sel="${p.id}">${esc(projectTitle(p))}<button type="button" data-unpick aria-label="Togli">&times;</button></span>`;
+  const addr = projectAddress(p);
+  return `<span class="proj-chip" data-appt-sel="${p.id}"><span>${esc(projectTitle(p))}${addr ? `<span class="proj-chip-addr">${esc(addr)}</span>` : ''}</span><button type="button" data-unpick aria-label="Togli">&times;</button></span>`;
 }
 function apptProjectsHtml(contactId, selected, consegna){
   const sel = (selected || []).map(id=>projects.find(p=>p.id===id)).filter(Boolean);
@@ -1532,7 +1535,7 @@ function apptProjectSuggestions(box, query){
       list.classList.toggle('hidden', !input.value.trim()); return;
     }
     list.innerHTML = items.map(({p, mine})=>`<div class="ac-item" data-pick="${p.id}"><div class="ac-name">${esc(projectTitle(p))}</div>
-      <div class="ac-sub">${esc([p.citta, (projectPhase(p)||{label:'Da avviare'}).label].filter(Boolean).join(' · '))}${mine ? ' · cliente coinvolto' : ''}</div></div>`).join('');
+      <div class="ac-sub">${esc([projectAddress(p) || 'indirizzo non indicato', (projectPhase(p)||{label:'Da avviare'}).label].join(' · '))}${mine ? ' · cliente coinvolto' : ''}</div></div>`).join('');
     list.classList.remove('hidden');
   };
   const hide = input=>{ const l = input.closest('.appt-proj')?.querySelector('.appt-proj-list'); if(l){ l.classList.add('hidden'); l.innerHTML = ''; } };
@@ -2858,7 +2861,7 @@ function tableDetailView(){
         ${k.esito?`<div><label>Esito</label><div style="font-size:14px;">${esc(k.esito)}</div></div>`:''}
         ${k.progetto?`<div><label>Progetto</label><div style="font-size:14px;">${esc(k.progetto)}</div></div>`:''}
         ${k.appuntamento?`<div><label>Appuntamento</label><div style="font-size:14px;">${fmtDateTime(k.appuntamento)}</div></div>`:''}
-        ${(k.progetti||[]).length ? `<div><label>Progetti</label><div style="font-size:14px;">${k.progetti.map(id=>{ const pr = projects.find(x=>x.id===id); return pr ? `<a href="#" class="addr-link" data-open-project="${pr.id}">${esc(projectTitle(pr))}</a>` : ''; }).filter(Boolean).join('<br>')}${k.consegnaOfferta ? ' <span class="esito-tag appt">Consegna offerta</span>' : ''}</div></div>` : ''}
+        ${(k.progetti||[]).length ? `<div><label>Progetti</label><div style="font-size:14px;">${k.progetti.map(id=>{ const pr = projects.find(x=>x.id===id); return pr ? `<a href="#" class="addr-link" data-open-project="${pr.id}">${esc(projectTitle(pr))}${projectAddress(pr) ? ` · ${esc(projectAddress(pr))}` : ""}</a>` : ''; }).filter(Boolean).join('<br>')}${k.consegnaOfferta ? ' <span class="esito-tag appt">Consegna offerta</span>' : ''}</div></div>` : ''}
         ${k.mailDaInviare?`<div><label>Mail informativa</label><div style="font-size:14px;">${k.mailInviataIl ? `inviata il ${fmtDate(k.mailInviataIl)}` : `<span style="color:var(--danger);font-weight:600;">da inviare</span> <button class="btn secondary small" id="markMailSentBtn" style="margin-left:6px;">Segna come inviata</button>`}</div></div>`:''}
       </div>
       <div style="margin-top:14px;">
