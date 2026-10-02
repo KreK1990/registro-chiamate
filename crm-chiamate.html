@@ -215,6 +215,20 @@ details[open] > summary .part-toggle::before{content:"\25BE  ";}
 .appt-search{display:flex;gap:8px;align-items:center;margin:0 0 14px;}
 .appt-search input{flex:1;}
 .proj-chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);padding:4px 4px 4px 9px;border-radius:2px;font-size:13px;font-weight:600;margin:0 6px 6px 0;}
+.ptrack{margin-top:10px;}
+.ptrack-bar{position:relative;display:flex;justify-content:space-between;align-items:center;height:16px;}
+.ptrack-bar::before{content:"";position:absolute;left:6px;right:6px;top:50%;height:3px;margin-top:-1.5px;background:var(--border);border-radius:2px;}
+.ptrack-fill{position:absolute;left:6px;top:50%;height:3px;margin-top:-1.5px;background:var(--accent);border-radius:2px;}
+.pt-dot{position:relative;z-index:1;width:12px;height:12px;border-radius:50%;background:var(--panel);border:2px solid var(--border-strong);box-sizing:border-box;flex:none;}
+.pt-dot.done{background:var(--accent);border-color:var(--accent);}
+.pt-dot.planned{border-color:var(--brand-yellow);}
+.pt-dot.current{transform:scale(1.35);box-shadow:0 0 0 3px color-mix(in srgb, var(--brand-yellow) 55%, transparent);}
+.ptrack-text{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.45;}
+.ptrack-text strong{color:var(--text);}
+.ptrack-stall{color:var(--danger);font-weight:600;}
+.ptrack.lost .pt-dot.done,.ptrack.lost .ptrack-fill{background:var(--muted);border-color:var(--muted);}
+.ptrack.lost .pt-dot.current{box-shadow:none;}
+
 .proj-head{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start;}
 .proj-head .proj-map{margin-top:0;height:230px;}
 .dash-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:6px;}
@@ -1183,8 +1197,39 @@ function projectsListHtml(){
           ${(p.ordini||[]).length ? `<div style="font-size:11.5px;color:var(--muted);">ordinato ${fmtEuro(orderedTotal(p))} · ${p.ordini.length} ${p.ordini.length===1?'ordine':'ordini'}</div>` : ''}
         </div>
       </div>
+      ${phaseTrackHtml(p)}
     </div>`;
   }).join('');
+}
+// Mini-timeline per l'elenco: un punto per fase (pieno = fatta, bordo giallo = prevista),
+// barra di avanzamento fino alla fase attuale (punto evidenziato) e, a parole, fase attuale,
+// da quanti giorni e' ferma (in rosso da 30 giorni) e prossima fase.
+function phaseTrackHtml(p){
+  const today = todayISO(), cur = projectPhase(p);
+  const idx = cur ? PROJECT_PHASES.findIndex(ph=>ph.key===cur.key) : -1;
+  const last = PROJECT_PHASES.length - 1;
+  const pct = idx>0 ? idx/last : 0;
+  const dots = PROJECT_PHASES.map((ph,i)=>{
+    const d = p.fasi && p.fasi[ph.key];
+    const cls = d ? (d<=today ? 'done' : 'planned') : '';
+    return `<span class="pt-dot ${cls} ${i===idx ? 'current' : ''}" title="${esc(ph.label)}${d ? ': '+fmtDate(d) : ''}${d && d>today ? ' (prevista)' : ''}"></span>`;
+  }).join('');
+  let text;
+  if(isLost(p)) text = `<strong>Persa</strong>${p.persaIl ? ` il ${fmtDate(p.persaIl)}` : ''}${cur ? ` · era a: ${esc(cur.label)}` : ''}`;
+  else if(cur && cur.key==='cantiereFinito') text = `<strong>Cantiere finito</strong> il ${fmtDate(p.fasi.cantiereFinito)}`;
+  else{
+    const doneDates = PROJECT_PHASES.map(ph=>p.fasi && p.fasi[ph.key]).filter(d=>d && d<=today).sort();
+    const lastDate = doneDates[doneDates.length-1];
+    const days = lastDate ? daysBetween(lastDate, today) : null;
+    const next = PROJECT_PHASES[idx+1];
+    text = `<strong>${cur ? esc(cur.label) : 'Da avviare'}</strong>`
+      + (days!=null ? ` · <span class="${days>=30 && !isWon(p) ? 'ptrack-stall' : ''}">ferma da ${days} ${days===1 ? 'giorno' : 'giorni'}</span>` : '')
+      + (next ? ` · prossima: ${esc(next.label)}${next.owner ? ` (${esc(next.owner)})` : ''}` : '');
+  }
+  return `<div class="ptrack ${isLost(p) ? 'lost' : ''}">
+    <div class="ptrack-bar"><div class="ptrack-fill" style="width:calc((100% - 12px) * ${pct.toFixed(3)});"></div>${dots}</div>
+    <div class="ptrack-text">${text}</div>
+  </div>`;
 }
 function projectsListView(){
   const sum = keyFn=>projects.filter(keyFn).reduce((s,p)=>s+(Number(projectAmount(p))||0), 0);
