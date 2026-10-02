@@ -902,7 +902,7 @@ function bindForecast(){
 // Le chiamate con appuntamento possono indicare progetti (calls.progetti) e la
 // consegna dell'offerta (calls.consegnaOfferta), che segna la fase offertaPresentata.
 // ---------------------------------------------------------------------------
-let projects = [], selectedProjectId = null, projectsSearch = '', projectsPhaseFilter = '', confirmDeleteProjectId = null, loseFormProjectId = null;
+let projects = [], selectedProjectId = null, projectsSearch = '', projectsPhaseFilter = 'open', confirmDeleteProjectId = null, loseFormProjectId = null;
 const LOSS_REASONS = ['Prezzo','Scelta di un concorrente','Progetto annullato o sospeso','Soluzione tecnica diversa','Nessuna risposta del cliente','Altro'];
 const PROJECT_PHASES = [
   { key:'richiesta',         label:'Richiesta' },
@@ -914,7 +914,7 @@ const PROJECT_PHASES = [
   { key:'merceCantiere',     label:'Merce arrivata in cantiere' },
   { key:'cantiereFinito',    label:'Cantiere finito' }
 ];
-const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale','Impresa esecutrice','Committente','Direzione lavori','Altro'];
+const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale','Termotecnico','Impresa esecutrice','Committente','Direzione lavori','Altro'];
 
 // Gli aggiornamenti in tempo reale non ridisegnano i moduli mentre si scrive.
 // Nel Forecast non si ridisegna mentre si sta scrivendo in un campo (le cifre si aggiornano a parte).
@@ -956,7 +956,7 @@ function phaseBadge(p){
 }
 function guessRole(c){
   const pr = normName(c.professione);
-  return pr==='architetto' ? 'Progettazione architettonica' : pr==='ingegnere' ? 'Progettazione strutturale' : '';
+  return pr==='architetto' ? 'Progettazione architettonica' : pr==='ingegnere' ? 'Progettazione strutturale' : pr==='termotecnico' ? 'Termotecnico' : '';
 }
 function openProject(id){ selectedProjectId = id; confirmDeleteProjectId = null; loseFormProjectId = null; tableDetailCallId = null; view = 'projectDetail'; setActiveTab('navProjects'); renderMain(); }
 
@@ -3133,7 +3133,7 @@ document.getElementById('navForecast').addEventListener('click', ()=>{
   renderMain();
 });
 document.getElementById('navProjects').addEventListener('click', ()=>{
-  view='projects'; tableDetailCallId=null;
+  view='projects'; tableDetailCallId=null; projectsPhaseFilter='open';   // si apre sulle commesse in corso
   setActiveTab('navProjects');
   renderMain();
 });

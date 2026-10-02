@@ -76,13 +76,13 @@ Campi principali:
   "non raggiunto" = solo esiti in `ESITI_NON_RAGGIUNTO`; chiamate senza esito contano
   come raggiunto; un appuntamento implica raggiunto.
 - **projects** (sezione tecnica, voce di menu "Progetti"): codice (ID progetto, 7 cifre,
-  unico), nome, via, citta, partecipanti [{contactId, ruolo}] (ruoli in `PROJECT_ROLES`),
+  unico), nome, via, citta, partecipanti [{contactId, ruolo}] (ruoli in `PROJECT_ROLES`, compreso Termotecnico),
   importoOfferta, importoDeliberato (chiesto alla conferma d'ordine, precompilato con
   l'offerta), offertaUrl (link al PDF; niente upload: Firebase Storage richiederebbe il
   piano a consumo), note, fasi {chiave: 'YYYY-MM-DD'} secondo `PROJECT_PHASES`
   (propostaTecnica a cura di Michael, offertaEconomica di Claudia), createdAt, updatedAt.
   Fase attuale = ultima fase con data <= oggi (`phaseDone`); le date future sono
-  "previste". Commessa persa: esito 'persa', persaIl, motivoPerdita (`LOSS_REASONS`),
+  "previste". L'elenco si apre filtrato su "In corso" (`projectsPhaseFilter = 'open'`). Commessa persa: esito 'persa', persaIl, motivoPerdita (`LOSS_REASONS`),
   notePerdita; "Riapri commessa" li svuota. `isLost` / `isWon` (= non persa e conferma
   d'ordine raggiunta) guidano stile (`.proj-lost` grigio e sbiadito, `.proj-won` banda e
   sfondo giallo), filtri, totali ed esclusione dalla scelta del progetto negli incontri. Nelle chiamate: `progetti` [projectId] e `consegnaOfferta` (scelti
