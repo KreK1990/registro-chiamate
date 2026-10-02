@@ -1009,7 +1009,9 @@ function parseEuro(s){
   const n = Number(s);
   return isFinite(n) ? Math.round(n*100)/100 : NaN;
 }
-function projectsOfContact(contactId){ return projects.filter(p=>(p.partecipanti||[]).some(x=>x.contactId===contactId)); }
+// Ordine delle commesse: per ID crescente (il piu' vecchio in alto, i piu' recenti sotto).
+function byProjectId(a, b){ return String(a.codice||'').localeCompare(String(b.codice||''), undefined, { numeric:true }); }
+function projectsOfContact(contactId){ return projects.filter(p=>(p.partecipanti||[]).some(x=>x.contactId===contactId)).sort(byProjectId); }
 // Commessa persa (chiusa) / chiusa con ordine confermato / in corso.
 function isLost(p){ return p.esito==='persa'; }
 function isWon(p){ return !isLost(p) && phaseDone(p, 'confermaOrdine'); }
@@ -1041,7 +1043,7 @@ function projectsListHtml(){
     if(!q) return true;
     const people = (p.partecipanti||[]).map(x=>{ const c = byId[x.contactId]; return c ? fullName(c)+' '+(c.azienda||'') : ''; });
     return normName([p.codice, p.nome, p.via, p.citta, ...people].join(' ')).includes(q);
-  }).sort((a,b)=>(isLost(a)?1:0)-(isLost(b)?1:0) || (b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
+  }).sort(byProjectId);
   if(!list.length) return `<div class="empty">${projects.length ? 'Nessun progetto corrisponde alla ricerca.' : 'Nessun progetto: crea il primo con "+ Nuovo progetto".'}</div>`;
   return list.map(p=>{
     const people = (p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).map(fullName);
