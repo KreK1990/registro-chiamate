@@ -507,12 +507,8 @@ function renderMain(){
   }
   if(view==='dashboard'){
     main.innerHTML = dashboardView();
-    const dw = document.getElementById('dashWeekBtn');
-    if(dw) dw.addEventListener('click', ()=>{ dashboardSubView='weekly'; renderMain(); });
-    const dm = document.getElementById('dashMonthBtn');
-    if(dm) dm.addEventListener('click', ()=>{ dashboardSubView='monthly'; renderMain(); });
-    const dy = document.getElementById('dashYearBtn');
-    if(dy) dy.addEventListener('click', ()=>{ dashboardSubView='yearly'; renderMain(); });
+    document.getElementById('dashCallsBtn')?.addEventListener('click', ()=>{ dashboardSubView = lastCallsGroup; renderMain(); });
+    document.getElementById('dashCallsGroup')?.addEventListener('change', e=>{ dashboardSubView = lastCallsGroup = e.target.value; renderMain(); });
     document.getElementById('dashClientsBtn')?.addEventListener('click', ()=>{ dashboardSubView='clients'; renderMain(); });
     document.getElementById('clientsPeriod')?.addEventListener('change', e=>{ dashboardClientsPeriod = e.target.value; renderMain(); });
     document.getElementById('dashProjectsBtn')?.addEventListener('click', ()=>{ dashboardSubView='projects'; renderMain(); });
@@ -2395,17 +2391,22 @@ function dayBarChartSVG(buckets, color, compact){
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;max-width:640px;">${baseline}${bars}</svg>`;
 }
 
+const CALL_GROUPS = { weekly:'Settimana', monthly:'Mese', yearly:'Anno' };
+let lastCallsGroup = 'weekly';
 function dashboardView(){
   if(dashboardDrilldown) return dashboardDrilldownView();
   const header = `<div class="subnav">
-    <button id="dashWeekBtn" class="${dashboardSubView==='weekly'?'active':''}">Settimanale</button>
-    <button id="dashMonthBtn" class="${dashboardSubView==='monthly'?'active':''}">Mensile</button>
-    <button id="dashYearBtn" class="${dashboardSubView==='yearly'?'active':''}">Annuale</button>
+    <button id="dashCallsBtn" class="${CALL_GROUPS[dashboardSubView]?'active':''}">Chiamate</button>
     <button id="dashClientsBtn" class="${dashboardSubView==='clients'?'active':''}">Clienti</button>
     <button id="dashProjectsBtn" class="${dashboardSubView==='projects'?'active':''}">Progetti</button>
   </div>`;
   const body = dashboardSubView==='monthly' ? dashboardMonthlyView() : dashboardSubView==='yearly' ? dashboardYearlyView() : dashboardSubView==='clients' ? dashboardClientsView() : dashboardSubView==='projects' ? dashboardProjectsView() : dashboardWeeklyView();
-  return `<h2 style="margin-bottom:16px;">Dashboard attività</h2>${header}${body}`;
+  // Le viste delle chiamate (settimana/mese/anno) sono un'unica scheda con selettore.
+  const callsSel = CALL_GROUPS[dashboardSubView] ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+      <label style="margin:0;font-size:13px;color:var(--muted);">Raggruppa per</label>
+      <select id="dashCallsGroup" style="width:auto;">${Object.entries(CALL_GROUPS).map(([v,l])=>`<option value="${v}" ${dashboardSubView===v?'selected':''}>${l}</option>`).join('')}</select>
+    </div>` : '';
+  return `<h2 style="margin-bottom:16px;">Dashboard attività</h2>${header}${callsSel}${body}`;
 }
 
 function dashboardWeeklyView(){
