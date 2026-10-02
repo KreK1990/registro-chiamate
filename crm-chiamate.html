@@ -119,6 +119,15 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .ac-name{font-weight:600;font-size:14px;color:var(--accent);}
 .ac-sub{font-size:12px;color:var(--muted);margin-top:2px;}
 .imp-map{display:grid;grid-template-columns:minmax(150px,230px) 1fr;gap:8px 12px;align-items:center;}
+.funnel-row{display:grid;grid-template-columns:minmax(150px,210px) 1fr 90px;grid-template-areas:"label track num" ". note .";gap:2px 12px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--border);cursor:pointer;}
+.funnel-row:last-child{border-bottom:none;}
+.funnel-row:hover{background:var(--accent-soft);}
+.funnel-label{grid-area:label;font-size:14px;font-weight:600;}
+.funnel-track{grid-area:track;height:20px;background:var(--bg);border-radius:2px;overflow:hidden;}
+.funnel-bar{height:100%;border-radius:2px;}
+.funnel-num{grid-area:num;text-align:right;font-size:13px;color:var(--muted);white-space:nowrap;}
+.funnel-num strong{font-size:17px;color:var(--text);}
+.funnel-note{grid-area:note;font-size:12px;color:var(--muted);}
 .imp-map label{margin:0;font-size:13px;color:var(--text);}
 .name-link{cursor:pointer;color:var(--accent);}
 .name-link:hover,[data-contact-id]:hover .name-link{text-decoration:underline;}
@@ -194,6 +203,7 @@ h2{color:var(--accent);font-weight:800;}
   .top-actions{margin-bottom:8px;}
   .map-embed{height:200px;}
   .imp-map{grid-template-columns:1fr;gap:3px;}
+  .funnel-row{grid-template-columns:1fr auto;grid-template-areas:"label num" "track track" "note note";gap:4px 10px;}
   .imp-map select{margin-bottom:8px;}
   .tel-link{display:inline-block;padding:4px 0;}
   /* Settimana appuntamenti: un giorno per riga invece di 7 colonne */
@@ -385,6 +395,11 @@ function renderMain(){
     if(dm) dm.addEventListener('click', ()=>{ dashboardSubView='monthly'; renderMain(); });
     const dy = document.getElementById('dashYearBtn');
     if(dy) dy.addEventListener('click', ()=>{ dashboardSubView='yearly'; renderMain(); });
+    document.getElementById('dashClientsBtn')?.addEventListener('click', ()=>{ dashboardSubView='clients'; renderMain(); });
+    document.getElementById('clientsPeriod')?.addEventListener('change', e=>{ dashboardClientsPeriod = e.target.value; renderMain(); });
+    main.querySelectorAll('.call-item[data-contact-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; view='detail'; confirmDeleteId=null; tableDetailCallId=null; setActiveTab('navContacts'); renderMain(); });
+    });
     main.querySelectorAll('.bar-clickable').forEach(el=>{
       el.addEventListener('click', ()=>{
         const level = JSON.parse(el.dataset.drill);
@@ -473,7 +488,7 @@ function renderMain(){
           <div><label>Data</label><input type="date" id="callDate" value="${todayISO()}"></div>
           <div><label>Esito</label><select id="callEsito">
             <option>Interessato</option><option>Da richiamare</option><option>Appuntamento fissato</option>
-            <option>Non interessato</option><option>Nessuna risposta</option><option>Altro</option>
+            <option>Non interessato</option><option>Nessuna risposta</option><option>Filtrato dalla segreteria</option><option>Altro</option>
           </select></div>
         </div>
         <label>Note sulla chiamata</label>
@@ -1301,8 +1316,9 @@ function dashboardView(){
     <button id="dashWeekBtn" class="${dashboardSubView==='weekly'?'active':''}">Settimanale</button>
     <button id="dashMonthBtn" class="${dashboardSubView==='monthly'?'active':''}">Mensile</button>
     <button id="dashYearBtn" class="${dashboardSubView==='yearly'?'active':''}">Annuale</button>
+    <button id="dashClientsBtn" class="${dashboardSubView==='clients'?'active':''}">Clienti</button>
   </div>`;
-  const body = dashboardSubView==='monthly' ? dashboardMonthlyView() : dashboardSubView==='yearly' ? dashboardYearlyView() : dashboardWeeklyView();
+  const body = dashboardSubView==='monthly' ? dashboardMonthlyView() : dashboardSubView==='yearly' ? dashboardYearlyView() : dashboardSubView==='clients' ? dashboardClientsView() : dashboardWeeklyView();
   return `<h2 style="margin-bottom:16px;">Dashboard attività</h2>${header}${body}`;
 }
 
@@ -1443,7 +1459,109 @@ function drillCallsList(list){
     </div>`;
   }).join('') : '<div class="empty">Nessuna voce in questo periodo.</div>';
 }
+// Vista "Clienti" della dashboard: conta i clienti (non le chiamate) lungo il percorso
+// agenda -> chiamati -> raggiunti -> incontro, nel periodo scelto (date delle chiamate).
+// Esiti che indicano che non si e' parlato con il cliente:
+const ESITI_NON_RAGGIUNTO = ['Nessuna risposta', 'Filtrato dalla segreteria'];
+let dashboardClientsPeriod = 'all';   // all | year | 90 | month
+const CLIENT_PERIODS = { all:'Sempre', year:'Quest\'anno', '90':'Ultimi 90 giorni', month:'Questo mese' };
+function clientsPeriodStart(p){
+  const now = new Date(), pad = n=>String(n).padStart(2,'0');
+  if(p==='year') return `${now.getFullYear()}-01-01`;
+  if(p==='month') return `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+  if(p==='90'){ const d = new Date(now); d.setDate(d.getDate()-90); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  return '';
+}
+// Stato di ogni cliente nel periodo: 'incontro' | 'raggiunto' | 'filtro' | 'nonRisponde' | 'mai'.
+// Un incontro implica che il cliente e' stato raggiunto; le chiamate senza esito contano
+// come contatto avvenuto (la chiamata e' stata registrata).
+function clientStatuses(){
+  const from = clientsPeriodStart(dashboardClientsPeriod);
+  const byContact = new Map();
+  calls.forEach(k=>{
+    if(!k.data || (from && k.data < from)) return;
+    if(!byContact.has(k.contactId)) byContact.set(k.contactId, []);
+    byContact.get(k.contactId).push(k);
+  });
+  return contacts.map(c=>{
+    const cs = (byContact.get(c.id)||[]).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    let status = 'mai';
+    if(cs.length){
+      if(cs.some(isApptCall)) status = 'incontro';
+      else if(cs.some(k=>!ESITI_NON_RAGGIUNTO.includes(k.esito))) status = 'raggiunto';
+      else if(cs.some(k=>k.esito==='Filtrato dalla segreteria')) status = 'filtro';
+      else status = 'nonRisponde';
+    }
+    return { contact:c, calls:cs, status };
+  });
+}
+const CLIENT_SEGMENTS = {
+  agenda:      { label:'In agenda',                 test: s=>true },
+  chiamati:    { label:'Chiamati',                  test: s=>s.status!=='mai' },
+  raggiunti:   { label:'Raggiunti al telefono',     test: s=>s.status==='incontro' || s.status==='raggiunto' },
+  incontro:    { label:'Incontro ottenuto',         test: s=>s.status==='incontro' },
+  filtro:      { label:'Bloccati dalla segreteria', test: s=>s.status==='filtro' },
+  nonRisponde: { label:'Non rispondono',            test: s=>s.status==='nonRisponde' },
+  mai:         { label:'Mai chiamati',              test: s=>s.status==='mai' }
+};
+function funnelRow(key, n, total, note, color){
+  const pct = total ? Math.round(n*100/total) : 0;
+  return `<div class="funnel-row bar-clickable" data-drill="${esc(JSON.stringify({ kind:'segment', key }))}" data-chart-type="clients">
+    <div class="funnel-label">${CLIENT_SEGMENTS[key].label}</div>
+    <div class="funnel-num"><strong>${n}</strong> <span>${pct}%</span></div>
+    <div class="funnel-track"><div class="funnel-bar" style="width:${n ? Math.max(pct,1) : 0}%;background:${color};"></div></div>
+    ${note ? `<div class="funnel-note">${note}</div>` : ''}
+  </div>`;
+}
+function dashboardClientsView(){
+  const st = clientStatuses();
+  const count = key=>st.filter(CLIENT_SEGMENTS[key].test).length;
+  const total = st.length, chiamati = count('chiamati'), raggiunti = count('raggiunti'), incontro = count('incontro');
+  const filtro = count('filtro'), nonRisp = count('nonRisponde'), mai = count('mai');
+  const conv = (a,b,txt)=>b ? `${Math.round(a*100/b)}% ${txt}` : '';
+  return `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+      <label style="margin:0;font-size:13px;color:var(--muted);">Periodo (in base alla data delle chiamate)</label>
+      <select id="clientsPeriod" style="width:auto;">${Object.entries(CLIENT_PERIODS).map(([v,l])=>`<option value="${v}" ${dashboardClientsPeriod===v?'selected':''}>${l}</option>`).join('')}</select>
+    </div>
+    <div class="card">
+      <h3>Dai contatti agli incontri</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Ogni cliente conta una volta sola, anche se chiamato più volte · percentuali sul totale in agenda · clicca una riga per l'elenco</div>
+      ${funnelRow('agenda', total, total, '', 'var(--border-strong)')}
+      ${funnelRow('chiamati', chiamati, total, conv(chiamati, total, 'dei contatti in agenda'), 'var(--accent)')}
+      ${funnelRow('raggiunti', raggiunti, total, conv(raggiunti, chiamati, 'dei clienti chiamati'), 'var(--accent)')}
+      ${funnelRow('incontro', incontro, total, conv(incontro, raggiunti, 'dei clienti raggiunti'), 'var(--brand-yellow)')}
+    </div>
+    <div class="card">
+      <h3>Clienti non raggiunti</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Chiamati ma mai raggiunti nel periodo, per motivo · percentuali sul totale in agenda</div>
+      ${funnelRow('filtro', filtro, total, conv(filtro, chiamati, 'dei clienti chiamati'), 'var(--danger)')}
+      ${funnelRow('nonRisponde', nonRisp, total, conv(nonRisp, chiamati, 'dei clienti chiamati'), 'var(--muted)')}
+      ${funnelRow('mai', mai, total, 'non ancora chiamati nel periodo', 'var(--border-strong)')}
+    </div>`;
+}
+function clientSegmentView(lvl){
+  const seg = CLIENT_SEGMENTS[lvl.key];
+  const list = clientStatuses().filter(seg.test)
+    .sort((a,b)=>((b.calls[0]||{}).data||'').localeCompare((a.calls[0]||{}).data||'') || fullName(a.contact).localeCompare(fullName(b.contact)));
+  const STATUS_TXT = { incontro:'incontro ottenuto', raggiunto:'raggiunto', filtro:'filtrato dalla segreteria', nonRisponde:'non risponde', mai:'mai chiamato' };
+  return `<div class="top-actions" style="justify-content:space-between;"><button class="btn secondary small" id="drillBackBtn">← Torna alla dashboard</button></div>
+    <div class="card">
+      <h3>${seg.label} — ${list.length} clienti</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Periodo: ${CLIENT_PERIODS[dashboardClientsPeriod]} · clicca un cliente per aprire la scheda</div>
+      ${list.length ? list.map(s=>{
+        const c = s.contact, last = s.calls[0];
+        return `<div class="call-item" data-contact-id="${c.id}" style="cursor:pointer;">
+          <div class="name-link" style="font-weight:600;font-size:14px;">${esc(fullName(c))}</div>
+          <div style="font-size:12.5px;color:var(--muted);">${esc([c.professione, c.azienda].filter(Boolean).join(' · '))}${c.professione||c.azienda ? ' · ' : ''}${s.calls.length} ${s.calls.length===1?'chiamata':'chiamate'}${last ? ` · ultima ${fmtDate(last.data)}${last.esito ? ' ('+esc(last.esito)+')' : ''}` : ''} · ${STATUS_TXT[s.status]}</div>
+        </div>`;
+      }).join('') : '<div class="empty">Nessun cliente in questo gruppo.</div>'}
+    </div>`;
+}
+
 function dashboardDrilldownView(){
+  const top = dashboardDrilldown.stack[dashboardDrilldown.stack.length-1];
+  if(top.kind==='segment') return clientSegmentView(top);
   const isAppt = dashboardDrilldown.type==='appt';
   const pred = isAppt ? isApptCall : null;
   const color = isAppt ? 'var(--text)' : 'var(--accent)';
@@ -1657,7 +1775,7 @@ function renderCallFlow(){
         <div><label>Esito</label><select id="qcEsito">
           <option value="">—</option>
           <option>Interessato</option><option>Da richiamare</option><option>Appuntamento fissato</option>
-          <option>Non interessato</option><option>Nessuna risposta</option><option>Altro</option>
+          <option>Non interessato</option><option>Nessuna risposta</option><option>Filtrato dalla segreteria</option><option>Altro</option>
         </select></div>
       </div>
       <label>Progetto / argomento trattato</label>
@@ -1724,7 +1842,7 @@ async function saveQuickCall(){
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
 }
 
-const ESITO_OPTS = ['Interessato','Da richiamare','Appuntamento fissato','Non interessato','Nessuna risposta','Altro'];
+const ESITO_OPTS = ['Interessato','Da richiamare','Appuntamento fissato','Non interessato','Nessuna risposta','Filtrato dalla segreteria','Altro'];
 function tableFilterBar(byId){
   const professioni = [...new Set(contacts.map(c=>c.professione).filter(Boolean))].sort();
   return `<div class="card" style="padding:14px 16px;">
@@ -1828,7 +1946,7 @@ function tableDetailView(){
 }
 
 function callEditView(k,c){
-  const esitoOpts = ['','Interessato','Da richiamare','Appuntamento fissato','Non interessato','Nessuna risposta','Altro'];
+  const esitoOpts = ['','Interessato','Da richiamare','Appuntamento fissato','Non interessato','Nessuna risposta','Filtrato dalla segreteria','Altro'];
   return `
     <div class="top-actions"><button class="btn secondary small" id="cancelEditCallBtn">Annulla modifica</button></div>
     <div class="card">

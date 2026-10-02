@@ -70,6 +70,11 @@ Campi principali:
   Oggi (una riga per cliente, `pendingMailGroups`), nel riepilogo laterale, nel badge di
   "Oggi"/menu e come notifica dalle 17:30. L'email inserita registrando una chiamata
   aggiorna `contacts.email`.
+  Esiti: Interessato, Da richiamare, Appuntamento fissato, Non interessato, Nessuna
+  risposta, Filtrato dalla segreteria, Altro (liste nei moduli, `ESITO_OPTS` e
+  `callEditView`). Dashboard → "Clienti" (`clientStatuses`): conta clienti, non chiamate;
+  "non raggiunto" = solo esiti in `ESITI_NON_RAGGIUNTO`; chiamate senza esito contano
+  come raggiunto; un appuntamento implica raggiunto.
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
