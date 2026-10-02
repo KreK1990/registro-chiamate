@@ -225,6 +225,16 @@ details[open] > summary .part-toggle::before{content:"\25BE  ";}
 .appt-search{display:flex;gap:8px;align-items:center;margin:0 0 14px;}
 .appt-search input{flex:1;}
 .proj-chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);padding:4px 4px 4px 9px;border-radius:2px;font-size:13px;font-weight:600;margin:0 6px 6px 0;}
+.supply-row{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"label track pct" "note note note";gap:2px 10px;align-items:center;margin-top:8px;font-size:12.5px;}
+.supply-label{grid-area:label;color:var(--muted);}
+.supply-track{grid-area:track;height:8px;background:var(--bg);border:1px solid var(--border);border-radius:2px;overflow:hidden;}
+.supply-bar{height:100%;background:var(--brand-yellow);}
+.supply-row > strong{grid-area:pct;}
+.supply-note{grid-area:note;color:var(--muted);font-size:12px;}
+.supply-row.over .supply-bar{background:var(--danger);}
+.supply-row.over > strong,.supply-row.over .supply-note{color:var(--danger);font-weight:600;}
+.order-summary.over{box-shadow:inset 3px 0 0 var(--danger);}
+
 .ptrack{margin-top:10px;}
 .ptrack-bar{position:relative;display:flex;justify-content:space-between;align-items:center;height:16px;}
 .ptrack-bar::before{content:"";position:absolute;left:6px;right:6px;top:50%;height:3px;margin-top:-1.5px;background:var(--border);border-radius:2px;}
@@ -1455,8 +1465,28 @@ function projectsListHtml(){
         </div>
       </div>
       ${phaseTrackHtml(p)}
+      ${supplyRowHtml(p)}
     </div>`;
   }).join('');
+}
+// Commesse confermate: percentuale di merce spedita (ordini/DDT) sul deliberato, o
+// sull'offerta se il deliberato non e' indicato; oltre il 100% si suggerisce di adeguare.
+function supplyInfo(p){
+  if(!isWon(p)) return null;
+  const base = p.importoDeliberato!=null ? p.importoDeliberato : p.importoOfferta;
+  if(!base) return null;
+  const tot = orderedTotal(p);
+  return { base, tot, pct: Math.round(tot*100/base), baseLbl: p.importoDeliberato!=null ? 'deliberato' : 'offerta' };
+}
+function supplyRowHtml(p){
+  const s = supplyInfo(p);
+  if(!s) return '';
+  return `<div class="supply-row ${s.pct>100 ? 'over' : ''}">
+    <span class="supply-label">Merce spedita</span>
+    <div class="supply-track"><div class="supply-bar" style="width:${Math.min(100, s.pct)}%;"></div></div>
+    <strong>${s.pct}%</strong>
+    <div class="supply-note">${fmtEuro(s.tot)} su ${fmtEuro(s.base)} (${s.baseLbl})${s.pct>100 ? ' · oltre il deliberato: adegua la conferma d\'ordine' : ''}</div>
+  </div>`;
 }
 // Mini-timeline per l'elenco: un punto per fase (pieno = fatta, bordo giallo = prevista),
 // barra di avanzamento fino alla fase attuale (punto evidenziato) e, a parole, fase attuale,
@@ -1776,12 +1806,15 @@ function ordersCardHtml(p){
   const baseLbl = p.importoDeliberato!=null ? 'deliberato' : 'offerta';
   let summary = '';
   if(list.length){
-    const pct = base ? Math.min(100, Math.round(tot*100/base)) : 100;
+    const realPct = base ? Math.round(tot*100/base) : null;
     const diff = base!=null ? tot - base : null;
-    summary = `<div class="order-summary">
-      <div>Ordinato: <strong>${fmtEuro(tot)}</strong> in ${list.length} ${list.length===1?'ordine':'ordini'}${base!=null ? ` su ${fmtEuro(base)} (${baseLbl})` : ''}</div>
-      ${base ? `<div class="order-track"><div class="order-bar" style="width:${pct}%;"></div></div>` : ''}
-      ${diff!=null ? (diff<0 ? `<div class="order-note">Da ordinare: ${fmtEuro(-diff)}</div>` : diff>0 ? `<div class="order-note extra">Materiale extra: +${fmtEuro(diff)} rispetto al ${baseLbl}</div>` : `<div class="order-note">Ordinato tutto il ${baseLbl}</div>`) : ''}
+    summary = `<div class="order-summary ${diff>0 ? 'over' : ''}">
+      <div>Merce spedita: <strong>${realPct!=null ? realPct+'%' : fmtEuro(tot)}</strong>${realPct!=null ? ` · ${fmtEuro(tot)} su ${fmtEuro(base)} (${baseLbl})` : ''} in ${list.length} ${list.length===1?'ordine':'ordini'}</div>
+      ${base ? `<div class="order-track"><div class="order-bar" style="width:${Math.min(100, realPct)}%;"></div></div>` : ''}
+      ${diff!=null ? (diff<0 ? `<div class="order-note">Ancora da spedire: ${fmtEuro(-diff)}</div>`
+        : diff>0 ? `<div class="order-note extra">Spedito oltre il ${baseLbl}: +${fmtEuro(diff)}. Conviene aggiornare la conferma d'ordine adeguando l'importo.</div>
+            <button class="btn small" id="ordAdjustBtn" style="margin-top:6px;">Adegua il deliberato a ${fmtEuro(tot)}</button>`
+        : `<div class="order-note">Spedito tutto il ${baseLbl}</div>`) : ''}
     </div>`;
   }
   return `<div class="card">
@@ -1821,6 +1854,10 @@ async function saveProjectOrders(p, ordini){
 function bindOrders(p, fail){
   const okDate = v=>/^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0,4)>=2000 && +v.slice(0,4)<=2100;
   document.getElementById('ordAddBtn')?.addEventListener('click', ()=>{ orderEdit = { projectId:p.id, id:'new' }; confirmDeleteOrderId = null; renderMain(); });
+  // Spedito oltre il deliberato: si adegua l'importo deliberato al totale spedito.
+  document.getElementById('ordAdjustBtn')?.addEventListener('click', async ()=>{
+    try{ await db.collection('projects').doc(p.id).update({ importoDeliberato: orderedTotal(p), updatedAt: Date.now() }); }catch(err){ fail(err); }
+  });
   document.querySelectorAll('#main [data-order-edit]').forEach(b=>b.addEventListener('click', ()=>{ orderEdit = { projectId:p.id, id:b.dataset.orderEdit }; confirmDeleteOrderId = null; renderMain(); }));
   document.querySelectorAll('#main [data-order-del]').forEach(b=>b.addEventListener('click', ()=>{ confirmDeleteOrderId = b.dataset.orderDel; renderMain(); }));
   document.querySelector('#main [data-order-del-no]')?.addEventListener('click', ()=>{ confirmDeleteOrderId = null; renderMain(); });

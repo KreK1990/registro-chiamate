@@ -81,7 +81,7 @@ Campi principali:
   l'offerta), offertaUrl (link al PDF; niente upload: Firebase Storage richiederebbe il
   piano a consumo), ordini [{id, data, numero, importo, consegna, note}] (consegne
   parziali; dati del DDT, consegna = data indicativa: il primo ordine segna confermaOrdine se
-  vuota, mentre merceCantiere si indica solo a mano nella timeline con la data confermata dal cliente; `projectAmount` per le confermate = max(deliberato o offerta, totale ordinato)),
+  vuota, mentre merceCantiere si indica solo a mano nella timeline con la data confermata dal cliente; `projectAmount` per le confermate = max(deliberato o offerta, totale ordinato)); `supplyInfo` = % merce spedita (ordinato su deliberato, o offerta se manca) mostrata nella riga dell'elenco e nella scheda ordini delle confermate: oltre il 100% diventa rossa e propone "Adegua il deliberato" (importoDeliberato = totale ordinato),
   note, fasi {chiave: 'YYYY-MM-DD'} secondo `PROJECT_PHASES`
   (propostaTecnica a cura di Michael, offertaEconomica di Claudia), createdAt, updatedAt.
   Fase attuale = ultima fase con data <= oggi (`phaseDone`); le date future sono
