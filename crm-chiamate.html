@@ -225,7 +225,7 @@ h2{color:var(--accent);font-weight:800;}
         <button class="btn secondary block" id="notifBtn" style="margin-top:10px;font-size:11px;padding:6px;">Attiva notifiche</button>
       </div>
       <div class="nav">
-        <button id="navAgenda" class="active">Oggi</button>
+        <button id="navAgenda" class="active">Oggi<span id="mailBadge" class="nav-badge hidden"></span></button>
         <button id="navContacts">Contatti</button>
         <button id="navCall">Chiamata</button>
         <button id="navFollowup">Follow-up<span id="fuBadge" class="nav-badge hidden"></span></button>
@@ -321,6 +321,9 @@ function renderMain(){
         setActiveTab('navContacts');
         renderMain();
       });
+    });
+    main.querySelectorAll('[data-mail-done]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ btn.disabled = true; markMailSent(btn.dataset.mailDone); });
     });
     return;
   }
@@ -477,6 +480,9 @@ function renderMain(){
         <textarea id="callNote" placeholder="Cosa vi siete detti..."></textarea>
         <label>Progetto / argomento trattato</label>
         <input id="callProgetto" placeholder="Es. Ristrutturazione Via Roma 12">
+        <label style="margin-top:10px;">Email del cliente</label>
+        <input id="callEmail" type="email" inputmode="email" autocomplete="off" value="${esc(c.email||'')}" placeholder="Se te la comunica, viene salvata nella scheda">
+        <label style="display:flex;align-items:center;gap:7px;margin-top:8px;cursor:pointer;"><input type="checkbox" id="callMailCheck" style="width:auto;">Promemoria: inviare mail informativa</label>
         <label style="display:flex;align-items:center;gap:7px;margin-top:12px;cursor:pointer;"><input type="checkbox" id="callApptCheck" style="width:auto;">Appuntamento fissato</label>
         <div id="callApptWrap" class="hidden" style="margin-top:6px;">
           <div class="field-row">
@@ -558,10 +564,19 @@ function renderSidebarToday(){
     ${apptHtml}
     <div class="mini-section-label">Follow-up (${fuList.length})</div>
     ${fuHtml}
+    ${(()=>{ const mg = pendingMailGroups(); return mg.length ? `<div class="mini-section-label">Mail da inviare (${mg.length})</div>${mg.map(g=>`<div class="mini-row" data-mail-contact-id="${g.contactId}">${esc(fullName(g.contact))}</div>`).join('')}` : ''; })()}
   `;
   el.querySelectorAll('[data-appt-call-id]').forEach(row=>{
     row.addEventListener('click', ()=>{ tableDetailCallId=row.dataset.apptCallId; renderMain(); });
   });
+  el.querySelectorAll('[data-mail-contact-id]').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      selectedId=row.dataset.mailContactId; view='detail'; confirmDeleteId=null; tableDetailCallId=null;
+      setActiveTab('navContacts');
+      renderMain();
+    });
+  });
+  updateNavBadges();
   el.querySelectorAll('[data-fu-id]').forEach(row=>{
     row.addEventListener('click', ()=>{
       selectedId=row.dataset.fuId; clearFollowUpOnEntry=true; view='call'; callStep='entry';
@@ -1558,6 +1573,7 @@ function agendaView(){
       <h3>Appuntamenti di oggi (${todayAppts.length})</h3>
       ${apptHtml}
     </div>
+    ${pendingMailsCardHtml()}
     <div class="card">
       <h3>Follow-up da fare${dueFU.length?` (${dueFU.length} scaduti)`:''}</h3>
       ${fuHtml}
@@ -1649,6 +1665,9 @@ function renderCallFlow(){
       <div style="margin-top:10px;"></div>
       <label>Note</label>
       <textarea id="qcNote" placeholder="Cosa vi siete detti..."></textarea>
+      <label style="margin-top:10px;">Email del cliente</label>
+      <input id="qcEmail" type="email" inputmode="email" autocomplete="off" value="${esc(c.email||'')}" placeholder="Se te la comunica, viene salvata nella scheda">
+      <label style="display:flex;align-items:center;gap:7px;margin-top:8px;cursor:pointer;"><input type="checkbox" id="qcMailCheck" style="width:auto;">Promemoria: inviare mail informativa</label>
       <div style="margin-top:10px;"></div>
       <label style="display:flex;align-items:center;gap:7px;cursor:pointer;"><input type="checkbox" id="qcApptCheck" style="width:auto;">Appuntamento fissato</label>
       <div id="qcApptWrap" class="hidden" style="margin-top:6px;">
@@ -1696,9 +1715,11 @@ async function saveQuickCall(){
   const appuntamento = document.getElementById('qcApptCheck').checked ? combineDT(document.getElementById('qcApptDate').value, document.getElementById('qcApptTime').value) : '';
   const followUp = combineDT(document.getElementById('qcFollowUpDate').value, document.getElementById('qcFollowUpTime').value);
   if(!data){ alert('Inserisci la data.'); return; }
+  const mail = readCallMailFields('qcEmail', 'qcMailCheck');
+  if(!mail) return;
   try{
-    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, createdAt: Date.now() });
-    await db.collection('contacts').doc(selectedId).update({ followUp: followUp||'' });
+    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', createdAt: Date.now() });
+    await db.collection('contacts').doc(selectedId).update(contactUpdateAfterCall(selectedId, followUp, mail.email));
     selectedId=null; callStep='pick'; renderCallFlow();
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
 }
@@ -1793,6 +1814,7 @@ function tableDetailView(){
         ${k.esito?`<div><label>Esito</label><div style="font-size:14px;">${esc(k.esito)}</div></div>`:''}
         ${k.progetto?`<div><label>Progetto</label><div style="font-size:14px;">${esc(k.progetto)}</div></div>`:''}
         ${k.appuntamento?`<div><label>Appuntamento</label><div style="font-size:14px;">${fmtDateTime(k.appuntamento)}</div></div>`:''}
+        ${k.mailDaInviare?`<div><label>Mail informativa</label><div style="font-size:14px;">${k.mailInviataIl ? `inviata il ${fmtDate(k.mailInviataIl)}` : `<span style="color:var(--danger);font-weight:600;">da inviare</span> <button class="btn secondary small" id="markMailSentBtn" style="margin-left:6px;">Segna come inviata</button>`}</div></div>`:''}
       </div>
       <div style="margin-top:14px;">
         <label>${k.appuntamento?'Note della chiamata':'Note'}</label>
@@ -1857,6 +1879,10 @@ function bindTableDetail(){
     renderMain();
   };
   document.getElementById('openCallContactBtn')?.addEventListener('click', openContact);
+  document.getElementById('markMailSentBtn')?.addEventListener('click', async ()=>{
+    try{ await db.collection('calls').doc(tableDetailCallId).update({ mailInviataIl: todayISO() }); }
+    catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+  });
   document.getElementById('callContactName')?.addEventListener('click', openContact);
   if(confirmDeleteCallId===tableDetailCallId){
     document.getElementById('confirmDeleteCallBtn').addEventListener('click', deleteCall);
@@ -2147,11 +2173,62 @@ async function saveCall(){
   const appuntamento = document.getElementById('callApptCheck').checked ? combineDT(document.getElementById('callApptDate').value, document.getElementById('callApptTime').value) : '';
   const followUp = combineDT(document.getElementById('callFollowUpDate').value, document.getElementById('callFollowUpTime').value);
   if(!data){ alert('Inserisci la data.'); return; }
+  const mail = readCallMailFields('callEmail', 'callMailCheck');
+  if(!mail) return;
   try{
-    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, createdAt: Date.now() });
-    await db.collection('contacts').doc(selectedId).update({ followUp: followUp||'' });
+    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', createdAt: Date.now() });
+    await db.collection('contacts').doc(selectedId).update(contactUpdateAfterCall(selectedId, followUp, mail.email));
     document.getElementById('callNote').value='';
+    document.getElementById('callMailCheck').checked = false;
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+
+// Email e promemoria "mail informativa" inseriti durante la registrazione di una chiamata.
+function readCallMailFields(emailId, checkId){
+  const email = document.getElementById(emailId).value.trim();
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alert('L\'email non sembra valida: controllala.'); return null; }
+  return { email, todo: document.getElementById(checkId).checked };
+}
+function contactUpdateAfterCall(contactId, followUp, email){
+  const upd = { followUp: followUp||'' };
+  const c = contacts.find(x=>x.id===contactId);
+  if(email && email!==(c && c.email)) upd.email = email;   // la mail detta al telefono va nella scheda
+  return upd;
+}
+// Promemoria aperto = chiamata con mailDaInviare e senza mailInviataIl. Una riga per
+// cliente (se ci sono piu' chiamate con il promemoria aperto, "Mail inviata" le chiude tutte).
+function pendingMailGroups(){
+  const map = new Map();
+  calls.forEach(k=>{
+    if(!k.mailDaInviare || k.mailInviataIl) return;
+    const g = map.get(k.contactId) || { contactId:k.contactId, callIds:[], since:'' };
+    g.callIds.push(k.id);
+    if(!g.since || (k.data||'') < g.since) g.since = k.data||'';
+    map.set(k.contactId, g);
+  });
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  return [...map.values()].map(g=>({ ...g, contact: byId[g.contactId]||{} })).sort((a,b)=>a.since.localeCompare(b.since));
+}
+async function markMailSent(contactId){
+  const g = pendingMailGroups().find(x=>x.contactId===contactId);
+  if(!g) return;
+  try{ for(const id of g.callIds) await db.collection('calls').doc(id).update({ mailInviataIl: todayISO() }); }
+  catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+function pendingMailsCardHtml(){
+  const groups = pendingMailGroups();
+  if(!groups.length) return '';
+  return `<div class="card">
+    <h3>Mail informative da inviare (${groups.length})</h3>
+    ${groups.map(g=>{ const c = g.contact; return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:8px;">
+      <div data-contact-id="${g.contactId}" style="cursor:pointer;flex:1 1 200px;min-width:0;">
+        <div class="name-link" style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc([c.professione, c.azienda].filter(Boolean).join(' · '))}${g.since ? `${c.professione||c.azienda ? ' · ' : ''}richiesta il ${fmtDate(g.since)}` : ''}</div>
+        ${c.email ? `<a href="mailto:${esc(c.email)}" class="addr-link" onclick="event.stopPropagation()" style="font-size:13.5px;">${esc(c.email)}</a>` : `<span style="font-size:12.5px;color:var(--danger);">Email mancante: apri la scheda e aggiungila</span>`}
+      </div>
+      <button class="btn small" data-mail-done="${g.contactId}">Mail inviata</button>
+    </div>`; }).join('')}
+  </div>`;
 }
 
 function updateNavBadges(){
@@ -2159,12 +2236,15 @@ function updateNavBadges(){
   const overdue = contacts.filter(c=>c.followUp && new Date(c.followUp) <= now).length;
   const badge = document.getElementById('fuBadge');
   if(!badge) return;
-  const menuBadge = document.getElementById('menuBadge');
-  [badge, menuBadge].forEach(b=>{
+  const nMail = pendingMailGroups().length;
+  const setBadge = (b, n)=>{
     if(!b) return;
-    if(overdue>0){ b.textContent = overdue>99?'99+':overdue; b.classList.remove('hidden'); }
+    if(n>0){ b.textContent = n>99?'99+':n; b.classList.remove('hidden'); }
     else{ b.classList.add('hidden'); }
-  });
+  };
+  setBadge(badge, overdue);
+  setBadge(document.getElementById('mailBadge'), nMail);
+  setBadge(document.getElementById('menuBadge'), overdue + nMail);
 }
 function followUpBadge(dateStr, big){
   if(!dateStr) return '';
@@ -2200,7 +2280,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') setDrawer(false);
 // Scegliere una sezione, un appuntamento o un follow-up dalla tendina la chiude.
 document.getElementById('sidebar').addEventListener('click', e=>{
   if(e.target.closest('.addr-link')) return;
-  if(e.target.closest('.nav button, [data-appt-call-id], [data-fu-id]')) setDrawer(false);
+  if(e.target.closest('.nav button, [data-appt-call-id], [data-fu-id], [data-mail-contact-id]')) setDrawer(false);
 });
 narrowScreen.addEventListener('change', placeBottomCal);
 placeBottomCal();
@@ -2250,6 +2330,7 @@ function updateNotifBtn(){
 }
 const notifiedFollowUps = new Set();
 const notifiedAppts = new Set();
+let mailReminderDay = '';
 // Nell'app installata su iPhone il costruttore Notification non mostra nulla:
 // le notifiche vanno emesse tramite il service worker, quando disponibile.
 function showNotif(title, body){
@@ -2264,6 +2345,12 @@ function showNotif(title, body){
 function checkDueNotifications(){
   if(typeof Notification==='undefined' || Notification.permission!=='granted') return;
   const now = new Date();
+  // Promemoria serale (dalle 17:30, una volta al giorno) per le mail ancora da inviare.
+  const nMail = pendingMailGroups().length;
+  if(nMail && now.getHours()*60+now.getMinutes() >= 17*60+30 && mailReminderDay!==todayISO()){
+    mailReminderDay = todayISO();
+    showNotif('Mail informative da inviare', `${nMail} ${nMail===1?'cliente attende':'clienti attendono'} la mail di presentazione`);
+  }
   contacts.forEach(c=>{
     const key = c.id+'|'+c.followUp;
     if(c.followUp && new Date(c.followUp)<=now && !notifiedFollowUps.has(key)){

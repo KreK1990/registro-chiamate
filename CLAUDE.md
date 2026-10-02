@@ -65,7 +65,11 @@ Campi principali:
   grafia prevalente (`bestStudioName`) e può propagare via/città/telefono agli altri
   membri. I doppioni di contatto si riconoscono dal cellulare, non dal telefono studio.
 - **calls**: contactId, data (YYYY-MM-DD), esito, progetto, note, appuntamento (datetime
-  ISO), noteIncontro, createdAt.
+  ISO), noteIncontro, createdAt, mailDaInviare (bool), mailInviataIl (YYYY-MM-DD).
+  Promemoria "mail informativa" aperto = mailDaInviare && !mailInviataIl: compare in
+  Oggi (una riga per cliente, `pendingMailGroups`), nel riepilogo laterale, nel badge di
+  "Oggi"/menu e come notifica dalle 17:30. L'email inserita registrando una chiamata
+  aggiorna `contacts.email`.
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
