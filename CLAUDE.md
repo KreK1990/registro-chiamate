@@ -25,7 +25,14 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
   Firebase Admin SDK) e genera al volo un feed **.ics** per l'abbonamento calendario
   (così gli appuntamenti si sincronizzano da soli sul Calendario di iPhone/Google
   Calendar, senza export/import manuali).
-- `package.json` (dipendenza: `firebase-admin`) e `netlify.toml` (build minimale,
+- `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
+  `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
+  download, "Fai una copia adesso"): backup JSON di `users/<uid>/{contacts,calls,projects,settings}`
+  su **Netlify Blobs** (store `backups`, chiave `<uid>/<YYYY-MM-DD>.json`). Si tengono gli
+  ultimi 30 giorni e per sempre la copia del primo del mese. Logica comune in
+  `netlify/lib/backup.mjs` (fuori da `functions/` per non diventare una function).
+  Il service worker non mette in cache nulla sotto `/.netlify/`.
+- `package.json` (dipendenze: `firebase-admin`, `/blobs`) e `netlify.toml` (build minimale,
   `functions = "netlify/functions"`, redirect della radice verso l'app e blocco dei file
   che non devono essere serviti: `CLAUDE.md`, `package.json`, `netlify.toml`, `netlify/*`).
 
@@ -109,6 +116,17 @@ Campi principali:
   (confermato + ponderato con chiusura prevista nell'anno); ripartizione per trimestre.
   I campi si salvano all'uscita e aggiornano le cifre senza ridisegnare la pagina.
   Nel codice il blocco "Forecast" sta subito prima del blocco "Progetti".
+  Card "Budget di venduto": budget per anno (`settings.budget`), confermato dell'anno +
+  forecast con chiusura nell'anno rispetto al budget.
+- **Impostazioni** (voce di menu, blocco "Impostazioni" prima del Forecast): collection
+  `settings` con un solo documento (creato al primo salvataggio con `add`, poi `update`):
+  `budget {'YYYY': euro}`, `mailOggetto`, `mailTesto`. Modello della mail di presentazione:
+  `{saluto}` = "Gentile Arch./Ing./Geom./Avv./Dott. Cognome" secondo `PROF_TITLES`, anche
+  `{nome}`, `{cognome}`, `{studio}`; il pulsante "✉ Mail di presentazione" (scheda contatto e
+  promemoria "Mail informative da inviare" in Oggi) apre un `mailto:` con oggetto e testo e
+  copia il testo negli appunti (Outlook può troncare i mailto lunghi). Backup: "Scarica
+  tutto in Excel" (`exportAllExcel`: fogli Contatti, Chiamate, Progetti, Ordini; sostituisce
+  il vecchio export CSV) e, solo online, le copie automatiche notturne.
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
@@ -152,6 +170,8 @@ pubblica — la protezione dei dati è affidata al login Firebase e al token del
 "Accesso negato" dal feed = token nell'URL diverso da `CALENDAR_TOKEN`; dopo aver
 cambiato la variabile su Netlify serve un nuovo deploy perché la function la legga.
 Il file `.ics` esportabile manualmente (sezione Appuntamenti) resta un fallback.
+Ogni evento del feed ha un `VALARM` un'ora prima: su iPhone suona solo se nel calendario
+in abbonamento "Rimuovi avvisi" è disattivato.
 
 ## Note di stile/architettura da preservare
 

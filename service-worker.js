@@ -1,6 +1,6 @@
 // Service worker: keeps the app installable and available offline,
 // but always prefers the freshest version when online.
-const CACHE_NAME = 'registro-chiamate-v4';
+const CACHE_NAME = 'registro-chiamate-v5';
 const APP_SHELL = [
   './crm-chiamate-standalone.html',
   './manifest.json',
@@ -40,6 +40,8 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
+  // Functions (backup, calendario): sempre dalla rete, mai in cache (dati personali).
+  if (url.pathname.startsWith('/.netlify/')) return;
 
   // The app shell (the page itself) is network-first: always try to fetch
   // the latest version online, and only fall back to the cached copy if

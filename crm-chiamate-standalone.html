@@ -141,6 +141,15 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .proj-code{font-family:var(--mono);font-size:12.5px;color:var(--muted);letter-spacing:.5px;}
 .fc-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
 .fc-tile{background:var(--panel);border:1px solid var(--border);border-radius:2px;padding:12px 14px;}
+.budget-track{display:flex;height:14px;margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:2px;overflow:hidden;}
+.budget-conf{background:var(--accent);}
+.budget-fc{background:repeating-linear-gradient(135deg,var(--brand-yellow) 0 6px,#e9be4d 6px 12px);}
+.budget-legend{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;color:var(--muted);}
+.budget-legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;border-radius:2px;}
+.budget-msg{margin-top:8px;font-size:13.5px;}
+.budget-msg.ok{color:var(--success,#2e7d32);font-weight:600;}
+.backup-list{margin-top:10px;max-width:420px;}
+.backup-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;}
 .fc-tile:nth-child(2){border-top:3px solid var(--brand-yellow);}
 .fc-label{font-size:12px;color:var(--muted);}
 .fc-value{font-family:var(--serif);font-size:22px;font-weight:700;color:var(--accent);margin-top:2px;}
@@ -409,6 +418,7 @@ h2{color:var(--accent);font-weight:800;}
         <button id="navForecast">Forecast</button>
         <button id="navTable">Tabella chiamate</button>
         <button id="navDashboard">Dashboard</button>
+        <button id="navSettings">Impostazioni</button>
       </div>
       <div class="sidebar-today" id="sidebarToday"></div>
     </div>
@@ -521,6 +531,7 @@ function boot(){
 // All'uscita non deve restare nulla dei dati dell'utente precedente.
 function resetSession(){
   contacts = []; calls = []; projects = []; selectedProjectId = null; db = null;
+  appSettings = {}; settingsDocId = null; backupList = null; backupMsg = '';
   selectedId = null; view = 'agenda'; callStep = 'pick'; tableDetailCallId = null; editingCallId = null;
   confirmDeleteId = null; confirmDeleteCallId = null; dashboardDrilldown = null; contactsSearchQuery = '';
   notifiedFollowUps.clear(); notifiedAppts.clear();
@@ -662,6 +673,7 @@ function startApp(uid){
     renderSidebarToday();
   }, showDataError));
   unsubscribers.push(db.collection('projects').onSnapshot(onProjectsSnapshot, showDataError));
+  unsubscribers.push(db.collection('settings').onSnapshot(onSettingsSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -684,7 +696,7 @@ function contactsListView(){
     </div>
     <div style="display:flex;gap:8px;margin-top:10px;">
       <button class="btn" id="newContactBtn">+ Nuovo contatto</button>
-      <button class="btn secondary" id="exportCsvBtn">⬇ Esporta backup (CSV)</button>
+      <button class="btn secondary" id="exportXlsBtn">⬇ Esporta tutto (Excel)</button>
     </div>
   </div>`;
   const listHtml = filtered.length===0 ? '<div class="empty">Nessun contatto trovato.</div>' : filtered.map(c=>{
@@ -724,6 +736,9 @@ function renderMain(){
         setActiveTab('navContacts');
         renderMain();
       });
+    });
+    main.querySelectorAll('[data-mail-write]').forEach(btn=>{
+      btn.addEventListener('click', ()=>openPresentationMail(contacts.find(x=>x.id===btn.dataset.mailWrite)||{}));
     });
     main.querySelectorAll('[data-mail-done]').forEach(btn=>{
       btn.addEventListener('click', ()=>{ btn.disabled = true; markMailSent(btn.dataset.mailDone); });
@@ -825,8 +840,7 @@ function renderMain(){
     });
     const newBtn = document.getElementById('newContactBtn');
     if(newBtn) newBtn.addEventListener('click', ()=>{ window.__editing=null; view='new'; tableDetailCallId=null; renderMain(); });
-    const exportBtn = document.getElementById('exportCsvBtn');
-    if(exportBtn) exportBtn.addEventListener('click', exportBackupCSV);
+    document.getElementById('exportXlsBtn')?.addEventListener('click', exportAllExcel);
     const cSearch = document.getElementById('contactsSearch');
     if(cSearch){
       cSearch.addEventListener('input', e=>{ contactsSearchQuery=e.target.value; renderMain(); });
@@ -838,6 +852,7 @@ function renderMain(){
     return;
   }
   if(view==='forecast'){ main.innerHTML = forecastView(); bindForecast(); return; }
+  if(view==='settings'){ main.innerHTML = settingsView(); bindSettings(); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -865,6 +880,7 @@ function renderMain(){
         <h2>${esc(fullName(c))}</h2>
         <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
         <div style="margin-top:8px;font-size:14px;">${phoneLinks(c)}${(c.cellulare||c.telefono)&&c.email?' · ':''}${c.email?`<a href="mailto:${esc(c.email)}" class="addr-link">${esc(c.email)}</a>`:''}</div>
+        ${c.email ? `<div style="margin-top:8px;">${presentationMailBtn(c, 'id="presMailBtn"')}</div>` : ''}
         ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
         ${fullAddress(c)?`<div class="map-embed"><iframe src="${mapEmbedUrl(c)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa: ${esc(fullAddress(c))}"></iframe></div>`:''}
         ${c.tag?`<div style="margin-top:8px;">${tagPills(c.tag)}</div>`:''}
@@ -928,6 +944,7 @@ function renderMain(){
       document.getElementById('callApptWrap').classList.toggle('hidden', !e.target.checked);
     });
     document.getElementById('backToContactsBtn').addEventListener('click', ()=>{ view='contactsList'; selectedId=null; renderMain(); });
+    document.getElementById('presMailBtn')?.addEventListener('click', ()=>openPresentationMail(c));
     if(confirmDeleteId===c.id){
       document.getElementById('confirmDeleteBtn').addEventListener('click', ()=>deleteContact(c));
       document.getElementById('cancelDeleteBtn').addEventListener('click', ()=>{ confirmDeleteId=null; renderMain(); });
@@ -1214,6 +1231,231 @@ function projEventsListView(lvl){
 }
 
 // ---------------------------------------------------------------------------
+// Impostazioni. Collection "settings" con un solo documento: budget {'YYYY': euro}
+// (budget di venduto dell'anno, mostrato nel Forecast), mailOggetto e mailTesto
+// (modello della mail di presentazione; {saluto} diventa "Gentile Arch. Rossi").
+// Backup: export Excel di tutto l'archivio e, nella versione online, le copie
+// automatiche notturne della function "backups" (Netlify Blobs).
+// ---------------------------------------------------------------------------
+let appSettings = {}, settingsDocId = null, budgetYear = String(new Date().getFullYear());
+let backupList = null, backupMsg = '';   // null = elenco non ancora caricato
+function onSettingsSnapshot(snap){
+  const d = snap.docs[0];
+  settingsDocId = d ? d.id : null;
+  appSettings = d ? d.data() : {};
+  if(canAutoRender() && (view==='settings' || view==='forecast')) renderMain();
+}
+async function saveSettings(patch){
+  Object.assign(appSettings, patch);
+  try{
+    if(settingsDocId) await db.collection('settings').doc(settingsDocId).update({ ...patch, updatedAt: Date.now() });
+    else{ const ref = await db.collection('settings').add({ ...patch, updatedAt: Date.now() }); settingsDocId = settingsDocId || ref.id; }
+  }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+
+// --- Budget (nel Forecast) ---
+const fmtBudget = v=>new Intl.NumberFormat('it-IT', { maximumFractionDigits:2, useGrouping:'always' }).format(v);
+function budgetOf(year){ const v = (appSettings.budget||{})[year]; return v==null || v==='' ? null : Number(v); }
+function confirmedInYear(year){ return projects.filter(p=>isWon(p) && (p.fasi.confermaOrdine||'').startsWith(year)).reduce((s,p)=>s+(Number(projectAmount(p))||0), 0); }
+function weightedInYear(year){ return openForecastProjects().filter(p=>(p.chiusuraPrevista||'').startsWith(year)).reduce((s,p)=>s+forecastWeighted(p), 0); }
+function budgetYears(){
+  const y = new Date().getFullYear();
+  return [...new Set([String(y), String(y+1), ...Object.keys(appSettings.budget||{})])].sort();
+}
+function budgetFiguresHtml(){
+  const budget = budgetOf(budgetYear);
+  const conf = confirmedInYear(budgetYear), pond = weightedInYear(budgetYear);
+  if(!budget) return `<div class="fc-note" style="margin-top:8px;">Inserisci il budget di venduto del ${budgetYear} per vedere a che punto sei.</div>`;
+  const pc = v=>Math.round(v*100/budget);
+  const w1 = Math.min(100, conf*100/budget), w2 = Math.min(100 - w1, pond*100/budget);
+  const gap = budget - conf, gapAll = budget - conf - pond;
+  return `<div class="budget-track" title="Confermato ${fmtEuro(conf)} · forecast ${fmtEuro(pond)}">
+      <div class="budget-conf" style="width:${w1}%;"></div><div class="budget-fc" style="width:${w2}%;"></div>
+    </div>
+    <div class="budget-legend">
+      <span><i class="budget-conf"></i>Confermato <strong>${fmtEuro(conf)}</strong> · ${pc(conf)}%</span>
+      <span><i class="budget-fc"></i>Forecast con chiusura nel ${budgetYear} <strong>${fmtEuro(pond)}</strong></span>
+    </div>
+    <div class="budget-msg ${gap<=0 ? 'ok' : ''}">${gap<=0
+      ? `Budget raggiunto: ${fmtEuro(-gap)} oltre l'obiettivo (${pc(conf)}%).`
+      : `Mancano <strong>${fmtEuro(gap)}</strong> di confermato al budget. ${gapAll<=0
+          ? `Con il forecast dell'anno lo superi (stima ${pc(conf+pond)}%).`
+          : `Con il forecast dell'anno la stima è ${fmtEuro(conf+pond)} (${pc(conf+pond)}% del budget): servono altri ${fmtEuro(gapAll)} di nuove trattative.`}`}</div>`;
+}
+function budgetCardHtml(){
+  const b = budgetOf(budgetYear);
+  return `<div class="card" style="margin-top:14px;" id="fcBudget">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <h3 style="margin:0;">Budget di venduto</h3>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <select id="budgetYear" style="width:auto;">${budgetYears().map(y=>`<option ${y===budgetYear?'selected':''}>${y}</option>`).join('')}</select>
+        <input id="budgetInput" inputmode="decimal" placeholder="Es. 200.000" value="${b!=null ? fmtBudget(b) : ''}" style="width:150px;"> €
+      </div>
+    </div>
+    <div id="budgetFig">${budgetFiguresHtml()}</div>
+  </div>`;
+}
+function bindBudget(){
+  document.getElementById('budgetYear').addEventListener('change', e=>{ budgetYear = e.target.value; renderMain(); });
+  const inp = document.getElementById('budgetInput');
+  const save = ()=>{
+    const n = parseEuro(inp.value);
+    const cur = budgetOf(budgetYear);
+    if(Number.isNaN(n) || (n!=null && n<0)){ inp.value = cur!=null ? fmtBudget(cur) : ''; return; }
+    inp.value = n!=null ? fmtBudget(n) : '';
+    if(n===cur) return;
+    const budget = { ...(appSettings.budget||{}) };
+    if(n==null) delete budget[budgetYear]; else budget[budgetYear] = n;
+    saveSettings({ budget });
+    document.getElementById('budgetFig').innerHTML = budgetFiguresHtml();
+  };
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', e=>{ if(e.key==='Enter') inp.blur(); });
+}
+
+// --- Mail di presentazione ---
+const PROF_TITLES = { Architetto:'Arch.', Ingegnere:'Ing.', Geometra:'Geom.', Avvocato:'Avv.', Notaio:'Notaio', Commercialista:'Dott.' };
+function mailSalutation(c){
+  const title = PROF_TITLES[c.professione];
+  if(c.cognome) return `Gentile ${title || (c.nome||'')} ${c.cognome}`.replace(/\s+/g,' ').trim();
+  if(c.nome) return `Gentile ${title ? title+' ' : ''}${c.nome}`;
+  return 'Buongiorno';
+}
+function fillMailTemplate(text, c){
+  return String(text||'')
+    .replace(/\{saluto\}/gi, mailSalutation(c))
+    .replace(/\{nome\}/gi, c.nome||'').replace(/\{cognome\}/gi, c.cognome||'')
+    .replace(/\{studio\}/gi, c.azienda||'');
+}
+function hasMailTemplate(){ return !!(appSettings.mailTesto||'').trim(); }
+function presentationMail(c){
+  return { subject: fillMailTemplate(appSettings.mailOggetto||'', c), body: fillMailTemplate(appSettings.mailTesto||'', c) };
+}
+// Apre la mail gia' pronta nel programma di posta (Outlook sul PC, Mail su iPhone) e copia
+// anche il testo negli appunti: se il programma di posta tronca un testo lungo, lo si incolla.
+async function openPresentationMail(c){
+  if(!hasMailTemplate()){
+    alert('Prima scrivi il modello della mail di presentazione in Impostazioni.');
+    goSettings(); return;
+  }
+  const m = presentationMail(c);
+  try{ await navigator.clipboard.writeText(m.body); }catch(e){}
+  const q = `subject=${encodeURIComponent(m.subject)}&body=${encodeURIComponent(m.body.replace(/\r?\n/g, '\r\n'))}`;
+  location.href = `mailto:${encodeURIComponent(c.email||'').replace(/%40/g,'@')}?${q}`;
+}
+function presentationMailBtn(c, attrs){
+  return c.email ? `<button class="btn secondary small" ${attrs}>✉ Mail di presentazione</button>` : '';
+}
+
+// --- Backup ---
+function cellDate(d){ return d ? fmtDate(String(d).slice(0,10)) : ''; }
+async function exportAllExcel(){
+  try{ await loadXLSX(); }catch(e){ alert('Impossibile creare il file Excel: '+e.message); return; }
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const projById = Object.fromEntries(projects.map(p=>[p.id,p]));
+  const sheets = [];
+  sheets.push(['Contatti', [['Cognome','Nome','Professione','Studio/Attività','Cellulare','Telefono studio','Email','Via','Città','Tag','Follow-up','Note'],
+    ...contacts.slice().sort((a,b)=>fullName(a).localeCompare(fullName(b))).map(c=>[c.cognome||'', c.nome||'', c.professione||'', c.azienda||'', c.cellulare||'', c.telefono||'', c.email||'', c.via||'', c.citta||'', c.tag||'', c.followUp ? fmtDateTime(c.followUp) : '', c.note||''])]]);
+  sheets.push(['Chiamate', [['Data','Contatto','Studio/Attività','Esito','Argomento','Progetti','Note','Appuntamento','Note incontro','Mail informativa'],
+    ...calls.map(k=>{ const c = byId[k.contactId]||{}; return [cellDate(k.data), fullName(c), c.azienda||'', k.esito||'', k.progetto||'',
+      (k.progetti||[]).map(id=>projById[id] ? projById[id].codice : '').filter(Boolean).join(', '), k.note||'', k.appuntamento ? fmtDateTime(k.appuntamento) : '', k.noteIncontro||'',
+      k.mailDaInviare ? (k.mailInviataIl ? 'inviata il '+fmtDate(k.mailInviataIl) : 'da inviare') : '']; })]]);
+  const phaseCols = PROJECT_PHASES.map(ph=>ph.label);
+  sheets.push(['Progetti', [['ID','Nome','Via','Città','Stato','Fase','Offerta','Deliberato','Ordinato','% spedito','Probabilità %','Chiusura prevista','Partecipanti',...phaseCols,'Motivo perdita','Note'],
+    ...projects.slice().sort(byProjectId).map(p=>{ const ph = projectPhase(p); const s = supplyInfo(p);
+      return [p.codice||'', p.nome||'', p.via||'', p.citta||'', isLost(p) ? 'Persa' : isWon(p) ? 'Confermata' : 'Aperta', ph ? ph.label : '',
+        p.importoOfferta ?? '', p.importoDeliberato ?? '', orderedTotal(p) || '', s ? s.pct : '', isLost(p)||isWon(p) ? '' : forecastProb(p).value, p.chiusuraPrevista||'',
+        (p.partecipanti||[]).map(x=>{ const c = byId[x.contactId]; return c ? `${fullName(c)}${x.ruolo ? ' ('+x.ruolo+')' : ''}` : ''; }).filter(Boolean).join('; '),
+        ...PROJECT_PHASES.map(ph=>cellDate((p.fasi||{})[ph.key])), p.motivoPerdita||'', p.note||'']; })]]);
+  const orders = [];
+  projects.slice().sort(byProjectId).forEach(p=>projectOrders(p).forEach(o=>orders.push([p.codice||'', p.nome||'', cellDate(o.data), o.numero||'', o.importo ?? '', cellDate(o.consegna), o.note||''])));
+  sheets.push(['Ordini', [['ID progetto','Progetto','Data','Numero DDT','Importo','Consegna indicativa','Note'], ...orders]]);
+  const wb = XLSX.utils.book_new();
+  sheets.forEach(([name, rows])=>{
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = rows[0].map((_, i)=>({ wch: Math.min(45, Math.max(8, ...rows.slice(0, 200).map(r=>String(r[i]==null ? '' : r[i]).length + 1))) }));
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  });
+  XLSX.writeFile(wb, `registro-chiamate-${todayISO()}.xlsx`);
+}
+const cloudBackups = ()=>typeof firebase!=='undefined' && firebase.auth && firebase.auth().currentUser;
+async function backupApi(method, query){
+  const token = await firebase.auth().currentUser.getIdToken();
+  const res = await fetch('/.netlify/functions/backups'+(query||''), { method, headers:{ Authorization:'Bearer '+token } });
+  if(!res.ok){ let msg = res.status; try{ msg = (await res.json()).error || msg; }catch(e){} throw new Error(msg); }
+  return res;
+}
+async function loadBackupList(){
+  try{ backupList = (await (await backupApi('GET')).json()).backups || []; backupMsg = ''; }
+  catch(e){ backupList = []; backupMsg = 'Elenco delle copie non disponibile ('+e.message+').'; }
+  if(view==='settings') renderMain();
+}
+async function backupNow(btn){
+  btn.disabled = true; btn.textContent = 'Copia in corso…';
+  try{ const r = await (await backupApi('POST')).json(); backupMsg = r.date ? `Copia del ${fmtDate(r.date)} salvata.` : 'Archivio vuoto: niente da copiare.'; }
+  catch(e){ backupMsg = 'Copia non riuscita ('+e.message+').'; }
+  backupList = null; loadBackupList();
+}
+async function downloadBackup(date, btn){
+  btn.disabled = true;
+  try{
+    const blob = await (await backupApi('GET', '?date='+encodeURIComponent(date))).blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `registro-chiamate-backup-${date}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  }catch(e){ alert('Download non riuscito: '+e.message); }
+  btn.disabled = false;
+}
+
+// --- Vista ---
+function goSettings(){ view='settings'; tableDetailCallId=null; setActiveTab('navSettings'); renderMain(); }
+function settingsView(){
+  const sample = contacts.find(c=>PROF_TITLES[c.professione] && c.cognome) || { professione:'Architetto', nome:'Mario', cognome:'Rossi', azienda:'Studio Rossi' };
+  const cloud = cloudBackups();
+  // Ridisegnando (es. elenco dei backup) non si perde il testo non ancora salvato.
+  const subjEl = document.getElementById('mailSubject'), bodyEl = document.getElementById('mailBody');
+  const subj = subjEl ? subjEl.value : (appSettings.mailOggetto||''), body = bodyEl ? bodyEl.value : (appSettings.mailTesto||'');
+  if(cloud && backupList===null) setTimeout(loadBackupList, 0);
+  return `<h2 style="margin-bottom:16px;">Impostazioni</h2>
+  <div class="card">
+    <h3>Mail di presentazione</h3>
+    <div class="fc-note" style="margin-bottom:10px;">Scrivi una volta il testo che mandi sempre: dal contatto e dai promemoria "Mail informative da inviare" il pulsante <strong>✉ Mail di presentazione</strong> apre la mail già pronta con indirizzo, oggetto e testo.
+      Al posto di <code>{saluto}</code> l'app scrive il saluto in base alla professione, per esempio "${esc(mailSalutation(sample))}". Puoi usare anche <code>{nome}</code>, <code>{cognome}</code> e <code>{studio}</code>.</div>
+    <label>Oggetto</label>
+    <input id="mailSubject" value="${esc(subj)}" placeholder="Es. Schöck Italia: presentazione soluzioni per i ponti termici">
+    <label style="margin-top:10px;">Testo</label>
+    <textarea id="mailBody" rows="14" placeholder="{saluto},&#10;&#10;come anticipato al telefono…">${esc(body)}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+      <button class="btn" id="mailSaveBtn">Salva modello</button>
+      <span id="mailSaveMsg" class="fc-note"></span>
+    </div>
+    <div class="fc-note" style="margin-top:8px;">La mail si apre come testo semplice: la firma la aggiunge il programma di posta, gli allegati vanno inseriti a mano. Il testo viene anche copiato: se in Outlook risultasse incompleto, incollalo con Ctrl+V.</div>
+  </div>
+  <div class="card">
+    <h3>Backup</h3>
+    <div class="fc-note" style="margin-bottom:10px;">Excel con contatti, chiamate, progetti e ordini: utile da conservare o da girare al responsabile.</div>
+    <button class="btn" id="excelAllBtn">⬇ Scarica tutto in Excel</button>
+    ${cloud ? `<h3 style="margin-top:18px;">Copie automatiche</h3>
+      <div class="fc-note" style="margin-bottom:10px;">Ogni notte viene salvata una copia completa dell'archivio, separata da Firebase. Si tengono gli ultimi 30 giorni e, per sempre, la copia del primo giorno di ogni mese.</div>
+      <button class="btn secondary small" id="backupNowBtn">Fai una copia adesso</button>
+      ${backupMsg ? `<div class="fc-note" style="margin-top:8px;">${esc(backupMsg)}</div>` : ''}
+      <div class="backup-list">${backupList===null ? '<div class="fc-note">Caricamento…</div>'
+        : backupList.length ? backupList.map(d=>`<div class="backup-row"><span>${fmtDate(d)}</span><button class="btn secondary small" data-backup-date="${d}">Scarica</button></div>`).join('')
+        : '<div class="fc-note">Nessuna copia ancora: la prima arriva stanotte, oppure fanne una adesso.</div>'}</div>` : ''}
+  </div>`;
+}
+function bindSettings(){
+  document.getElementById('mailSaveBtn').addEventListener('click', async ()=>{
+    await saveSettings({ mailOggetto: document.getElementById('mailSubject').value.trim(), mailTesto: document.getElementById('mailBody').value.replace(/\s+$/,'') });
+    const m = document.getElementById('mailSaveMsg'); if(m) m.textContent = 'Modello salvato.';
+  });
+  document.getElementById('excelAllBtn').addEventListener('click', exportAllExcel);
+  document.getElementById('backupNowBtn')?.addEventListener('click', e=>backupNow(e.target));
+  document.querySelectorAll('[data-backup-date]').forEach(b=>b.addEventListener('click', ()=>downloadBackup(b.dataset.backupDate, b)));
+}
+
+// ---------------------------------------------------------------------------
 // Forecast: solo commesse aperte (ne' perse ne' con ordine confermato). Valore
 // ponderato = importo offerta x probabilita' di chiusura. Campi sul progetto:
 // probabilita (0-100; se assente si usa quella suggerita per la fase) e
@@ -1296,6 +1538,7 @@ function forecastView(){
   return `<h2 style="margin-bottom:6px;">Forecast</h2>
     <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Commesse aperte con la probabilità di chiusura che stimi: il valore ponderato (offerta × probabilità) dà un obiettivo verosimile su ciò che oggi è in corso.</div>
     <div id="fcSummary">${forecastSummaryHtml()}</div>
+    ${budgetCardHtml()}
     <div class="card" style="margin-top:14px;">
       <h3>Forecast per periodo di chiusura prevista</h3>
       <div id="fcQuarters">${forecastQuartersHtml()}</div>
@@ -1314,6 +1557,7 @@ function forecastView(){
 function refreshForecastFigures(p){
   const s = document.getElementById('fcSummary'); if(s) s.innerHTML = forecastSummaryHtml();
   const q = document.getElementById('fcQuarters'); if(q) q.innerHTML = forecastQuartersHtml();
+  const bf = document.getElementById('budgetFig'); if(bf) bf.innerHTML = budgetFiguresHtml();
   const row = document.querySelector(`#fcRows [data-fc-project="${p.id}"]`);
   if(row){
     row.querySelector('.fc-weighted').textContent = p.importoOfferta!=null ? fmtEuro(forecastWeighted(p)) : '—';
@@ -1322,6 +1566,7 @@ function refreshForecastFigures(p){
 }
 function bindForecast(){
   document.getElementById('fcSort').addEventListener('change', e=>{ forecastSort = e.target.value; renderMain(); });
+  bindBudget();
   document.querySelectorAll('#fcRows [data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   const fail = e=>alert('Errore nel salvataggio: '+(e.message||e.code||''));
   document.querySelectorAll('#fcRows [data-fc-project]').forEach(row=>{
@@ -1381,7 +1626,7 @@ const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale
 // Nel Forecast non si ridisegna mentre si sta scrivendo in un campo (le cifre si aggiornano a parte).
 function canAutoRender(){
   const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main input');
-  return view!=='new' && view!=='projectForm' && !(view==='call' && callStep==='entry') && !(view==='forecast' && typing)
+  return view!=='new' && view!=='projectForm' && view!=='settings' && !(view==='call' && callStep==='entry') && !(view==='forecast' && typing)
     && !(view==='projectDetail' && (orderEdit || loseFormProjectId));
 }
 function onProjectsSnapshot(snap){
@@ -3781,7 +4026,7 @@ function pendingMailsCardHtml(){
         <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc([c.professione, c.azienda].filter(Boolean).join(' · '))}${g.since ? `${c.professione||c.azienda ? ' · ' : ''}richiesta il ${fmtDate(g.since)}` : ''}</div>
         ${c.email ? `<a href="mailto:${esc(c.email)}" class="addr-link" onclick="event.stopPropagation()" style="font-size:13.5px;">${esc(c.email)}</a>` : `<span style="font-size:12.5px;color:var(--danger);">Email mancante: apri la scheda e aggiungila</span>`}
       </div>
-      <button class="btn small" data-mail-done="${g.contactId}">Mail inviata</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">${presentationMailBtn(c, `data-mail-write="${g.contactId}"`)}<button class="btn small" data-mail-done="${g.contactId}">Mail inviata</button></div>
     </div>`; }).join('')}
   </div>`;
 }
@@ -3808,7 +4053,7 @@ function followUpBadge(dateStr, big){
   return `<span class="followup ${due?'due':'ok'}" style="${big?'display:inline-block;':''}">${label}</span>`;
 }
 
-const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navForecast','navTable','navDashboard'];
+const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navForecast','navTable','navDashboard','navSettings'];
 function setActiveTab(id){
   NAV_TABS.forEach(t=>document.getElementById(t).classList.toggle('active', t===id));
   const title = document.getElementById('topbarTitle');
@@ -3882,6 +4127,7 @@ document.getElementById('navAppt').addEventListener('click', ()=>{
   setActiveTab('navAppt');
   renderMain();
 });
+document.getElementById('navSettings').addEventListener('click', goSettings);
 document.getElementById('navDashboard').addEventListener('click', ()=>{
   view='dashboard'; tableDetailCallId=null; dashboardDrilldown=null;
   setActiveTab('navDashboard');
@@ -3948,16 +4194,6 @@ updateNotifBtn();
 setInterval(checkDueNotifications, 60000);
 
 function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-function csvEscape(v){ const s=String(v==null?'':v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
-function downloadCSV(filename, rows){
-  const csv = rows.map(r=>r.map(csvEscape).join(',')).join('\r\n');
-  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 function exportICS(){
   const events = apptCalls();
   if(events.length===0){ alert('Nessun appuntamento da esportare.'); return; }
@@ -4008,20 +4244,6 @@ function exportICS(){
   a.href = url; a.download = 'appuntamenti.ics';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-function exportBackupCSV(){
-  const contactRows = [['Nome','Cognome','Professione','Cellulare','Studio/Attività','Via','Città','Telefono studio','Email','Follow-up','Note']];
-  contacts.forEach(c=>{
-    contactRows.push([c.nome||'', c.cognome||'', c.professione||'', c.cellulare||'', c.azienda||'', c.via||'', c.citta||'', c.telefono||'', c.email||'', c.followUp?fmtDateTime(c.followUp):'', c.note||'']);
-  });
-  downloadCSV('contatti.csv', contactRows);
-  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
-  const callRows = [['Data','Contatto','Esito','Progetto','Note','Appuntamento','Note incontro']];
-  calls.forEach(k=>{
-    const c = byId[k.contactId]||{};
-    callRows.push([fmtDate(k.data), fullName(c), k.esito||'', k.progetto||'', k.note||'', k.appuntamento?fmtDateTime(k.appuntamento):'', k.noteIncontro||'']);
-  });
-  setTimeout(()=>downloadCSV('chiamate.csv', callRows), 400);
 }
 function isApptCall(k){ return k.esito==='Appuntamento fissato' || !!k.appuntamento; }
 function esitoCell(k){

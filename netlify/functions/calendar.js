@@ -145,6 +145,11 @@ exports.handler = async function (event) {
       ics += foldLine(`SUMMARY:${summary}`) + '\r\n';
       if (desc) ics += foldLine(`DESCRIPTION:${desc}`) + '\r\n';
       if (loc) ics += foldLine(`LOCATION:${loc}`) + '\r\n';
+      // Avviso un'ora prima. Su iPhone suona solo se nel calendario in abbonamento
+      // l'opzione "Rimuovi avvisi" e' disattivata.
+      ics += 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT1H\r\n';
+      ics += foldLine(`DESCRIPTION:${summary}`) + '\r\n';
+      ics += 'END:VALARM\r\n';
       ics += 'END:VEVENT\r\n';
     });
 
