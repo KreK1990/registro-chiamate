@@ -1683,9 +1683,9 @@ function forecastPdfWorker(){
     margin: [8, 8, 10, 8],
     filename: `forecast-${todayISO()}.pdf`,
     image: { type:'jpeg', quality:0.95 },
-    // finestra larga quanto la pagina (281 mm = 1062 px): impaginazione da desktop anche da
-    // telefono, e nessuno spostamento laterale del contenuto (che verrebbe tagliato a destra)
-    html2canvas: { scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:0, windowWidth:1062 },
+    // Niente windowWidth: con una finestra diversa da quella reale il report (centrato da html2pdf)
+    // verrebbe disegnato spostato e tagliato. L'aspetto da desktop lo garantiscono le regole .fc-report.
+    html2canvas: { scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:0 },
     jsPDF: { unit:'mm', format:'a4', orientation:'landscape' },
     pagebreak: { mode:['css', 'legacy'], avoid:['.rep-row', '.rep-keep', '.fc-tiles', 'h3'] }
   }).from(el.firstElementChild);
