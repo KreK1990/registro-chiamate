@@ -113,7 +113,8 @@ Campi principali:
   progetto: `probabilita` (0-100; se assente si usa `FORECAST_DEFAULT_PROB` per fase,
   mostrata come "suggerita") e `chiusuraPrevista` ('YYYY-MM'). Ponderato = importoOfferta
   × probabilità. Riepilogo: aperte, forecast ponderato, conferme d'ordine e fatturato stimato
-  dell'anno (vedi sotto); ripartizione per trimestre di chiusura prevista.
+  dell'anno (vedi sotto); tabella "Forecast ponderato per anno" (`forecastQuartersHtml`): ponderato diviso per anno con la
+  ripartizione, dentro l'anno per trimestre di chiusura prevista (o "ripartito sull'anno").
   I campi si salvano all'uscita e aggiornano le cifre senza ridisegnare la pagina.
   Nel codice il blocco "Forecast" sta subito prima del blocco "Progetti".
   Fatturato per anno: `ripartizione {'YYYY': %}` sul progetto (3 campi: anno in corso e i due

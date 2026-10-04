@@ -165,6 +165,9 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .fc-q-row:last-child{border-bottom:none;}
 .fc-q-label{font-size:13.5px;font-weight:600;}
 .fc-q-label span{font-weight:400;color:var(--muted);font-size:12px;margin-left:4px;}
+.fc-q-row:has(+ .fc-q-subs){border-bottom:none;padding-bottom:2px;}
+.fc-q-subs{padding:2px 0 8px 14px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--muted);}
+.fc-q-subs div{display:flex;justify-content:space-between;gap:10px;padding:1px 0;}
 .fc-q-track{height:16px;background:var(--bg);border-radius:2px;overflow:hidden;}
 .fc-q-bar{height:100%;background:var(--accent);}
 .fc-q-num{text-align:right;white-space:nowrap;font-size:13px;}
@@ -1509,22 +1512,33 @@ function bindBudget(){
   inp.addEventListener('keydown', e=>{ if(e.key==='Enter') inp.blur(); });
 }
 
+// Ponderato delle aperte per anno secondo la ripartizione; dentro l'anno la quota cade nel
+// trimestre di chiusura prevista se e' quello l'anno, altrimenti e' "ripartita sull'anno".
 function forecastQuartersHtml(){
-  const groups = new Map();
+  const y0 = currentYear(), years = new Map();
   openForecastProjects().forEach(p=>{
-    const k = quarterKey(p.chiusuraPrevista||'');
-    const g = groups.get(k) || { n:0, offerta:0, ponderato:0 };
-    g.n++; g.offerta += Number(p.importoOfferta)||0; g.ponderato += forecastWeighted(p);
-    groups.set(k, g);
+    const w = forecastWeighted(p), off = Number(p.importoOfferta)||0;
+    const ym = p.chiusuraPrevista||'', cy = ym.slice(0,4);
+    Object.entries(yearShares(p)).forEach(([y, s])=>{
+      const g = years.get(y) || { n:0, offerta:0, ponderato:0, subs:new Map() };
+      g.n++; g.offerta += off*s; g.ponderato += w*s;
+      const k = !ym ? 'nodate' : y===cy ? quarterKey(ym) : cy < y0 && y===y0 ? 'late' : 'split';
+      g.subs.set(k, (g.subs.get(k)||0) + w*s);
+      years.set(y, g);
+    });
   });
-  const keys = [...groups.keys()].sort((a,b)=>(a===''?1:0)-(b===''?1:0) || a.localeCompare(b));
-  if(!keys.length) return '<div class="empty">Nessuna commessa aperta.</div>';
-  const max = Math.max(1, ...keys.map(k=>groups.get(k).ponderato));
-  return keys.map(k=>{ const g = groups.get(k); return `<div class="fc-q-row">
-      <div class="fc-q-label">${quarterLabel(k)} <span>${g.n} ${g.n===1?'commessa':'commesse'}</span></div>
+  if(!years.size) return '<div class="empty">Nessuna commessa aperta.</div>';
+  const SUB_ORDER = { split:1, late:2, nodate:3 };
+  const subLabel = k=>k==='split' ? 'ripartito sull\'anno (chiusura in un altro anno)' : k==='late' ? 'chiusura prevista già passata' : k==='nodate' ? 'senza data di chiusura' : quarterLabel(k);
+  const max = Math.max(1, ...[...years.values()].map(g=>g.ponderato));
+  return [...years.keys()].sort().map(y=>{ const g = years.get(y);
+    const subs = [...g.subs.entries()].sort((a,b)=>(SUB_ORDER[a[0]]||0)-(SUB_ORDER[b[0]]||0) || a[0].localeCompare(b[0]));
+    return `<div class="fc-q-row">
+      <div class="fc-q-label">${y} <span>${g.n} ${g.n===1?'commessa':'commesse'}</span></div>
       <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round(g.ponderato*100/max))}%;"></div></div>
       <div class="fc-q-num"><strong>${fmtEuro(g.ponderato)}</strong><span>su ${fmtEuro(g.offerta)}</span></div>
-    </div>`; }).join('');
+    </div>
+    <div class="fc-q-subs">${subs.map(([k, v])=>`<div><span>${subLabel(k)}</span><span>${fmtEuro(v)}</span></div>`).join('')}</div>`; }).join('');
 }
 function forecastRowsHtml(){
   const list = openForecastProjects().sort((a,b)=>{
@@ -1569,7 +1583,8 @@ function forecastView(){
     <div id="fcSummary">${forecastSummaryHtml()}</div>
     ${budgetCardHtml()}
     <div class="card" style="margin-top:14px;">
-      <h3>Forecast per periodo di chiusura prevista</h3>
+      <h3>Forecast ponderato per anno</h3>
+      <div class="fc-note" style="margin-bottom:6px;">Ogni commessa aperta è divisa sugli anni secondo la ripartizione indicata qui sotto; dentro l'anno, per trimestre di chiusura prevista.</div>
       <div id="fcQuarters">${forecastQuartersHtml()}</div>
     </div>
     <div class="card" style="margin-top:14px;">
