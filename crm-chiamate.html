@@ -156,6 +156,7 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .fc-q-label{font-size:13.5px;font-weight:600;}
 .fc-q-label span{font-weight:400;color:var(--muted);font-size:12px;margin-left:4px;}
 .fc-q-row:has(+ .fc-q-subs){border-bottom:none;padding-bottom:2px;}
+.fc-addr{color:var(--muted);font-size:13px;}
 .fc-q-subs{padding:2px 0 8px 14px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--muted);}
 .fc-q-subs div{display:flex;justify-content:space-between;gap:10px;padding:1px 0;}
 .fc-q-track{height:16px;background:var(--bg);border-radius:2px;overflow:hidden;}
@@ -1295,7 +1296,7 @@ function forecastRowsHtml(){
       <div class="fc-head">
         <div style="min-width:0;"><span class="proj-code">${esc(p.codice||'')}</span>
           <span class="name-link" data-open-project="${p.id}" style="font-weight:600;">${esc(p.nome || 'Progetto senza nome')}</span>
-          ${p.citta ? `<span style="color:var(--muted);font-size:12.5px;"> · ${esc(p.citta)}</span>` : ''}</div>
+          ${projectAddress(p) ? `<span class="fc-addr"> · ${esc(projectAddress(p))}</span>` : ''}</div>
         ${phaseBadge(p)}
       </div>
       <div class="fc-grid">
@@ -1315,6 +1316,7 @@ function shippingRowsHtml(){
   return list.map(p=>{ const s = supplyInfo(p); return `<div class="fc-ship-row">
       <div style="min-width:0;"><span class="proj-code">${esc(p.codice||'')}</span>
         <span class="name-link" data-open-project="${p.id}" style="font-weight:600;">${esc(p.nome || 'Progetto senza nome')}</span>
+        ${projectAddress(p) ? `<span class="fc-addr"> · ${esc(projectAddress(p))}</span>` : ''}
         <div class="fc-note">${s ? `spedito ${s.pct}% di ${fmtEuro(s.base)} · ` : ''}da spedire <strong>${fmtEuro(toShip(p))}</strong></div></div>
       ${splitInputsHtml(p)}
     </div>`; }).join('');
