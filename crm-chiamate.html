@@ -129,7 +129,7 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .funnel-num strong{font-size:17px;color:var(--text);}
 .funnel-note{grid-area:note;font-size:12px;color:var(--muted);}
 .proj-code{font-family:var(--mono);font-size:12.5px;color:var(--muted);letter-spacing:.5px;}
-.fc-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.fc-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;}
 .fc-tile{background:var(--panel);border:1px solid var(--border);border-radius:2px;padding:12px 14px;}
 .budget-marks{position:relative;height:17px;font-size:12px;}
 .budget-marks.top{margin-top:10px;}
@@ -151,7 +151,7 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .fc-split-y span{display:flex;align-items:center;gap:3px;color:var(--text);}
 .fc-split input{width:70px;}
 .fc-ship-row{display:flex;justify-content:space-between;align-items:center;gap:8px 16px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border);}
-.budget-fc{background:repeating-linear-gradient(135deg,var(--brand-yellow) 0 6px,#e9be4d 6px 12px);}
+.budget-fc{background-color:var(--brand-yellow);background-image:repeating-linear-gradient(135deg,var(--brand-yellow) 0 6px,#e9be4d 6px 12px);}
 .budget-legend{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;color:var(--muted);}
 .budget-legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;border-radius:2px;}
 .budget-msg{margin-top:8px;font-size:13.5px;}
@@ -167,6 +167,30 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .fc-q-label{font-size:13.5px;font-weight:600;}
 .fc-q-label span{font-weight:400;color:var(--muted);font-size:12px;margin-left:4px;}
 .fc-q-row:has(+ .fc-q-subs){border-bottom:none;padding-bottom:2px;}
+.fc-report{width:100%;box-sizing:border-box;background:#fff;color:var(--text);font-family:var(--sans,inherit);}
+.fc-report .card{box-shadow:none;}
+/* Il report PDF ha sempre l'impaginazione da desktop: le regole sotto battono quelle del
+   telefono (@media max-width:720px), cosi' i salti pagina calcolati sulla finestra reale
+   coincidono con il disegno del PDF. */
+.fc-report .card{padding:20px;margin-bottom:18px;row-gap:normal !important;column-gap:normal !important;}
+.fc-report .fc-tiles{grid-template-columns:repeat(4,minmax(0,1fr));}
+.fc-report .fc-value{font-size:22px;}
+.fc-report .fc-q-row{grid-template-columns:minmax(170px,230px) 1fr auto;}
+.fc-report .fc-q-track{grid-column:auto;grid-row:auto;}
+.rep-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--accent);padding-bottom:8px;margin-bottom:14px;}
+.rep-title{font-family:var(--serif);font-size:24px;font-weight:700;color:var(--accent);}
+.rep-brand{font-weight:600;color:var(--brand-yellow);}
+.rep-sub{font-size:11.5px;color:var(--muted);}
+.rep-section{margin-top:22px;}
+.rep-table{font-size:12px;margin-top:6px;}
+.rep-row{display:grid;gap:0 12px;padding:5px 8px;border-bottom:1px solid var(--border);align-items:start;}
+.rep-open .rep-row{grid-template-columns:70px minmax(0,2fr) minmax(0,1.2fr) 105px 45px 105px minmax(0,1fr) minmax(0,1.3fr);}
+.rep-ship .rep-row{grid-template-columns:70px minmax(0,2.4fr) 115px 70px 115px minmax(0,1.6fr);}
+.rep-alt{background:#f5f7fa;}
+.rep-th{background:var(--accent);color:#fff;font-weight:600;border-bottom:none;padding:6px 8px;}
+.rep-tot{font-weight:700;border-top:2px solid var(--accent);border-bottom:none;}
+.rep-table .num{text-align:right;white-space:nowrap;}
+.rep-code{font-family:monospace;white-space:nowrap;}
 .fc-addr{color:var(--muted);font-size:13px;}
 .fc-q-subs{padding:2px 0 8px 14px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--muted);}
 .fc-q-subs div{display:flex;justify-content:space-between;gap:10px;padding:1px 0;}
@@ -1342,8 +1366,87 @@ function shippingRowsHtml(){
       ${splitInputsHtml(p)}
     </div>`; }).join('');
 }
+// --- Report PDF da condividere: parte alta come a video + tabelle dei progetti ---
+function loadHtml2Pdf(){
+  if(window.html2pdf) return Promise.resolve();
+  return new Promise((resolve, reject)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    sc.onload = ()=>resolve();
+    sc.onerror = ()=>reject(new Error('libreria PDF non caricata, controlla la connessione'));
+    document.head.appendChild(sc);
+  });
+}
+function splitText(p){ const sh = yearShares(p); return Object.keys(sh).sort().map(y=>`${y} ${Math.round(sh[y]*100)}%`).join(' · '); }
+function projCellHtml(p){
+  return `<strong>${esc(p.nome || 'Progetto senza nome')}</strong>${projectAddress(p) ? `<div class="rep-sub">${esc(projectAddress(p))}</div>` : ''}`;
+}
+function forecastReportHtml(){
+  const open = openForecastProjects().sort((a,b)=>(a.chiusuraPrevista||'9999').localeCompare(b.chiusuraPrevista||'9999') || byProjectId(a,b));
+  const ship = shippingProjects().sort(byProjectId);
+  const budget = budgetOf(budgetYear);
+  const sum = (list, f)=>list.reduce((s,p)=>s+(Number(f(p))||0), 0);
+  // Tabelle fatte di righe a blocco (.rep-row): html2pdf sa non spezzarle tra due pagine, i <tr> no.
+  const cell = (v, cls)=>`<div class="${cls||''}">${v}</div>`;
+  const row = (cells, cls)=>`<div class="rep-row ${cls||''}">${cells.join('')}</div>`;
+  const openRows = open.map((p, i)=>{ const ph = projectPhase(p); return row([
+      cell(esc(p.codice||''), 'rep-code'), cell(projCellHtml(p)), cell(ph ? esc(ph.label) : '—'),
+      cell(fmtEuro(p.importoOfferta), 'num'), cell(forecastProb(p).value+'%', 'num'), cell(`<strong>${p.importoOfferta!=null ? fmtEuro(forecastWeighted(p)) : '—'}</strong>`, 'num'),
+      cell(p.chiusuraPrevista ? esc(monthLabel(p.chiusuraPrevista)) : '—'), cell(splitText(p))], i%2 ? 'rep-alt' : ''); });
+  const shipRows = ship.map((p, i)=>{ const s = supplyInfo(p); return row([
+      cell(esc(p.codice||''), 'rep-code'), cell(projCellHtml(p)),
+      cell(fmtEuro(supplyBase(p)), 'num'), cell(s ? s.pct+'%' : '—', 'num'), cell(`<strong>${fmtEuro(toShip(p))}</strong>`, 'num'), cell(splitText(p))], i%2 ? 'rep-alt' : ''); });
+  // Titolo, intestazione e prima riga restano insieme; il resto puo' passare alla pagina dopo.
+  const tableCard = (cls, title, head, rows, tot)=>`<div class="rep-section">
+      <div class="rep-keep"><h3>${title}</h3><div class="rep-table ${cls}">${head}${rows[0]||''}</div></div>
+      <div class="rep-table ${cls}" style="margin-top:0;">${rows.slice(1).join('')}${tot}</div></div>`;
+  return `<div class="fc-report">
+    <div class="rep-head"><div><div class="rep-title">Forecast commerciale</div><div class="rep-sub">Situazione al ${fmtDate(todayISO())}</div></div><div class="rep-brand">Registro Chiamate</div></div>
+    ${forecastSummaryHtml()}
+    <div class="card rep-keep" style="margin-top:14px;"><h3 style="margin:0;">Budget di fatturato ${budgetYear}${budget ? `: ${fmtEuro(budget)}` : ''}</h3>${budgetFiguresHtml()}</div>
+    <div class="card rep-keep" style="margin-top:14px;"><h3>Forecast ponderato per anno</h3>${forecastQuartersHtml()}</div>
+    ${open.length ? tableCard('rep-open', `Commesse aperte (${open.length})`,
+        row(['ID','Progetto','Fase','Offerta','Prob.','Ponderato','Chiusura prevista','Fatturato per anno'].map((h, i)=>cell(h, [3,4,5].includes(i) ? 'num' : '')), 'rep-th'),
+        openRows,
+        row([cell(''), cell('Totale'), cell(''), cell(fmtEuro(sum(open, p=>p.importoOfferta)), 'num'), cell(''), cell(fmtEuro(sum(open, forecastWeighted)), 'num'), cell(''), cell('')], 'rep-tot'))
+      : '<div class="rep-section"><h3>Commesse aperte</h3><div class="fc-note">Nessuna commessa aperta.</div></div>'}
+    ${ship.length ? tableCard('rep-ship', `Confermate ancora da spedire (${ship.length})`,
+        row(['ID','Progetto','Deliberato','Spedito','Da spedire','Fatturato per anno'].map((h, i)=>cell(h, [2,3,4].includes(i) ? 'num' : '')), 'rep-th'),
+        shipRows,
+        row([cell(''), cell('Totale'), cell(fmtEuro(sum(ship, supplyBase)), 'num'), cell(''), cell(fmtEuro(sum(ship, toShip)), 'num'), cell('')], 'rep-tot'))
+      : '<div class="rep-section"><h3>Confermate ancora da spedire</h3><div class="fc-note">Nessuna commessa confermata con merce ancora da spedire.</div></div>'}
+  </div>`;
+}
+// A4 orizzontale; i riquadri piccoli (.rep-keep) e le righe delle tabelle non si spezzano tra due pagine.
+function forecastPdfWorker(){
+  const el = document.createElement('div');
+  el.innerHTML = forecastReportHtml();
+  return html2pdf().set({
+    margin: [8, 8, 10, 8],
+    filename: `forecast-${todayISO()}.pdf`,
+    image: { type:'jpeg', quality:0.95 },
+    // finestra larga quanto la pagina (281 mm = 1062 px): impaginazione da desktop anche da
+    // telefono, e nessuno spostamento laterale del contenuto (che verrebbe tagliato a destra)
+    html2canvas: { scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:0, windowWidth:1062 },
+    jsPDF: { unit:'mm', format:'a4', orientation:'landscape' },
+    pagebreak: { mode:['css', 'legacy'], avoid:['.rep-row', '.rep-keep', '.fc-tiles', 'h3'] }
+  }).from(el.firstElementChild);
+}
+async function exportForecastPdf(btn){
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Preparazione PDF…';
+  try{
+    await loadHtml2Pdf();
+    await forecastPdfWorker().save();
+  }catch(e){ alert('Impossibile creare il PDF: '+(e.message||e)); }
+  btn.disabled = false; btn.textContent = label;
+}
+
 function forecastView(){
-  return `<h2 style="margin-bottom:6px;">Forecast</h2>
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+      <h2 style="margin:0;">Forecast</h2>
+      <button class="btn secondary small" id="fcPdfBtn">⬇ Scarica PDF</button>
+    </div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Commesse aperte con la probabilità di chiusura che stimi: il valore ponderato (offerta × probabilità) dà un obiettivo verosimile su ciò che oggi è in corso. Per ogni commessa puoi indicare come si distribuirà il fatturato tra quest'anno e i prossimi.</div>
     <div id="fcSummary">${forecastSummaryHtml()}</div>
     ${budgetCardHtml()}
@@ -1381,6 +1484,7 @@ function refreshForecastFigures(p){
 }
 function bindForecast(){
   document.getElementById('fcSort').addEventListener('change', e=>{ forecastSort = e.target.value; renderMain(); });
+  document.getElementById('fcPdfBtn').addEventListener('click', e=>exportForecastPdf(e.currentTarget));
   bindBudget();
   document.querySelectorAll('#fcRows [data-open-project], #fcShipRows [data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   const fail = e=>alert('Errore nel salvataggio: '+(e.message||e.code||''));

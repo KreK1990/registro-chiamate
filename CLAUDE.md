@@ -125,6 +125,13 @@ Campi principali:
   corso. Fatturato reale = ordini (DDT) per data. Card "Budget di fatturato"
   (`settings.budget`): fatturato reale + confermato da spedire + forecast dell'anno.
   Tile "Conferme d'ordine" (commesse confermate nell'anno) e "Fatturato stimato".
+  "⬇ Scarica PDF" (`exportForecastPdf`): report A4 orizzontale con html2pdf.js (cdnjs, caricato al
+  bisogno; il PDF e' un'immagine, testo non selezionabile): riepilogo, budget e tabella per anno
+  come a video, poi tabelle "Commesse aperte" e "Confermate ancora da spedire". Le tabelle sono
+  righe a blocco `.rep-row` (html2pdf non sa evitare i salti dentro i <tr>); `.rep-keep` tiene
+  insieme titolo, intestazione e prima riga. Il report forza l'impaginazione desktop
+  (`.fc-report ...` batte le regole del telefono) perche' i salti pagina si calcolano sulla
+  finestra reale.
 - **Impostazioni** (voce di menu, blocco "Impostazioni" prima del Forecast): collection
   `settings` con un solo documento (creato al primo salvataggio con `add`, poi `update`):
   `budget {'YYYY': euro}`. Backup: "Scarica tutto in Excel" (`exportAllExcel`: fogli
