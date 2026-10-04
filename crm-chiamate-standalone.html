@@ -141,7 +141,16 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .proj-code{font-family:var(--mono);font-size:12.5px;color:var(--muted);letter-spacing:.5px;}
 .fc-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
 .fc-tile{background:var(--panel);border:1px solid var(--border);border-radius:2px;padding:12px 14px;}
-.budget-track{display:flex;height:14px;margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:2px;overflow:hidden;}
+.budget-marks{position:relative;height:17px;font-size:12px;}
+.budget-marks.top{margin-top:10px;}
+.budget-mark{position:absolute;top:1px;white-space:nowrap;font-weight:600;}
+.budget-mark.inv{color:var(--accent);}
+.budget-mark.est{color:#a77700;}
+.budget-axis{position:relative;container-type:inline-size;height:16px;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:2px;}
+.budget-axis span{position:absolute;top:2px;white-space:nowrap;}
+@container (max-width:480px){ .budget-axis span.q{display:none;} }
+.budget-tick{position:absolute;top:0;bottom:0;width:1px;background:rgba(0,0,0,.2);}
+.budget-track{position:relative;display:flex;height:14px;margin-top:2px;background:var(--bg);border:1px solid var(--border);border-radius:2px;overflow:hidden;}
 .budget-inv{background:var(--accent);}
 .budget-ship{background:#7aa3c7;}
 .fc-split-cell{grid-column:1/-1;}
@@ -1472,9 +1481,16 @@ function budgetFiguresHtml(){
   const pc = v=>Math.round(v*100/budget);
   const w = [fatt, ship, fc].reduce((acc, v)=>{ const used = acc.reduce((a,b)=>a+b, 0); acc.push(Math.max(0, Math.min(100-used, v*100/budget))); return acc; }, []);
   const gap = budget - fatt, gapAll = budget - stima;
-  return `<div class="budget-track" title="Fatturato ${fmtEuro(fatt)} · da spedire ${fmtEuro(ship)} · forecast ${fmtEuro(fc)}">
+  // Scala 0 - budget sotto la barra; sopra il fatturato attuale, sotto la stima dell'anno.
+  const eur0 = v=>new Intl.NumberFormat('it-IT', { maximumFractionDigits:0, useGrouping:'always' }).format(v)+' €';
+  const at = v=>{ const x = Math.max(0, Math.min(100, v*100/budget)); return `left:${x}%;transform:translateX(${x<12 ? '0' : x>88 ? '-100%' : '-50%'});`; };
+  return `<div class="budget-marks top"><span class="budget-mark inv" style="${at(fatt)}">▼ Fatturato ${eur0(fatt)}</span></div>
+    <div class="budget-track" title="Fatturato ${fmtEuro(fatt)} · da spedire ${fmtEuro(ship)} · forecast ${fmtEuro(fc)}">
       <div class="budget-inv" style="width:${w[0]}%;"></div><div class="budget-ship" style="width:${w[1]}%;"></div><div class="budget-fc" style="width:${w[2]}%;"></div>
+      ${[25,50,75].map(t=>`<i class="budget-tick" style="left:${t}%;"></i>`).join('')}
     </div>
+    <div class="budget-marks"><span class="budget-mark est" style="${at(stima)}">▲ Stima ${eur0(stima)}</span></div>
+    <div class="budget-axis">${[0,25,50,75,100].map(t=>`<span class="${t%50 ? 'q' : ''}" style="${at(budget*t/100)}">${eur0(budget*t/100)}</span>`).join('')}</div>
     ${legend}
     <div class="budget-msg ${gap<=0 ? 'ok' : ''}">${gap<=0
       ? `Budget raggiunto: ${fmtEuro(-gap)} di fatturato oltre l'obiettivo (${pc(fatt)}%).`
