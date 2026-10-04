@@ -134,8 +134,10 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .budget-marks{position:relative;height:17px;font-size:12px;}
 .budget-marks.top{margin-top:10px;}
 .budget-mark{position:absolute;top:1px;white-space:nowrap;font-weight:600;}
-.budget-mark.inv{color:var(--accent);}
-.budget-mark.est{color:#a77700;}
+.budget-pin{position:absolute;top:1px;transform:translateX(-50%);font-size:10px;line-height:16px;}
+.budget-mark{line-height:16px;}
+.budget-mark.inv,.budget-pin.inv{color:var(--accent);}
+.budget-mark.est,.budget-pin.est{color:#a77700;}
 .budget-axis{position:relative;container-type:inline-size;height:16px;font-size:11px;color:var(--muted);border-top:1px dashed var(--border);padding-top:2px;}
 .budget-axis span{position:absolute;top:2px;white-space:nowrap;}
 @container (max-width:480px){ .budget-axis span.q{display:none;} }
@@ -1225,13 +1227,16 @@ function budgetFiguresHtml(){
   const gap = budget - fatt, gapAll = budget - stima;
   // Scala 0 - budget sotto la barra; sopra il fatturato attuale, sotto la stima dell'anno.
   const eur0 = v=>new Intl.NumberFormat('it-IT', { maximumFractionDigits:0, useGrouping:'always' }).format(v)+' €';
+  // Freccia centrata esattamente sul valore; il testo le sta accanto (a sinistra se il valore e' oltre il 70%).
+  const pin = (v, cls, arrow, text)=>{ const x = Math.max(0, Math.min(100, v*100/budget));
+    return `<span class="budget-pin ${cls}" style="left:${x}%;">${arrow}</span><span class="budget-mark ${cls}" style="left:${x}%;transform:translateX(${x>70 ? 'calc(-100% - 8px)' : '8px'});">${text}</span>`; };
   const at = v=>{ const x = Math.max(0, Math.min(100, v*100/budget)); return `left:${x}%;transform:translateX(${x<12 ? '0' : x>88 ? '-100%' : '-50%'});`; };
-  return `<div class="budget-marks top"><span class="budget-mark inv" style="${at(fatt)}">▼ Fatturato ${eur0(fatt)}</span></div>
+  return `<div class="budget-marks top">${pin(fatt, 'inv', '▼', `Fatturato ${eur0(fatt)}`)}</div>
     <div class="budget-track" title="Fatturato ${fmtEuro(fatt)} · da spedire ${fmtEuro(ship)} · forecast ${fmtEuro(fc)}">
       <div class="budget-inv" style="width:${w[0]}%;"></div><div class="budget-ship" style="width:${w[1]}%;"></div><div class="budget-fc" style="width:${w[2]}%;"></div>
       ${[25,50,75].map(t=>`<i class="budget-tick" style="left:${t}%;"></i>`).join('')}
     </div>
-    <div class="budget-marks"><span class="budget-mark est" style="${at(stima)}">▲ Stima ${eur0(stima)}</span></div>
+    <div class="budget-marks">${pin(stima, 'est', '▲', `Stima ${eur0(stima)}`)}</div>
     <div class="budget-axis">${[0,25,50,75,100].map(t=>`<span class="${t%50 ? 'q' : ''}" style="${at(budget*t/100)}">${eur0(budget*t/100)}</span>`).join('')}</div>
     ${legend}
     <div class="budget-msg ${gap<=0 ? 'ok' : ''}">${gap<=0
