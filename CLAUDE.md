@@ -116,17 +116,20 @@ Campi principali:
   (confermato + ponderato con chiusura prevista nell'anno); ripartizione per trimestre.
   I campi si salvano all'uscita e aggiornano le cifre senza ridisegnare la pagina.
   Nel codice il blocco "Forecast" sta subito prima del blocco "Progetti".
-  Card "Budget di venduto": budget per anno (`settings.budget`), confermato dell'anno +
-  forecast con chiusura nell'anno rispetto al budget.
+  Fatturato per anno: `ripartizione {'YYYY': %}` sul progetto (3 campi: anno in corso e i due
+  successivi; modificando un anno il resto fino a 100 passa al successivo, `rebalanceSplit`).
+  Si applica al ponderato delle aperte e al "da spedire" delle confermate (deliberato, o
+  offerta, meno ordinato; sezione "Confermate ancora da spedire"). Senza ripartizione: anno di
+  chiusura prevista (aperte) o anno in corso (confermate); quote di anni passati -> anno in
+  corso. Fatturato reale = ordini (DDT) per data. Card "Budget di fatturato"
+  (`settings.budget`): fatturato reale + confermato da spedire + forecast dell'anno.
+  Tile "Conferme d'ordine" (commesse confermate nell'anno) e "Fatturato stimato".
 - **Impostazioni** (voce di menu, blocco "Impostazioni" prima del Forecast): collection
   `settings` con un solo documento (creato al primo salvataggio con `add`, poi `update`):
-  `budget {'YYYY': euro}`, `mailOggetto`, `mailTesto`. Modello della mail di presentazione:
-  `{saluto}` = "Gentile Arch./Ing./Geom./Avv./Dott. Cognome" secondo `PROF_TITLES`, anche
-  `{nome}`, `{cognome}`, `{studio}`; il pulsante "✉ Mail di presentazione" (scheda contatto e
-  promemoria "Mail informative da inviare" in Oggi) apre un `mailto:` con oggetto e testo e
-  copia il testo negli appunti (Outlook può troncare i mailto lunghi). Backup: "Scarica
-  tutto in Excel" (`exportAllExcel`: fogli Contatti, Chiamate, Progetti, Ordini; sostituisce
-  il vecchio export CSV) e, solo online, le copie automatiche notturne.
+  `budget {'YYYY': euro}`. Backup: "Scarica tutto in Excel" (`exportAllExcel`: fogli
+  Contatti, Chiamate, Progetti, Ordini; sostituisce il vecchio export CSV) e, solo online, le
+  copie automatiche notturne. (La mail di presentazione da modello e' stata provata e tolta
+  su richiesta dell'utente: eventuali `mailOggetto`/`mailTesto` in settings sono inutilizzati.)
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
