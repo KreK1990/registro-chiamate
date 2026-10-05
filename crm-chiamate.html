@@ -207,6 +207,30 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .trend-th{font-weight:600;color:var(--muted);}
 .pdf-info{border-left:3px solid var(--accent);background:var(--panel);padding:8px 12px;margin-bottom:10px;font-size:13px;display:grid;gap:4px;}
 .pdf-warn{color:var(--danger);font-weight:600;}
+.attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
+.attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
+.attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
+.pdf-attach{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;color:var(--text);cursor:pointer;}
+.pdf-attach input{width:auto;margin:0;}
+.map-box{height:calc(100vh - 260px);min-height:360px;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px;z-index:0;position:relative;}
+.map-tools{display:flex;justify-content:space-between;gap:10px 18px;flex-wrap:wrap;align-items:center;}
+.map-search{display:flex;gap:6px;flex:1 1 320px;}
+.map-search input{flex:1;min-width:0;}
+.map-filters{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:13px;}
+.map-filter{display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;color:var(--text);}
+.map-filter input{width:auto;margin:0;}
+.map-sw{display:inline-block;width:11px;height:11px;margin-right:4px;vertical-align:-1px;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);}
+.map-sw.cl,.map-mk.cl{border-radius:50%;background:#2a6fb0;}
+.map-sw.sq.aperti,.map-mk.sq.aperti{background:#b97f00;}
+.map-sw.sq.confermati,.map-mk.sq.confermati{background:#7a4fb5;}
+.map-sw.sq.persi,.map-mk.sq.persi{background:#fff;border-color:#8a96a3;box-shadow:0 0 0 1px #8a96a3;}
+.map-mk{width:14px;height:14px;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font:700 9px/1 var(--sans);}
+.map-mk.sq{border-radius:2px;}
+.map-pop{font-size:13px;line-height:1.45;min-width:180px;}
+.map-pop .name-link{font-weight:600;cursor:pointer;}
+.map-pop-c{margin-top:6px;}
+.map-pop-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.map-pop-actions .btn{text-decoration:none;}
 .todo-section{margin-top:10px;}
 .todo-act{font-size:12.5px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap;}
 .todo-act .name-link{font-weight:600;}
@@ -479,6 +503,7 @@ h2{color:var(--accent);font-weight:800;}
         <button id="navFollowup">Follow-up<span id="fuBadge" class="nav-badge hidden"></span></button>
         <button id="navAppt">Appuntamenti</button>
         <button id="navProjects">Progetti</button>
+        <button id="navMap">Mappa</button>
         <button id="navForecast">Forecast</button>
         <button id="navTable">Tabella chiamate</button>
         <button id="navDashboard">Dashboard</button>
@@ -690,6 +715,7 @@ function renderMain(){
   }
   if(view==='forecast'){ main.innerHTML = forecastView(); bindForecast(); return; }
   if(view==='settings'){ main.innerHTML = settingsView(); bindSettings(); return; }
+  if(view==='map'){ main.innerHTML = mapView(); bindMap(); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -1571,7 +1597,7 @@ function pickOrderPdf(p){
     const note = [r.riferimento ? `Rif. ${r.riferimento}` : '', r.cliente, r.luogo ? `consegna a ${r.luogo}` : '', r.trasporto ? `trasporto ${fmtNum(r.trasporto)} € escluso` : ''].filter(Boolean).join(' · ');
     const prefill = { data: r.data || todayISO(), numero: r.numero, importo: r.totaleMerce, consegna: r.consegna, note };
     openProject(target.id);
-    orderEdit = { projectId: target.id, id: existing ? existing.id : 'new', prefill,
+    orderEdit = { projectId: target.id, id: existing ? existing.id : 'new', prefill, file,
       info: { ...r, fileName: file.name, existing: !!existing, otherProject: r.progetto && r.progetto!==String(target.codice||'') ? r.progetto : '' } };
     renderMain();
     document.getElementById('ordSaveBtn')?.scrollIntoView({ block:'center' });
@@ -1584,8 +1610,304 @@ function pdfInfoHtml(info){
     ${info.otherProject ? `<div class="pdf-warn">Attenzione: il PDF è del progetto ${esc(info.otherProject)}, non di questo.</div>` : ''}
     ${info.existing ? `<div class="pdf-warn">L'ordine n° ${esc(info.numero)} è già registrato: salvando ne aggiorni i dati.</div>` : ''}
     <div class="fc-note">${info.totaleMerce!=null ? 'Importo: totale merce, senza trasporto e IVA.' : '<span class="pdf-warn">Totale merce non trovato nel PDF: scrivi l\'importo della sola merce.</span>'}</div>
+    ${storageAvailable() ? `<label class="pdf-attach"><input type="checkbox" id="ordAttachPdf" ${info.existing ? '' : 'checked'}> Allega il PDF ai documenti del progetto</label>` : ''}
     <div class="fc-note">Controlla i campi e premi "Salva ordine".</div>
   </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Invito Outlook: apre in Outlook (web, account Microsoft 365) un nuovo evento gia'
+// compilato - cliente invitato, data e ora (1 ora), luogo, oggetto e testo - che si
+// invia con "Invia". Parte dal proprio indirizzo e il cliente riceve un vero invito,
+// con il promemoria del suo calendario.
+// ---------------------------------------------------------------------------
+const INVITE_MINUTES = 60;
+function isoWithOffset(local){   // 'YYYY-MM-DDTHH:MM' (ora italiana del dispositivo) -> ISO con fuso
+  const d = new Date(local), off = -d.getTimezoneOffset(), a = Math.abs(off);
+  const pad = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${off>=0 ? '+' : '-'}${pad(Math.floor(a/60))}:${pad(a%60)}`;
+}
+function inviteTopic(k){
+  const proj = (k.progetti||[]).map(id=>projects.find(p=>p.id===id)).filter(Boolean).map(p=>p.nome ? `${p.nome} (${p.codice})` : p.codice);
+  return [k.progetto, ...proj].filter(Boolean).join(', ');
+}
+function outlookInviteUrl(k){
+  const c = contacts.find(x=>x.id===k.contactId) || {};
+  const start = new Date(k.appuntamento), end = new Date(start.getTime() + INVITE_MINUTES*60000);
+  const pad = n=>String(n).padStart(2,'0');
+  const endLocal = `${end.getFullYear()}-${pad(end.getMonth()+1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
+  const when = start.toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long' });
+  const time = `${pad(start.getHours())}:${pad(start.getMinutes())}`;
+  const topic = inviteTopic(k), place = fullAddress(c);
+  const body = ['Buongiorno,', '', `le confermo il nostro incontro di ${when} alle ore ${time}${place ? `, presso ${place}` : ''}.`, topic ? `Argomento: ${topic}.` : '', '', 'Cordiali saluti'].filter((l, i, a)=>l || (a[i-1] && a[i-1]!=='')).join('\n');
+  const q = new URLSearchParams({ path:'/calendar/action/compose', rru:'addevent', subject:`Incontro Schöck Italia${topic ? ' – '+topic : ''}`,
+    startdt: isoWithOffset(k.appuntamento), enddt: isoWithOffset(endLocal), location: place, body });
+  if(c.email) q.set('to', c.email);
+  return 'https://outlook.office.com/calendar/0/deeplink/compose?' + q.toString();
+}
+function inviteBtn(k){ return k && k.appuntamento && new Date(k.appuntamento) > new Date() ? `<button class="btn secondary small" data-outlook-invite="${k.id}">Invia invito Outlook</button>` : ''; }
+function openOutlookInvite(k){ if(k && k.appuntamento) window.open(outlookInviteUrl(k), '_blank', 'noopener'); }
+// Un solo ascoltatore su #main (fase di cattura): il pulsante funziona anche dentro le schede
+// cliccabili senza aprirle.
+function onInviteClick(e){
+  const b = e.target.closest && e.target.closest('[data-outlook-invite]');
+  if(!b) return;
+  e.stopPropagation(); e.preventDefault();
+  openOutlookInvite(calls.find(x=>x.id===b.dataset.outlookInvite));
+}
+// Dopo aver fissato un appuntamento: proposta dell'invito nella barra in alto (versione online).
+function offerOutlookInvite(k){
+  if(typeof showNotice!=='function' || !document.getElementById('noticeBar') || !k.appuntamento || new Date(k.appuntamento) <= new Date()) return;
+  const c = contacts.find(x=>x.id===k.contactId) || {};
+  showNotice(`<strong>Appuntamento fissato</strong> con ${esc(fullName(c))} il ${fmtDateTime(k.appuntamento)}.
+    <div class="notice-hint">${c.email ? `Vuoi mandargli l'invito? Si apre Outlook con l'evento già compilato: controlla e premi "Invia".` : 'Il contatto non ha un\'email: puoi aggiungerla nella scheda, oppure scrivere l\'invitato direttamente in Outlook.'}</div>
+    <div class="notice-actions"><button class="btn small" id="noticeInviteBtn">Invia invito Outlook</button><button class="btn secondary small" id="noticeClose">Non ora</button></div>`);
+  document.getElementById('noticeInviteBtn').addEventListener('click', ()=>{ openOutlookInvite(k); hideNotice(); });
+}
+
+// ---------------------------------------------------------------------------
+// Documenti del progetto (solo versione online, Firebase Storage, piano Blaze):
+// file in users/<uid>/projects/<projectId>/<timestamp>-<nome>, elenco in projects.allegati
+// [{id, nome, path, tipo, size, caricatoIl}]. Regole in storage.rules (da pubblicare nella
+// console Firebase). "Ordine da PDF" puo' allegare il PDF dell'ordine al salvataggio.
+// ---------------------------------------------------------------------------
+const MAX_ATTACH_MB = 20;
+let attachBusy = '', confirmDeleteAttachId = null;
+function storageAvailable(){ return typeof firebase!=='undefined' && typeof firebase.storage==='function' && !!(firebase.auth && firebase.auth().currentUser); }
+function fmtSize(b){ return b>=1048576 ? (Math.round(b/104857.6)/10).toLocaleString('it-IT')+' MB' : Math.max(1, Math.round(b/1024))+' KB'; }
+async function uploadProjectFile(p, file, tag){
+  if(file.size > MAX_ATTACH_MB*1048576) throw new Error(`"${file.name}" supera i ${MAX_ATTACH_MB} MB`);
+  const uid = firebase.auth().currentUser.uid;
+  const safe = file.name.replace(/[^\w.\- ()àèéìòù]/gi, '_');
+  const path = `users/${uid}/projects/${p.id}/${Date.now()}-${safe}`;
+  await firebase.storage().ref(path).put(file, { contentType: file.type || 'application/octet-stream' });
+  return { id: 'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), nome: file.name, path, tipo: file.type||'', size: file.size, caricatoIl: todayISO(), ...(tag ? { tag } : {}) };
+}
+async function addProjectFiles(p, files, tag){
+  const fresh = projects.find(x=>x.id===p.id) || p;
+  const added = [];
+  for(const f of files){ attachBusy = `Caricamento di "${f.name}"…`; renderAttachStatus(); added.push(await uploadProjectFile(fresh, f, tag)); }
+  await db.collection('projects').doc(p.id).update({ allegati: [...(fresh.allegati||[]), ...added], updatedAt: Date.now() });
+  return added;
+}
+function renderAttachStatus(){ const s = document.getElementById('attachStatus'); if(s) s.textContent = attachBusy; }
+function attachmentsCardHtml(p){
+  if(!storageAvailable()) return '';
+  const list = (p.allegati||[]).slice().sort((a,b)=>(b.caricatoIl||'').localeCompare(a.caricatoIl||''));
+  return `<div class="card" id="attachCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <h3 style="margin:0;">Documenti (${list.length})</h3>
+      <button class="btn secondary small" id="attachAddBtn">+ Allega file</button>
+    </div>
+    <div class="fc-note" id="attachStatus">${esc(attachBusy)}</div>
+    ${list.length ? list.map(a=>`<div class="attach-row">
+      <div class="attach-main"><span class="name-link" data-attach-open="${a.id}">${esc(a.nome)}</span>
+        <span class="fc-note">${a.tag==='ordine' ? 'ordine · ' : ''}${fmtDate(a.caricatoIl)} · ${fmtSize(a.size||0)}</span></div>
+      <div class="todo-actions">${confirmDeleteAttachId===a.id ? `
+        <span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare il file?</span>
+        <button class="btn small" data-attach-del-yes="${a.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button>
+        <button class="btn secondary small" data-attach-del-no>No</button>` : `<button class="btn secondary small" data-attach-del="${a.id}">Elimina</button>`}</div>
+    </div>`).join('') : '<div class="empty" style="padding:4px 0;">Nessun documento. Allega offerte, disegni, conferme d\'ordine (PDF, immagini, Excel, fino a 20 MB l\'uno).</div>'}
+  </div>`;
+}
+function bindAttachments(p, fail){
+  if(!storageAvailable()) return;
+  document.getElementById('attachAddBtn')?.addEventListener('click', ()=>{
+    const input = document.createElement('input');
+    input.type = 'file'; input.multiple = true;
+    input.addEventListener('change', async ()=>{
+      const files = [...(input.files||[])];
+      if(!files.length) return;
+      try{ await addProjectFiles(p, files); attachBusy = ''; }
+      catch(e){ attachBusy = ''; fail(e); }
+      renderAttachStatus();
+    });
+    input.click();
+  });
+  document.querySelectorAll('[data-attach-open]').forEach(el=>el.addEventListener('click', async ()=>{
+    const a = (p.allegati||[]).find(x=>x.id===el.dataset.attachOpen); if(!a) return;
+    const win = window.open('', '_blank');   // aperta subito: su iPhone una finestra aperta dopo un'attesa viene bloccata
+    try{ const url = await firebase.storage().ref(a.path).getDownloadURL(); if(win) win.location = url; else location.href = url; }
+    catch(e){ if(win) win.close(); fail(e); }
+  }));
+  document.querySelectorAll('[data-attach-del]').forEach(b=>b.addEventListener('click', ()=>{ confirmDeleteAttachId = b.dataset.attachDel; renderMain(); }));
+  document.querySelector('[data-attach-del-no]')?.addEventListener('click', ()=>{ confirmDeleteAttachId = null; renderMain(); });
+  document.querySelector('[data-attach-del-yes]')?.addEventListener('click', async e=>{
+    const a = (p.allegati||[]).find(x=>x.id===e.target.dataset.attachDelYes); confirmDeleteAttachId = null;
+    if(!a) return renderMain();
+    try{
+      await firebase.storage().ref(a.path).delete().catch(err=>{ if(err.code!=='storage/object-not-found') throw err; });
+      await db.collection('projects').doc(p.id).update({ allegati: (p.allegati||[]).filter(x=>x.id!==a.id), updatedAt: Date.now() });
+    }catch(err){ fail(err); }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
+// stesso studio stanno in un solo punto) e cantieri (quadrati: in corso / confermati /
+// persi). Leaflet + OpenStreetMap da cdnjs. Coordinate da Nominatim (OpenStreetMap),
+// una richiesta al secondo, salvate sul documento: contacts.geo / projects.geo =
+// {lat, lng, a} (a = indirizzo cercato; se cambia si ricerca; nf = non trovato).
+// "Vicino a…": centra su una localita' e mostra cosa c'e' entro 20 km.
+// ---------------------------------------------------------------------------
+let mapObj = null, mapLayer = null, mapFilters = { clienti:true, aperti:true, confermati:true, persi:false };
+let mapNear = null, mapGeoRunning = false, mapGeoMsg = '';
+const geoCache = new Map();   // indirizzo -> {lat,lng} | null (non trovato)
+function loadLeaflet(){
+  if(window.L) return Promise.resolve();
+  const css = document.createElement('link');
+  css.rel = 'stylesheet'; css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+  document.head.appendChild(css);
+  return new Promise((resolve, reject)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    sc.onload = ()=>resolve();
+    sc.onerror = ()=>reject(new Error('mappa non caricata, controlla la connessione'));
+    document.head.appendChild(sc);
+  });
+}
+function geoKey(a){ return String(a||'').trim().toLowerCase().replace(/\s+/g,' '); }
+function docGeo(x, addr){ return x.geo && geoKey(x.geo.a)===geoKey(addr) ? x.geo : null; }
+async function geocode(q){
+  const k = geoKey(q);
+  if(geoCache.has(k)) return geoCache.get(k);
+  const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=it&accept-language=it&q='+encodeURIComponent(q));
+  if(!res.ok) throw new Error('ricerca indirizzi non disponibile ('+res.status+')');
+  const j = await res.json();
+  const g = j && j[0] ? { lat:+j[0].lat, lng:+j[0].lon } : null;
+  geoCache.set(k, g);
+  return g;
+}
+function mapPoints(){
+  const pts = [];
+  if(mapFilters.clienti){
+    const byAddr = new Map();
+    contacts.forEach(c=>{ const a = fullAddress(c); if(!a) return; const g = docGeo(c, a); if(!g || g.nf) return;
+      const k = geoKey(a); const e = byAddr.get(k) || { kind:'cliente', addr:a, lat:g.lat, lng:g.lng, contacts:[] }; e.contacts.push(c); byAddr.set(k, e); });
+    pts.push(...byAddr.values());
+  }
+  projects.forEach(p=>{
+    const st = isLost(p) ? 'persi' : isWon(p) ? 'confermati' : 'aperti';
+    if(!mapFilters[st]) return;
+    const a = projectAddress(p); if(!a) return; const g = docGeo(p, a); if(!g || g.nf) return;
+    pts.push({ kind:'cantiere', st, addr:a, lat:g.lat, lng:g.lng, p });
+  });
+  return pts;
+}
+// Elementi senza coordinate (o con indirizzo cambiato), da cercare.
+function mapToGeocode(){
+  const out = [];
+  contacts.forEach(c=>{ const a = fullAddress(c); if(a && !docGeo(c, a)) out.push({ col:'contacts', x:c, a }); });
+  projects.forEach(p=>{ const a = projectAddress(p); if(a && !docGeo(p, a)) out.push({ col:'projects', x:p, a }); });
+  return out;
+}
+function lastContactDays(c){ const d = calls.filter(k=>k.contactId===c.id).map(k=>k.data||'').sort().pop(); return d ? daysBetween(d, todayISO()) : null; }
+function mapPopupHtml(pt){
+  if(pt.kind==='cantiere'){ const p = pt.p, ph = projectPhase(p);
+    return `<div class="map-pop"><div class="proj-code">${esc(p.codice||'')}</div><strong>${esc(p.nome||'Progetto')}</strong>
+      <div>${esc(pt.addr)}</div><div class="fc-note">${isLost(p) ? 'Persa' : ph ? esc(ph.label) : 'Da avviare'}${p.importoOfferta!=null ? ' · '+fmtEuro(projectAmount(p)) : ''}</div>
+      <div class="map-pop-actions"><button class="btn small" data-map-project="${p.id}">Apri progetto</button><a class="btn secondary small" href="${mapsUrl({ via:p.via, citta:p.citta })}" target="_blank" rel="noopener">Indicazioni</a></div></div>`; }
+  return `<div class="map-pop"><div>${esc(pt.addr)}</div>
+    ${pt.contacts.map(c=>{ const d = lastContactDays(c); return `<div class="map-pop-c"><span class="name-link" data-map-contact="${c.id}">${esc(fullName(c))}</span>${c.azienda ? ` · ${esc(c.azienda)}` : ''}<div class="fc-note">${d==null ? 'mai sentito' : `ultimo contatto ${d} giorni fa`}</div></div>`; }).join('')}
+    <div class="map-pop-actions"><a class="btn secondary small" href="${mapsUrl(pt.contacts[0])}" target="_blank" rel="noopener">Indicazioni</a></div></div>`;
+}
+function distKm(a, b){ const R = 6371, r = x=>x*Math.PI/180; const dLat = r(b.lat-a.lat), dLng = r(b.lng-a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+function mapNearHtml(){
+  if(!mapNear) return '';
+  const near = mapPoints().map(pt=>({ pt, d: distKm(mapNear, pt) })).filter(x=>x.d <= 20).sort((a,b)=>a.d - b.d);
+  return `<div class="card"><h3>Vicino a ${esc(mapNear.label)} (entro 20 km): ${near.length}</h3>
+    ${near.length ? near.map(({pt, d})=>`<div class="todo-row"><div class="todo-main">${pt.kind==='cantiere'
+        ? `<span class="map-sw sq ${pt.st}"></span><span class="proj-code">${esc(pt.p.codice||'')}</span> <span class="name-link" data-map-project="${pt.p.id}">${esc(pt.p.nome||'Progetto')}</span>`
+        : `<span class="map-sw cl"></span>${pt.contacts.map(c=>`<span class="name-link" data-map-contact="${c.id}">${esc(fullName(c))}</span>`).join(', ')}`}
+      <div class="todo-sub">${esc(pt.addr)} · ${d<1 ? 'meno di 1 km' : Math.round(d)+' km'}${pt.kind==='cliente' ? (()=>{ const ds = pt.contacts.map(lastContactDays).filter(x=>x!=null); return ds.length ? ` · ultimo contatto ${Math.min(...ds)} giorni fa` : ' · mai sentito'; })() : ''}</div></div></div>`).join('')
+      : '<div class="empty">Niente entro 20 km.</div>'}
+  </div>`;
+}
+function mapView(){
+  const f = (k, label, sw)=>`<label class="map-filter"><input type="checkbox" data-map-filter="${k}" ${mapFilters[k] ? 'checked' : ''}><span class="map-sw ${sw}"></span>${label}</label>`;
+  return `<h2 style="margin-bottom:10px;">Mappa</h2>
+    <div class="card" style="padding:12px 14px;">
+      <div class="map-tools">
+        <div class="map-search"><input id="mapPlace" placeholder="Vicino a… (es. Cuneo, Via Roma 10 Alba)" autocomplete="off"><button class="btn small" id="mapPlaceBtn">Cerca</button><button class="btn secondary small" id="mapMeBtn">Vicino a me</button></div>
+        <div class="map-filters">${f('clienti','Clienti','cl')}${f('aperti','Cantieri in corso','sq aperti')}${f('confermati','Cantieri confermati','sq confermati')}${f('persi','Cantieri persi','sq persi')}</div>
+      </div>
+      <div class="fc-note" id="mapGeoMsg">${esc(mapGeoMsg)}</div>
+    </div>
+    <div id="mapBox" class="map-box"></div>
+    <div id="mapNear">${mapNearHtml()}</div>
+    <div class="fc-note" style="margin-top:6px;">Mappa © OpenStreetMap. Gli indirizzi vengono posizionati una volta sola con il servizio di OpenStreetMap (solo l'indirizzo, senza nomi).</div>`;
+}
+function drawMapPoints(fit){
+  if(!mapObj) return;
+  mapLayer.clearLayers();
+  const pts = mapPoints();
+  pts.forEach(pt=>{
+    const cls = pt.kind==='cantiere' ? `map-mk sq ${pt.st}` : 'map-mk cl';
+    const n = pt.kind==='cliente' && pt.contacts.length>1 ? `<span>${pt.contacts.length}</span>` : '';
+    L.marker([pt.lat, pt.lng], { icon: L.divIcon({ className:'', html:`<div class="${cls}">${n}</div>`, iconSize:[18,18], iconAnchor:[9,9] }),
+      title: pt.kind==='cantiere' ? `${pt.p.codice} ${pt.p.nome||''}` : pt.contacts.map(fullName).join(', ') })
+      .bindPopup(mapPopupHtml(pt)).addTo(mapLayer);
+  });
+  if(fit && pts.length) mapObj.fitBounds(L.latLngBounds(pts.map(p=>[p.lat, p.lng])), { padding:[30,30], maxZoom:13 });
+  const nearEl = document.getElementById('mapNear'); if(nearEl) nearEl.innerHTML = mapNearHtml();
+}
+async function runMapGeocoding(){
+  if(mapGeoRunning) return;
+  mapGeoRunning = true;
+  const todo = mapToGeocode();
+  let done = 0, found = 0;
+  const msg = t=>{ mapGeoMsg = t; const el = document.getElementById('mapGeoMsg'); if(el) el.textContent = t; };
+  try{
+    for(const it of todo){
+      if(view!=='map') break;
+      msg(`Posiziono gli indirizzi sulla mappa: ${done} di ${todo.length}… (solo la prima volta)`);
+      const cached = geoCache.has(geoKey(it.a));
+      const g = await geocode(it.a);
+      const geo = g ? { lat:g.lat, lng:g.lng, a:it.a } : { a:it.a, nf:true };
+      it.x.geo = geo; done++; if(g) found++;
+      db.collection(it.col).doc(it.x.id).update({ geo }).catch(()=>{});
+      if(g && done % 5 === 0) drawMapPoints(false);
+      if(!cached) await new Promise(r=>setTimeout(r, 1100));   // regola di OpenStreetMap: max 1 richiesta al secondo
+    }
+    const nf = contacts.filter(c=>{ const g = docGeo(c, fullAddress(c)); return g && g.nf; }).length + projects.filter(p=>{ const g = docGeo(p, projectAddress(p)); return g && g.nf; }).length;
+    msg(todo.length ? `Indirizzi posizionati.${nf ? ` ${nf} non trovati: controlla via e città nelle schede.` : ''}` : '');
+  }catch(e){ msg('Posizionamento interrotto: '+(e.message||e)); }
+  mapGeoRunning = false;
+  drawMapPoints(false);
+}
+async function bindMap(){
+  const main = document.getElementById('main');
+  main.querySelectorAll('[data-map-filter]').forEach(cb=>cb.addEventListener('change', ()=>{ mapFilters[cb.dataset.mapFilter] = cb.checked; drawMapPoints(false); }));
+  // pulsanti nei fumetti e nell'elenco "vicino a" (creati dopo): un solo ascoltatore, registrato una volta
+  if(!window.__mapClickBound){ window.__mapClickBound = true; main.addEventListener('click', e=>{
+    if(view!=='map') return;
+    const pr = e.target.closest('[data-map-project]'); if(pr){ openProject(pr.dataset.mapProject); return; }
+    const ct = e.target.closest('[data-map-contact]'); if(ct){ selectedId = ct.dataset.mapContact; view='detail'; confirmDeleteId=null; setActiveTab('navContacts'); renderMain(); }
+  }); }
+  const place = document.getElementById('mapPlace');
+  const goPlace = async ()=>{
+    const q = place.value.trim(); if(!q) return;
+    try{ const g = await geocode(q); if(!g){ alert('Località non trovata.'); return; }
+      mapNear = { ...g, label:q }; mapObj && mapObj.setView([g.lat, g.lng], 11); drawMapPoints(false); }
+    catch(e){ alert(e.message||e); }
+  };
+  document.getElementById('mapPlaceBtn').addEventListener('click', goPlace);
+  place.addEventListener('keydown', e=>{ if(e.key==='Enter') goPlace(); });
+  document.getElementById('mapMeBtn').addEventListener('click', ()=>{
+    if(!navigator.geolocation){ alert('Posizione non disponibile su questo dispositivo.'); return; }
+    navigator.geolocation.getCurrentPosition(pos=>{ mapNear = { lat:pos.coords.latitude, lng:pos.coords.longitude, label:'te' }; mapObj && mapObj.setView([mapNear.lat, mapNear.lng], 11); drawMapPoints(false); },
+      ()=>alert('Non riesco a leggere la tua posizione (permesso negato?).'), { enableHighAccuracy:false, timeout:10000 });
+  });
+  try{ await loadLeaflet(); }catch(e){ document.getElementById('mapBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if(view!=='map' || !document.getElementById('mapBox')) return;
+  if(mapObj){ mapObj.remove(); mapObj = null; }
+  mapObj = L.map('mapBox', { zoomControl:true }).setView([45.07, 7.68], 8);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(mapObj);
+  mapLayer = L.layerGroup().addTo(mapObj);
+  drawMapPoints(true);
+  if(mapNear) mapObj.setView([mapNear.lat, mapNear.lng], 11);
+  runMapGeocoding();
 }
 
 // ---------------------------------------------------------------------------
@@ -2013,7 +2335,7 @@ const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale
 // Nel Forecast non si ridisegna mentre si sta scrivendo in un campo (le cifre si aggiornano a parte).
 function canAutoRender(){
   const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main input');
-  return view!=='new' && view!=='projectForm' && view!=='settings' && !(view==='call' && callStep==='entry') && !(view==='forecast' && typing)
+  return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && !(view==='call' && callStep==='entry') && !(view==='forecast' && typing)
     && !(view==='projectDetail' && (orderEdit || loseFormProjectId));
 }
 function onProjectsSnapshot(snap){
@@ -2407,6 +2729,7 @@ function projectDetailView(){
       <div id="phaseErr" style="color:var(--danger);font-size:13px;"></div>
     </div>
     ${ordersCardHtml(p)}
+    ${attachmentsCardHtml(p)}
     <div class="card">
       <h3>Chiamate e incontri collegati (${linked.length})</h3>
       ${linked.length ? linked.map(k=>{ const c = byId[k.contactId]||{}; return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
@@ -2514,7 +2837,11 @@ function bindOrders(p, fail){
     const rec = { id: orderEdit.id==='new' ? 'o'+Date.now().toString(36)+Math.random().toString(36).slice(2,6) : orderEdit.id,
       data, numero: document.getElementById('ordNumero').value.trim(), importo, consegna, note: document.getElementById('ordNote').value.trim() };
     const ordini = (p.ordini||[]).filter(o=>o.id!==rec.id).concat(rec);
-    try{ orderEdit = null; await saveProjectOrders(p, ordini); renderMain(); }catch(err){ fail(err); }
+    const pdfFile = orderEdit.file && document.getElementById('ordAttachPdf')?.checked ? orderEdit.file : null;
+    try{
+      orderEdit = null; await saveProjectOrders(p, ordini); renderMain();
+      if(pdfFile) addProjectFiles(p, [pdfFile], 'ordine').then(()=>{ attachBusy = ''; renderAttachStatus(); }).catch(e=>{ attachBusy = ''; renderAttachStatus(); fail(e); });
+    }catch(err){ fail(err); }
   });
 }
 async function setProjectPhase(p, key, date){
@@ -2551,6 +2878,7 @@ function bindProjectDetail(){
     try{ await db.collection('projects').doc(p.id).update({ esito:'', persaIl:'', motivoPerdita:'', notePerdita:'', updatedAt:Date.now() }); }catch(e){ fail(e); }
   });
   bindOrders(p, fail);
+  bindAttachments(p, fail);
   // Date della timeline: mentre si scrive l'anno a mano il campo produce date intermedie
   // (0002, 0020, 0202...), quindi si salva solo all'uscita dal campo o dopo una pausa,
   // e solo con un anno plausibile; altrimenti si torna al valore salvato.
@@ -3235,7 +3563,7 @@ function apptDoneView(){
         ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
         ${hasNote ? `<div style="font-size:13px;margin-top:6px;white-space:pre-wrap;">${esc(k.noteIncontro)}</div>` : `<div style="font-size:12.5px;margin-top:6px;color:var(--accent);">+ Aggiungi note sull'incontro</div>`}
       </div>
-      <div class="followup ok">${fmtDateTime(k.appuntamento)}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;"><div class="followup ok">${fmtDateTime(k.appuntamento)}</div>${inviteBtn(k)}</div>
     </div>`;
   }).join('');
 }
@@ -3253,7 +3581,7 @@ function apptListView(){
         <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}${k.progetto?' · '+esc(k.progetto):''}</div>
         ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
       </div>
-      <div class="followup ok">${fmtDateTime(k.appuntamento)}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;"><div class="followup ok">${fmtDateTime(k.appuntamento)}</div>${inviteBtn(k)}</div>
     </div>`;
   }).join('');
 }
@@ -3905,9 +4233,11 @@ async function saveQuickCall(){
   if(!mail) return;
   try{
     const apptProj = readApptProjects(appuntamento);
-    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() });
+    const newCall = { contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() };
+    const newRef = await db.collection('calls').add(newCall);
     await markOfferPresented(apptProj, appuntamento);
     await db.collection('contacts').doc(selectedId).update(contactUpdateAfterCall(selectedId, followUp, mail.email));
+    if(appuntamento) offerOutlookInvite({ id: newRef.id, ...newCall });
     selectedId=null; callStep='pick'; renderCallFlow();
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
 }
@@ -4001,7 +4331,7 @@ function tableDetailView(){
         <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}</div></div>
         ${k.esito?`<div><label>Esito</label><div style="font-size:14px;">${esc(k.esito)}</div></div>`:''}
         ${k.progetto?`<div><label>Progetto</label><div style="font-size:14px;">${esc(k.progetto)}</div></div>`:''}
-        ${k.appuntamento?`<div><label>Appuntamento</label><div style="font-size:14px;">${fmtDateTime(k.appuntamento)}</div></div>`:''}
+        ${k.appuntamento?`<div><label>Appuntamento</label><div style="font-size:14px;">${fmtDateTime(k.appuntamento)}</div>${inviteBtn(k) ? `<div style="margin-top:6px;">${inviteBtn(k)}</div>` : ''}</div>`:''}
         ${(k.progetti||[]).length ? `<div><label>Progetti</label><div style="font-size:14px;">${k.progetti.map(id=>{ const pr = projects.find(x=>x.id===id); return pr ? `<a href="#" class="addr-link" data-open-project="${pr.id}">${esc(projectTitle(pr))}${projectAddress(pr) ? ` · ${esc(projectAddress(pr))}` : ""}</a>` : ''; }).filter(Boolean).join('<br>')}${k.consegnaOfferta ? ' <span class="esito-tag appt">Consegna offerta</span>' : ''}</div></div>` : ''}
         ${k.mailDaInviare?`<div><label>Mail informativa</label><div style="font-size:14px;">${k.mailInviataIl ? `inviata il ${fmtDate(k.mailInviataIl)}` : `<span style="color:var(--danger);font-weight:600;">da inviare</span> <button class="btn secondary small" id="markMailSentBtn" style="margin-left:6px;">Segna come inviata</button>`}</div></div>`:''}
       </div>
@@ -4370,9 +4700,11 @@ async function saveCall(){
   if(!mail) return;
   try{
     const apptProj = readApptProjects(appuntamento);
-    await db.collection('calls').add({ contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() });
+    const newCall = { contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() };
+    const newRef = await db.collection('calls').add(newCall);
     await markOfferPresented(apptProj, appuntamento);
     await db.collection('contacts').doc(selectedId).update(contactUpdateAfterCall(selectedId, followUp, mail.email));
+    if(appuntamento) offerOutlookInvite({ id: newRef.id, ...newCall });
     document.getElementById('callNote').value='';
     document.getElementById('callMailCheck').checked = false;
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
@@ -4448,7 +4780,7 @@ function followUpBadge(dateStr, big){
   return `<span class="followup ${due?'due':'ok'}" style="${big?'display:inline-block;':''}">${label}</span>`;
 }
 
-const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navForecast','navTable','navDashboard','navSettings'];
+const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navMap','navForecast','navTable','navDashboard','navSettings'];
 function setActiveTab(id){
   NAV_TABS.forEach(t=>document.getElementById(t).classList.toggle('active', t===id));
   const title = document.getElementById('topbarTitle');
@@ -4520,6 +4852,8 @@ document.getElementById('navAppt').addEventListener('click', ()=>{
   renderMain();
 });
 document.getElementById('navSettings').addEventListener('click', goSettings);
+document.getElementById('navMap').addEventListener('click', ()=>{ view='map'; tableDetailCallId=null; setActiveTab('navMap'); renderMain(); });
+document.getElementById('main').addEventListener('click', onInviteClick, true);
 document.getElementById('navDashboard').addEventListener('click', ()=>{
   view='dashboard'; tableDetailCallId=null; dashboardDrilldown=null;
   setActiveTab('navDashboard');

@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// Regole di Cloud Storage di Registro Chiamate (da copiare in Console Firebase -> Storage
+// -> Regole -> Pubblica). Questo file è solo documentazione: Firebase non lo legge da qui.
+//
+// Documenti dei progetti: users/<uid>/projects/<projectId>/<file>. Ogni account legge e
+// scrive solo i propri file; caricamenti fino a 20 MB (come nell'app).
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{userId}/{allPaths=**} {
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null && request.auth.uid == userId
+                            && request.resource.size < 20 * 1024 * 1024;
+    }
+  }
+}

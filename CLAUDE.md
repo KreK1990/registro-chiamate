@@ -85,8 +85,7 @@ Campi principali:
 - **projects** (sezione tecnica, voce di menu "Progetti"): codice (ID progetto, 7 cifre,
   unico), nome, via, citta, partecipanti [{contactId, ruolo}] (ruoli in `PROJECT_ROLES`, compreso Termotecnico),
   importoOfferta, importoDeliberato (chiesto alla conferma d'ordine, precompilato con
-  l'offerta), offertaUrl (link al PDF; niente upload: Firebase Storage richiederebbe il
-  piano a consumo), ordini [{id, data, numero, importo, consegna, note}] (consegne
+  l'offerta), offertaUrl (link al PDF; i file veri vanno in "Documenti", vedi sotto), ordini [{id, data, numero, importo, consegna, note}] (consegne
   parziali; dati del DDT, consegna = data indicativa: il primo ordine segna confermaOrdine se
   vuota, mentre merceCantiere si indica solo a mano nella timeline con la data confermata dal cliente; `projectAmount` per le confermate = max(deliberato o offerta, totale ordinato)); `supplyInfo` = % merce spedita (ordinato su deliberato, o offerta se manca) mostrata nella riga dell'elenco e nella scheda ordini delle confermate: oltre il 100% diventa rossa e propone "Adegua il deliberato" (importoDeliberato = totale ordinato),
   note, fasi {chiave: 'YYYY-MM-DD'} secondo `PROJECT_PHASES`
@@ -169,6 +168,25 @@ Campi principali:
   `orderEdit.info`), importo = solo Totale merce (senza trasporto e IVA; se manca resta vuoto, mai l'Imponibile); se il n° ordine e'
   gia' registrato si modifica quello. Si salva sempre a mano. Formato provato su una conferma
   d'ordine reale del 2026-10 (PDF con testo; le scansioni non sono leggibili).
+- **Invito Outlook** (blocco "Invito Outlook"): pulsante "Invia invito Outlook" sugli
+  appuntamenti futuri (elenco Appuntamenti, dettaglio della chiamata) e proposta nella barra in
+  alto dopo aver fissato un appuntamento (solo versione online, `offerOutlookInvite`). Apre il
+  deeplink di Outlook web (`outlook.office.com/calendar/0/deeplink/compose`) con oggetto, testo,
+  luogo (indirizzo del cliente), invitato (`to` = email del cliente), inizio/fine (1 ora,
+  `INVITE_MINUTES`) con il fuso del dispositivo (`isoWithOffset`); l'utente preme "Invia".
+  Il clic passa da un ascoltatore in cattura su #main (`onInviteClick`).
+- **Documenti del progetto** (blocco "Documenti del progetto", solo versione online): Firebase
+  Storage (piano Blaze; script `firebase-storage-compat.js`), file in
+  `users/<uid>/projects/<projectId>/<timestamp>-<nome>`, elenco in `projects.allegati`
+  [{id, nome, path, tipo, size, caricatoIl, tag?}], max 20 MB. Regole in `storage.rules` (da
+  pubblicare a mano in Console Firebase -> Storage -> Regole). "Ordine da PDF" propone di
+  allegare il PDF (tag 'ordine'). I file non sono nei backup notturni (solo l'elenco).
+- **Mappa** (voce di menu, blocco "Mappa"): Leaflet 1.9.4 (cdnjs) + tile OpenStreetMap; clienti
+  raggruppati per indirizzo (cerchi blu), cantieri in corso / confermati / persi (quadrati
+  ambra / viola / vuoti; colori validati per daltonismo). Coordinate da Nominatim (1 richiesta
+  al secondo, solo l'indirizzo), salvate in `contacts.geo` / `projects.geo` = {lat, lng, a}
+  (`a` = indirizzo cercato: se cambia si ricerca; `nf` = non trovato). "Vicino a…" (località o
+  posizione del telefono) elenca cosa c'è entro 20 km. `canAutoRender` esclude la mappa.
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
