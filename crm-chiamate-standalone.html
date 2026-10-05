@@ -217,7 +217,6 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .trend-th{font-weight:600;color:var(--muted);}
 .pdf-info{border-left:3px solid var(--accent);background:var(--panel);padding:8px 12px;margin-bottom:10px;font-size:13px;display:grid;gap:4px;}
 .pdf-warn{color:var(--danger);font-weight:600;}
-.pdf-amounts{display:flex;gap:6px;flex-wrap:wrap;}
 .todo-section{margin-top:10px;}
 .todo-section + .todo-section{margin-top:16px;}
 .todo-title{font-weight:700;font-size:14px;color:var(--accent);}
@@ -1808,7 +1807,7 @@ function pickOrderPdf(p){
     if(isLost(target)){ alert(`Il progetto ${target.codice} è segnato come perso: riaprilo prima di aggiungere ordini.`); return; }
     const existing = r.numero ? (target.ordini||[]).find(o=>String(o.numero||'')===r.numero) : null;
     const note = [r.riferimento ? `Rif. ${r.riferimento}` : '', r.cliente, r.luogo ? `consegna a ${r.luogo}` : '', r.trasporto ? `trasporto ${fmtNum(r.trasporto)} € escluso` : ''].filter(Boolean).join(' · ');
-    const prefill = { data: r.data || todayISO(), numero: r.numero, importo: r.totaleMerce ?? r.imponibile, consegna: r.consegna, note };
+    const prefill = { data: r.data || todayISO(), numero: r.numero, importo: r.totaleMerce, consegna: r.consegna, note };
     openProject(target.id);
     orderEdit = { projectId: target.id, id: existing ? existing.id : 'new', prefill,
       info: { ...r, fileName: file.name, existing: !!existing, otherProject: r.progetto && r.progetto!==String(target.codice||'') ? r.progetto : '' } };
@@ -1818,13 +1817,11 @@ function pickOrderPdf(p){
   input.click();
 }
 function pdfInfoHtml(info){
-  const amt = (v, label)=>v!=null ? `<button type="button" class="btn secondary small" data-pdf-amount="${v}">${label} ${fmtNum(v)} €</button>` : '';
   return `<div class="pdf-info">
     <div><strong>Letto dal PDF</strong> ${esc(info.fileName||'')}${info.confermaOrdine ? '' : ' (non sembra una conferma d\'ordine: controlla bene i dati)'}</div>
     ${info.otherProject ? `<div class="pdf-warn">Attenzione: il PDF è del progetto ${esc(info.otherProject)}, non di questo.</div>` : ''}
     ${info.existing ? `<div class="pdf-warn">L'ordine n° ${esc(info.numero)} è già registrato: salvando ne aggiorni i dati.</div>` : ''}
-    <div class="fc-note">Importo proposto: totale merce, senza trasporto e IVA. Per usare un altro valore:</div>
-    <div class="pdf-amounts">${amt(info.totaleMerce, 'Totale merce')}${amt(info.imponibile, 'Imponibile (con trasporto)')}</div>
+    <div class="fc-note">${info.totaleMerce!=null ? 'Importo: totale merce, senza trasporto e IVA.' : '<span class="pdf-warn">Totale merce non trovato nel PDF: scrivi l\'importo della sola merce.</span>'}</div>
     <div class="fc-note">Controlla i campi e premi "Salva ordine".</div>
   </div>`;
 }
@@ -2733,7 +2730,6 @@ function bindOrders(p, fail){
   const okDate = v=>/^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0,4)>=2000 && +v.slice(0,4)<=2100;
   document.getElementById('ordAddBtn')?.addEventListener('click', ()=>{ orderEdit = { projectId:p.id, id:'new' }; confirmDeleteOrderId = null; renderMain(); });
   document.getElementById('ordPdfBtn')?.addEventListener('click', ()=>pickOrderPdf(p));
-  document.querySelectorAll('#main [data-pdf-amount]').forEach(b=>b.addEventListener('click', ()=>{ document.getElementById('ordImporto').value = fmtNum(Number(b.dataset.pdfAmount)); }));
   // Spedito oltre il deliberato: si adegua l'importo deliberato al totale spedito.
   document.getElementById('ordAdjustBtn')?.addEventListener('click', async ()=>{
     try{ await db.collection('projects').doc(p.id).update({ importoDeliberato: orderedTotal(p), updatedAt: Date.now() }); }catch(err){ fail(err); }

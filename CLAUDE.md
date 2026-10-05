@@ -166,7 +166,7 @@ Campi principali:
   le righe, `parseOrderConfirmation` legge la conferma d'ordine Schöck: Ordine nr., Data,
   Progetto nr., Data di consegna, N° ordine (riferimento), cliente, luogo di consegna, Totale
   merce / Spese di trasporto / Imponibile. Il modulo si apre precompilato (`orderEdit.prefill`,
-  `orderEdit.info`), importo = Totale merce (pulsante per usare l'Imponibile); se il n° ordine e'
+  `orderEdit.info`), importo = solo Totale merce (senza trasporto e IVA; se manca resta vuoto, mai l'Imponibile); se il n° ordine e'
   gia' registrato si modifica quello. Si salva sempre a mano. Formato provato su una conferma
   d'ordine reale del 2026-10 (PDF con testo; le scansioni non sono leggibili).
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
