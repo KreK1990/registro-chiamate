@@ -160,6 +160,15 @@ Campi principali:
   impostazioni, solo se i valori cambiano). Grafico "Andamento nel tempo" nel Forecast: HTML +
   SVG a linee (`--trend-1`/`--trend-2`, colori validati per daltonismo, chiaro e scuro), linea
   del budget tratteggiata, finestrella al passaggio, tabella "Vedi i valori".
+- **Ordini da PDF** (blocco "Ordini da PDF", prima del Forecast): "Ordine da PDF" nell'elenco
+  Progetti (trova la commessa dal "Progetto nr." del PDF) e "Leggi da PDF" negli ordini della
+  scheda. pdf.js 3.11.174 da cdnjs (build UMD, caricato al bisogno); `pdfItemsToLines` ricompone
+  le righe, `parseOrderConfirmation` legge la conferma d'ordine Schöck: Ordine nr., Data,
+  Progetto nr., Data di consegna, N° ordine (riferimento), cliente, luogo di consegna, Totale
+  merce / Spese di trasporto / Imponibile. Il modulo si apre precompilato (`orderEdit.prefill`,
+  `orderEdit.info`), importo = Totale merce (pulsante per usare l'Imponibile); se il n° ordine e'
+  gia' registrato si modifica quello. Si salva sempre a mano. Formato provato su una conferma
+  d'ordine reale del 2026-10 (PDF con testo; le scansioni non sono leggibili).
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
