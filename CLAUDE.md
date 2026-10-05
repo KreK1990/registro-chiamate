@@ -199,6 +199,19 @@ Campi principali:
   email o indirizzi (scelta concordata con l'utente, 2026-10-05). Candidati con le stesse
   esclusioni di "Da ricontattare" e non sentiti da almeno 14 giorni. Risultato salvato in
   `users/<uid>/suggerimenti/<YYYY-MM-DD>`. Costo stimato ~2 $/mese con un'analisi al giorno.
+- **Cantieri dal portale** (Progetti -> "Cantieri dal portale", blocco omonimo): legge nel
+  browser con pdf.js il PDF esportato dal portale NII Progetti (niiprogetti.it; ~1000 pagine,
+  ~4 s), senza inviarlo a servizi esterni (il PDF e' coperto da copyright). `parsePortalPages`
+  divide le colonne per coordinata x (soggetti a sinistra, stato/categorie/dettagli a destra),
+  riconosce le intestazioni dal testo (`PORTAL_ROLE`, il grassetto non e' affidabile) e unisce
+  le pagine con lo stesso "ID Progetto". Volume = unita' abitative x `settings.portaleMl` (10 m)
+  x `settings.portaleEuro` (80 €/m); priorita' pesata per fase (Progettazione 1,2,
+  Programmazione 1, Esecuzione 0,6), ristrutturazione 0,5, clienti noti 1,5; stelle da 8.000 e
+  25.000. Di default solo nuove costruzioni (l'utente non segue le ristrutturazioni). Soggetti
+  confrontati con la rubrica per email, telefono (ultime 9 cifre), cognome+nome, studio. Stato
+  "seguito"/"scartato" in collection `portale` {pid, stato, dati (scheda ridotta)}; ID visti in
+  `settings.portaleVisti` per marcare i nuovi. "Crea contatto" / "Crea progetto" aprono i moduli
+  precompilati (`__returnToPortal`, `projects.portaleId`).
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,

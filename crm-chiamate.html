@@ -233,6 +233,18 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .map-pop-actions .btn{text-decoration:none;}
 .ai-prio{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;background:var(--bg);color:var(--muted);border:1px solid var(--border);}
 .ai-prio.alta{color:var(--accent);border-color:var(--accent);}
+.portal-card.seguito{border-left:3px solid var(--accent);}
+.portal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:6px 14px;flex-wrap:wrap;font-size:15px;}
+.portal-stars{color:#b97f00;letter-spacing:1px;margin-right:4px;}
+.portal-vol{text-align:right;white-space:nowrap;}
+.portal-vol strong{display:block;font-size:17px;color:var(--accent);}
+.portal-vol span{font-size:12px;color:var(--muted);}
+.portal-desc{font-size:13px;margin-top:6px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.portal-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 16px;margin-top:8px;font-size:13px;}
+.portal-person .btn.small{padding:2px 8px;font-size:12px;}
+.portal-param{width:52px;display:inline-block;padding:2px 6px;font-size:12.5px;}
+.portal-filters{display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center;padding:12px 14px;}
+.portal-filters input[type=checkbox]{width:auto;margin:0;}
 .todo-section{margin-top:10px;}
 .todo-act{font-size:12.5px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap;}
 .todo-act .name-link{font-weight:600;}
@@ -541,6 +553,7 @@ async function init(){
   });
   db.collection('projects').onSnapshot(onProjectsSnapshot);
   db.collection('forecastStorico').onSnapshot(onHistorySnapshot);
+  db.collection('portale').onSnapshot(onPortalSnapshot);
   db.collection('settings').onSnapshot(onSettingsSnapshot);
 }
 
@@ -718,6 +731,7 @@ function renderMain(){
   if(view==='forecast'){ main.innerHTML = forecastView(); bindForecast(); return; }
   if(view==='settings'){ main.innerHTML = settingsView(); bindSettings(); return; }
   if(view==='map'){ main.innerHTML = mapView(); bindMap(); return; }
+  if(view==='portal'){ main.innerHTML = portalView(); bindPortal(); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -1973,6 +1987,364 @@ function aiCardHtml(){
 }
 
 // ---------------------------------------------------------------------------
+// Cantieri dal portale (Progetti -> "Cantieri dal portale"): legge nel browser il PDF del
+// portale NII Progetti (una scheda per progetto), senza inviarlo a nessun servizio (il PDF e'
+// protetto da copyright). Per ogni cantiere: volume stimato = unita' abitative x metri di
+// balconi per unita' x euro al metro (settings.portaleMl / portaleEuro, default 10 e 80),
+// soggetti confrontati con la rubrica (email, telefono, nome, studio), punteggio.
+// Di default solo nuove costruzioni. "Da seguire" / "Scarta" in collection "portale"
+// ({pid, stato, dati, aggiornatoIl}); ID gia' visti in settings.portaleVisti, cosi' al PDF
+// successivo si riconoscono i cantieri nuovi. "Crea progetto" apre il modulo precompilato
+// (projects.portaleId = ID del portale).
+// ---------------------------------------------------------------------------
+// Lettura delle schede NII Progetti (PDF esportato dal portale): una scheda per progetto,
+// colonna sinistra = descrizione e soggetti (Committenza, Progettazione, Impresa...),
+// colonna destra = stato, categorie e dettagli (Valore stimato, Unita' abitative...).
+// Le schede lunghe continuano sulla pagina dopo: si chiudono con "ID Progetto ... del ...".
+// Intestazioni dei soggetti (colonna sinistra): si riconoscono dal testo, il grassetto non e'
+// affidabile (pdf.js rinumera i font pagina per pagina).
+const PORTAL_ROLE = /^(Committenza|Progettazione|Progetto (di|Impianti|Strutture|esecutivo|definitivo)|Appalto|Responsabile|Direzione|Coordinatore|Contatto|Masterplan|Studio di Fattibilit|Promotore|Consulenza|Propriet|Stazione Appaltante|VAS|Commercializzazione|Sviluppatore|Investitore|General Contractor|Concessionari|Gestione|Collaud|Subappalto|Fornitur)/i;
+const PORTAL_SECTIONS = /^(Stato del Progetto|Livello di approfondimento|Categorie|Dettagli)$/;
+function portalPageItems(items){
+  return items.filter(it=>it.str && it.str.trim()).map(it=>({ x: it.transform[4], y: it.transform[5], s: it.str.trim(), bold: /_f3$/.test(it.fontName||'') }));
+}
+// Righe (stessa altezza) di un gruppo di item, dall'alto in basso.
+function portalRows(items){
+  const rows = [];
+  items.slice().sort((a,b)=>b.y - a.y || a.x - b.x).forEach(it=>{
+    const r = rows.find(r=>Math.abs(r.y - it.y) < 2.5);
+    if(r) r.items.push(it); else rows.push({ y: it.y, items: [it] });
+  });
+  rows.forEach(r=>r.items.sort((a,b)=>a.x - b.x));
+  return rows;
+}
+const PORTAL_SKIP = /^(Tel\. 02 3032181|Tutte le informazioni pubblicate|Powered by TCPDF)/;
+function parsePortalPages(pages){   // pages = [[item...], ...] gia' passati da portalPageItems
+  const projects = [];
+  let cur = null, curRole = null;
+  const finish = ()=>{ if(cur){ projects.push(cur); } cur = null; curRole = null; };
+  pages.forEach((items, pi)=>{
+    items = items.filter(it=>!PORTAL_SKIP.test(it.s) && it.y > 60 || /^ID Progetto$/.test(it.s) || (it.y > 60 && it.y < 90));
+    const footer = portalRows(items.filter(it=>it.y < 90 && it.y > 60)).map(r=>r.items.map(i=>i.s).join(' ')).join(' ');
+    const body = items.filter(it=>it.y >= 90);
+    const left = body.filter(it=>it.x < 330), right = body.filter(it=>it.x >= 330);
+    const lrows = portalRows(left);
+    // nuova scheda: titolo in alto a sinistra (y > 770) in grassetto
+    const titleRows = lrows.filter(r=>r.y > 770);
+    if(titleRows.length && (!cur || cur.closed)){
+      finish();
+      // in alto a destra: comune (anche su piu' righe) e zona ("Piemonte - Cuneo")
+      const rt = portalRows(right.filter(it=>it.y > 770)).map(r=>r.items.map(i=>i.s).join(' '));
+      const iz = rt.findIndex(t=>/ - /.test(t));
+      cur = { titolo: titleRows[0].items.map(i=>i.s).join(' '), indirizzo: titleRows.slice(1).map(r=>r.items.map(i=>i.s).join(' ')).join(' '),
+        comune: (iz>0 ? rt.slice(0, iz) : rt.slice(0, 1)).join(' '), zona: iz>=0 ? rt[iz] : (rt[1]||''),
+        descrizione: [], soggetti: [], stato: [], categorie: [], dettagli: {}, pagina: pi+1 };
+    }
+    if(!cur) return;
+    // colonna sinistra: descrizione (x<120, prima dei ruoli), ruoli (grassetto x<120), soggetti (x>=120)
+    let ent = null, lastY = null, lastHeaderY = null;
+    lrows.filter(r=>r.y <= 770).forEach(r=>{
+      const first = r.items[0];
+      const line = r.items.map(i=>i.s).join(' ');
+      if(first.x < 120 && line.length <= 60 && PORTAL_ROLE.test(line)){
+        // due intestazioni di seguito (es. "Committenza" e "Appalto"): lo stesso soggetto ha entrambi i ruoli
+        curRole = curRole && !ent && lastHeaderY!=null && lastHeaderY - r.y < 14 ? curRole + ' / ' + line : line;
+        lastHeaderY = r.y; ent = null; lastY = null; return;
+      }
+      if(first.x < 120 && !curRole){ cur.descrizione.push(r.items.map(i=>i.s).join(' ')); return; }
+      if(first.x < 120 && curRole){ // sotto-ruolo non in grassetto: va col ruolo
+        curRole += ' – ' + r.items.map(i=>i.s).join(' '); return; }
+      const text = r.items.map(i=>i.s);
+      if(!ent || (lastY!=null && lastY - r.y > 13)){ ent = { ruolo: curRole || '', righe: [] }; cur.soggetti.push(ent); }
+      ent.righe.push(...text); lastY = r.y;
+    });
+    // colonna destra: sezioni con intestazione centrata in grassetto
+    let sect = null;
+    portalRows(right.filter(it=>it.y <= 770)).forEach(r=>{
+      const t = r.items.map(i=>i.s);
+      if(r.items.length===1 && PORTAL_SECTIONS.test(t[0])){ sect = t[0]; return; }
+      if(sect==='Stato del Progetto') cur.stato.push(t.join(' '));
+      else if(sect==='Categorie') cur.categorie.push(t.join(' '));
+      else if(sect==='Dettagli' && t.length>=2) cur.dettagli[t[0]] = t.slice(1).join(' ');
+      else if(sect==='Livello di approfondimento') cur.livello = t.join(' ');
+    });
+    const m = /ID Progetto\s+(\d+)\s*-\s*Notizia\s+(\d+)\s+del\s+(\d{2}\/\d{2}\/\d{4})/.exec(footer);
+    if(m){ cur.id = m[1]; cur.notizia = m[2]; cur.dataNotizia = m[3]; cur.closed = true; }
+  });
+  finish();
+  // Le schede lunghe ripetono titolo e ID su ogni pagina: si uniscono le parti con lo stesso ID.
+  const byId = new Map(), merged = [];
+  projects.forEach(p=>{
+    const prev = p.id && byId.get(p.id);
+    if(!prev){ if(p.id) byId.set(p.id, p); merged.push(p); return; }
+    prev.descrizione.push(...p.descrizione); prev.soggetti.push(...p.soggetti);
+    prev.stato.push(...p.stato); prev.categorie.push(...p.categorie);
+    Object.assign(prev.dettagli, p.dettagli);
+  });
+  return merged.map(portalNormalize);
+}
+function portalNum(s){ if(!s || /^ND$/i.test(s)) return null; const n = Number(String(s).replace(/[€\s.]/g,'').replace(',', '.')); return isFinite(n) ? n : null; }
+function portalEntity(e){
+  const out = { ruolo: e.ruolo, righe: e.righe, tel: [], email: [], web: '' };
+  const rest = [];
+  e.righe.forEach(l=>{
+    let m;
+    if((m = /^Tel\.:\s*(.+)$/.exec(l))) out.tel.push(m[1].replace(/[^\d+]/g,''));
+    else if((m = /^Fax:/.exec(l))) {}
+    else if((m = /^E-mail:\s*(\S+)/.exec(l))) out.email.push(m[1].toLowerCase());
+    else if((m = /^Web:\s*(\S+)/.exec(l))) out.web = m[1];
+    else rest.push(l);
+  });
+  // nome (prima riga), eventuale studio/societa', indirizzo e citta' (riga con CAP)
+  const iCap = rest.findIndex(l=>/^\d{5}\s/.test(l));
+  out.nome = rest[0] || '';
+  out.citta = iCap>=0 ? rest[iCap] : '';
+  out.via = iCap>0 ? rest[iCap-1] : '';
+  out.altro = rest.slice(1, iCap>0 ? iCap-1 : rest.length).filter(Boolean);   // es. "Studio Tecnoprogetti"
+  return out;
+}
+function portalNormalize(p){
+  const d = p.dettagli;
+  const statoTxt = p.stato.join(' ');
+  return {
+    id: p.id || '', titolo: p.titolo, indirizzo: p.indirizzo, comune: p.comune, zona: p.zona,
+    descrizione: p.descrizione.join(' '),
+    fase: (/Fase\s+(\S+)/.exec(statoTxt) || [])[1] || '',
+    stato: p.stato.join(' · '),
+    nuovaCostruzione: /Nuova costruzione/i.test(statoTxt),
+    intervento: p.stato.filter(s=>!/^Fase /.test(s)).pop() || '',
+    categorie: p.categorie.join(' · '),
+    unita: portalNum(d['Unità abitative']),
+    valore: portalNum(d['Valore stimato']),
+    committente: d['Committente'] || '',
+    inizio: d['Inizio cantiere'] || '', fine: d['Fine lavori'] || '', appalto: d['Appalto'] || '',
+    dataNotizia: p.dataNotizia || '', pagina: p.pagina,
+    soggetti: p.soggetti.map(portalEntity)
+  };
+}
+let portalData = null, portalBusy = '', portalShow = 40, portalSaved = new Map();
+let portalFilters = { ristrutturazioni:false, noti:false, nuovi:false, fase:'', prov:'', minUnita:0, q:'', vista:'tutti' };
+function onPortalSnapshot(snap){
+  portalSaved = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
+  if(view==='portal' && canAutoRender()) renderMain();
+}
+function portalMl(){ return Number(appSettings.portaleMl) > 0 ? Number(appSettings.portaleMl) : 10; }
+function portalEuro(){ return Number(appSettings.portaleEuro) > 0 ? Number(appSettings.portaleEuro) : 80; }
+function portalProv(p){ return (/\(\s*([A-Z]{2})\s*\)/.exec(p.indirizzo||'') || [])[1] || ''; }
+function portalViaCitta(p){
+  const m = /^(.*?)\s*\d{5}\s+(.+?)\s*\(\s*[A-Z]{2}\s*\)/.exec(p.indirizzo||'');
+  return m ? { via: m[1].trim(), citta: m[2].trim() } : { via:'', citta: p.comune||'' };
+}
+// --- confronto con la rubrica ---
+const PORTAL_TITLES = { 'arch.':'Architetto', 'ing.':'Ingegnere', 'geom.':'Geometra', 'p.i.':'Perito industriale', 'per.ind.':'Perito industriale', 'dott.':'', 'avv.':'Avvocato', 'arch':'Architetto', 'ing':'Ingegnere', 'geom':'Geometra' };
+function digits9(s){ const d = String(s||'').replace(/\D/g,'').replace(/^0039|^39(?=\d{9,10}$)/,''); return d.length>=8 ? d.slice(-9) : ''; }
+function portalIndex(){
+  const ix = { email:new Map(), tel:new Map(), person:new Map(), studio:new Map() };
+  contacts.forEach(c=>{
+    if(c.email) ix.email.set(c.email.trim().toLowerCase(), c);
+    [c.cellulare, c.telefono].forEach(t=>{ const d = digits9(t); if(d && !ix.tel.has(d)) ix.tel.set(d, c); });
+    if(c.cognome && c.nome) ix.person.set(normName(c.cognome)+'|'+normName(c.nome), c);
+    if(c.azienda){ const k = normStudio(c.azienda); if(k.length>=4 && !ix.studio.has(k)) ix.studio.set(k, c); }
+  });
+  return ix;
+}
+function portalPerson(nome){   // "Marengo arch. Viviana" -> {cognome, nome, professione}
+  const m = /^(.+?)\s+(arch\.?|ing\.?|geom\.?|p\.i\.|per\.\s?ind\.|dott\.(?:ssa)?|avv\.)\s+(.+)$/i.exec(nome||'');
+  if(!m) return null;
+  return { cognome: m[1].trim(), nome: m[3].trim(), professione: PORTAL_TITLES[m[2].toLowerCase().replace(/\s/g,'')] ?? '' };
+}
+function portalMatch(s, ix){
+  for(const e of s.email){ const c = ix.email.get(e); if(c) return { c, how:'email' }; }
+  for(const t of s.tel){ const c = ix.tel.get(digits9(t)); if(c) return { c, how:'telefono' }; }
+  const per = portalPerson(s.nome);
+  if(per){ const c = ix.person.get(normName(per.cognome)+'|'+normName(per.nome)); if(c) return { c, how:'nome' }; }
+  for(const n of [s.nome, ...(s.altro||[])]){ const c = ix.studio.get(normStudio(n)); if(c) return { c, how:'studio' }; }
+  return null;
+}
+function portalScore(p, noti){
+  const vol = p.unita ? p.unita * portalMl() * portalEuro() : null;
+  const w = (p.fase==='Progettazione' ? 1.2 : p.fase==='Esecuzione' ? 0.6 : 1) * (p.nuovaCostruzione ? 1 : 0.5) * (noti ? 1.5 : 1);
+  const prio = vol!=null ? vol * w : 0;
+  return { vol, prio, stelle: vol==null ? 0 : prio >= 25000 ? 3 : prio >= 8000 ? 2 : 1 };
+}
+function portalAllRows(){
+  if(!portalData) return [];
+  const ix = portalIndex(), visti = portalData.visti || new Set();
+  return portalData.projects.map(p=>{
+    const matches = p.soggetti.map(s=>({ s, m: portalMatch(s, ix) }));
+    const noti = matches.filter(x=>x.m);
+    const proj = projects.find(x=>x.portaleId===p.id);
+    return { p, matches, noti, proj, saved: portalSaved.get(p.id), nuovo: !visti.has(p.id), prov: portalProv(p), ...portalScore(p, noti.length>0) };
+  });
+}
+function portalFiltered(rows){
+  const f = portalFilters, q = normName(f.q);
+  return rows.filter(r=>{
+    const p = r.p;
+    if(f.vista==='seguiti' && !(r.saved && r.saved.stato==='seguito')) return false;
+    if(f.vista==='tutti' && r.saved && r.saved.stato==='scartato') return false;
+    if(f.vista==='scartati' && !(r.saved && r.saved.stato==='scartato')) return false;
+    if(!f.ristrutturazioni && !p.nuovaCostruzione) return false;
+    if(f.noti && !r.noti.length) return false;
+    if(f.nuovi && !r.nuovo) return false;
+    if(f.fase==='presto' && p.fase==='Esecuzione') return false;
+    if(f.fase && f.fase!=='presto' && p.fase!==f.fase) return false;
+    if(f.prov && r.prov!==f.prov) return false;
+    if(f.minUnita && !(p.unita >= f.minUnita)) return false;
+    if(q && !normName([p.titolo, p.comune, p.descrizione, ...p.soggetti.map(s=>s.nome+' '+(s.altro||[]).join(' '))].join(' ')).includes(q)) return false;
+    return true;
+  }).sort((a,b)=>b.prio - a.prio || (b.p.unita||0) - (a.p.unita||0));
+}
+// I cantieri "da seguire" restano consultabili anche senza ricaricare il PDF.
+function portalSavedRows(){
+  const ix = portalIndex();
+  return [...portalSaved.values()].filter(x=>x.stato==='seguito' && x.dati).map(x=>{
+    const p = x.dati, matches = (p.soggetti||[]).map(s=>({ s, m: portalMatch(s, ix) })), noti = matches.filter(m=>m.m);
+    return { p, matches, noti, proj: projects.find(y=>y.portaleId===p.id), saved: x, nuovo:false, prov: portalProv(p), ...portalScore(p, noti.length>0) };
+  }).sort((a,b)=>b.prio - a.prio);
+}
+function portalCardHtml(r){
+  const p = r.p, stars = '★★★'.slice(0, r.stelle) + '☆☆☆'.slice(0, 3 - r.stelle);
+  const st = r.saved && r.saved.stato;
+  return `<div class="card portal-card ${st==='seguito' ? 'seguito' : ''}">
+    <div class="portal-head">
+      <div style="min-width:0;"><span class="portal-stars" title="Punteggio">${r.stelle ? stars : '–'}</span>
+        <strong>${esc(p.titolo)}</strong> <span class="fc-addr">· ${esc(p.comune)}${r.prov ? ` (${r.prov})` : ''}</span>
+        ${r.nuovo ? '<span class="ai-prio alta">nuovo</span>' : ''}${st==='seguito' ? '<span class="ai-prio alta">da seguire</span>' : ''}${r.proj ? `<span class="ai-prio">progetto ${esc(r.proj.codice||'')}</span>` : ''}</div>
+      <div class="portal-vol">${r.vol!=null ? `<strong>${fmtEuro(r.vol).replace(',00','')}</strong><span>${p.unita} unità · ${p.unita*portalMl()} m</span>` : '<span>unità non indicate</span>'}</div>
+    </div>
+    <div class="todo-sub">${esc([p.fase && 'Fase '+p.fase, p.intervento, p.valore ? 'valore opera '+fmtEuro(p.valore).replace(',00','') : '', p.inizio && p.inizio!=='ND' ? 'inizio '+p.inizio : '', p.dataNotizia && 'notizia del '+p.dataNotizia].filter(Boolean).join(' · '))}</div>
+    ${p.descrizione ? `<div class="portal-desc">${esc(p.descrizione)}</div>` : ''}
+    <div class="portal-people">${r.matches.map(({s, m}, i)=>`<div class="portal-person">
+      <span class="fc-note">${esc(s.ruolo || 'Soggetto')}</span>
+      <div>${esc(s.nome)}${(s.altro||[]).length ? ` · ${esc(s.altro.join(' · '))}` : ''}${s.citta ? ` <span class="fc-note">· ${esc(s.citta)}</span>` : ''}</div>
+      ${m ? `<div class="todo-linked"><span class="name-link" data-contact-id="${m.c.id}">già in rubrica: ${esc(fullName(m.c))}</span> <span class="fc-note">(${m.how==='email' ? 'stessa email' : 'stesso '+m.how})</span></div>`
+          : `<div class="todo-sub">${s.tel[0] ? `<a href="tel:${esc(s.tel[0])}" class="tel-link">${esc(s.tel[0])}</a> ` : ''}${s.email[0] ? `<a href="mailto:${esc(s.email[0])}" class="addr-link">${esc(s.email[0])}</a> ` : ''}<button class="btn secondary small" data-portal-contact="${p.id}|${i}">Crea contatto</button></div>`}
+    </div>`).join('')}</div>
+    <div class="todo-actions" style="margin-top:8px;">
+      ${st==='seguito' ? `<button class="btn secondary small" data-portal-state="${p.id}|">Non seguire più</button>` : `<button class="btn small" data-portal-state="${p.id}|seguito">Da seguire</button>`}
+      ${st==='scartato' ? `<button class="btn secondary small" data-portal-state="${p.id}|">Ripristina</button>` : `<button class="btn secondary small" data-portal-state="${p.id}|scartato">Scarta</button>`}
+      ${r.proj ? `<button class="btn secondary small" data-open-project="${r.proj.id}">Apri progetto</button>` : `<button class="btn secondary small" data-portal-project="${p.id}">Crea progetto</button>`}
+    </div>
+  </div>`;
+}
+function portalView(){
+  const f = portalFilters, rows = portalAllRows(), list = portalFiltered(rows);
+  const savedOnly = !portalData ? portalSavedRows() : null;
+  const provs = [...new Set(rows.map(r=>r.prov).filter(Boolean))].sort();
+  const shown = (savedOnly || list).slice(0, portalShow);
+  const tot = (savedOnly || list).reduce((s,r)=>s+(r.vol||0), 0);
+  const nNuove = rows.filter(r=>r.p.nuovaCostruzione).length;
+  return `<div class="top-actions" style="justify-content:space-between;">
+      <button class="btn secondary small" id="portalBackBtn">← Progetti</button>
+      <button class="btn small" id="portalLoadBtn" ${portalBusy ? 'disabled' : ''}>${portalData ? 'Carica un altro PDF' : 'Carica il PDF del portale'}</button>
+    </div>
+    <h2 style="margin-bottom:4px;">Cantieri dal portale</h2>
+    <div class="fc-note" style="margin-bottom:10px;">Il PDF viene letto solo su questo dispositivo, non viene inviato a nessun servizio. Volume stimato = unità abitative × <input id="portalMl" class="portal-param" inputmode="decimal" value="${portalMl()}"> m di balconi × <input id="portalEuro" class="portal-param" inputmode="decimal" value="${portalEuro()}"> €/m.</div>
+    ${portalBusy ? `<div class="card"><strong>${esc(portalBusy)}</strong></div>` : ''}
+    ${portalData ? `<div class="fc-tiles" style="margin-bottom:12px;">
+        <div class="fc-tile"><div class="fc-label">Cantieri nel PDF</div><div class="fc-value">${rows.length}</div><div class="fc-note">${nNuove} nuove costruzioni · ${esc(portalData.file)}</div></div>
+        <div class="fc-tile"><div class="fc-label">Con clienti già in rubrica</div><div class="fc-value">${rows.filter(r=>r.p.nuovaCostruzione && r.noti.length).length}</div><div class="fc-note">nuove costruzioni</div></div>
+        <div class="fc-tile"><div class="fc-label">Nuovi dall'ultimo PDF</div><div class="fc-value">${rows.filter(r=>r.nuovo && r.p.nuovaCostruzione).length}</div><div class="fc-note">nuove costruzioni</div></div>
+        <div class="fc-tile"><div class="fc-label">Volume stimato in elenco</div><div class="fc-value">${fmtEuro(tot).replace(',00','')}</div><div class="fc-note">${list.length} cantieri filtrati</div></div>
+      </div>
+      <div class="card portal-filters">
+        <select id="pfVista" style="width:auto;"><option value="tutti" ${f.vista==='tutti'?'selected':''}>Tutti (esclusi scartati)</option><option value="seguiti" ${f.vista==='seguiti'?'selected':''}>Da seguire</option><option value="scartati" ${f.vista==='scartati'?'selected':''}>Scartati</option></select>
+        <select id="pfFase" style="width:auto;"><option value="">Tutte le fasi</option><option value="presto" ${f.fase==='presto'?'selected':''}>Prima dei lavori (programmazione e progettazione)</option>${['Programmazione','Progettazione','Esecuzione'].map(x=>`<option ${f.fase===x?'selected':''}>${x}</option>`).join('')}</select>
+        <select id="pfProv" style="width:auto;"><option value="">Tutte le province</option>${provs.map(x=>`<option ${f.prov===x?'selected':''}>${x}</option>`).join('')}</select>
+        <label class="map-filter">Unità minime <input id="pfMin" inputmode="numeric" value="${f.minUnita||''}" style="width:60px;"></label>
+        <label class="map-filter"><input type="checkbox" id="pfNoti" ${f.noti?'checked':''}> Solo con clienti già in rubrica</label>
+        <label class="map-filter"><input type="checkbox" id="pfNuovi" ${f.nuovi?'checked':''}> Solo nuovi dall'ultimo PDF</label>
+        <label class="map-filter"><input type="checkbox" id="pfRistr" ${f.ristrutturazioni?'checked':''}> Mostra anche ristrutturazioni</label>
+        <input id="pfQ" placeholder="Cerca comune, studio, impresa…" value="${esc(f.q)}" style="flex:1 1 200px;">
+      </div>` : `<div class="card"><h3>Da seguire (${savedOnly.length})</h3><div class="fc-note">Carica il PDF scaricato dal portale per vedere tutti i cantieri e i clienti già in rubrica.</div></div>`}
+    ${shown.map(portalCardHtml).join('') || (portalData ? '<div class="empty">Nessun cantiere con questi filtri.</div>' : '')}
+    ${(savedOnly || list).length > shown.length ? `<button class="btn secondary" id="portalMoreBtn">Mostra altri (${(savedOnly || list).length - shown.length})</button>` : ''}`;
+}
+async function loadPortalPdf(file){
+  portalBusy = 'Lettura del PDF…'; renderMain();
+  try{
+    await loadPdfJs();
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const pages = [];
+    for(let i=1; i<=doc.numPages; i++){
+      const pg = await doc.getPage(i);
+      pages.push(portalPageItems((await pg.getTextContent()).items));
+      pg.cleanup();
+      if(i % 25 === 0){ portalBusy = `Lettura del PDF: pagina ${i} di ${doc.numPages}…`; const el = document.querySelector('#main .card strong'); if(el) el.textContent = portalBusy; }
+    }
+    const list = parsePortalPages(pages).filter(p=>p.id);
+    if(!list.length) throw new Error('nel PDF non ho trovato schede del portale (ID Progetto)');
+    const prevVisti = new Set(String(appSettings.portaleVisti||'').split(',').filter(Boolean));
+    portalData = { projects:list, file:file.name, visti:prevVisti };
+    portalShow = 40;
+    saveSettings({ portaleVisti: [...new Set([...prevVisti, ...list.map(p=>p.id)])].join(','), portaleCaricatoIl: Date.now() });
+  }catch(e){ alert('Impossibile leggere il PDF: '+(e.message||e)); }
+  portalBusy = ''; renderMain();
+}
+function portalCompact(p){
+  return { ...p, descrizione: (p.descrizione||'').slice(0, 600), soggetti: p.soggetti.map(s=>({ ruolo:s.ruolo, nome:s.nome, altro:s.altro, tel:s.tel, email:s.email, via:s.via, citta:s.citta, web:s.web })) };
+}
+async function setPortalState(pid, stato){
+  const ex = portalSaved.get(pid);
+  const p = (portalData && portalData.projects.find(x=>x.id===pid)) || (ex && ex.dati);
+  try{
+    if(ex) await db.collection('portale').doc(ex.docId).update({ stato, ...(p ? { dati: portalCompact(p) } : {}), aggiornatoIl: Date.now() });
+    else if(stato) await db.collection('portale').add({ pid, stato, dati: portalCompact(p), aggiornatoIl: Date.now() });
+  }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+const PORTAL_ROLE_MAP = [[/strutt/i, 'Progettazione strutturale'], [/impiant|termotec|energ/i, 'Termotecnico'], [/appalto|impresa/i, 'Impresa esecutrice'], [/direzione/i, 'Direzione lavori'], [/committ|propriet|promotore/i, 'Committente'], [/progett/i, 'Progettazione architettonica']];
+function portalRole(r){ const x = PORTAL_ROLE_MAP.find(([re])=>re.test(r||'')); return x ? x[1] : 'Altro'; }
+function portalFindProject(pid){ return (portalData && portalData.projects.find(x=>x.id===pid)) || (portalSaved.get(pid)||{}).dati; }
+function bindPortal(){
+  const main = document.getElementById('main');
+  document.getElementById('portalBackBtn').addEventListener('click', ()=>{ view='projects'; renderMain(); });
+  document.getElementById('portalLoadBtn').addEventListener('click', ()=>{
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/pdf,.pdf';
+    input.addEventListener('change', ()=>{ if(input.files && input.files[0]) loadPortalPdf(input.files[0]); });
+    input.click();
+  });
+  const param = (id, key)=>document.getElementById(id).addEventListener('change', e=>{
+    const n = parseEuro(e.target.value); if(!n || n<=0){ e.target.value = key==='portaleMl' ? portalMl() : portalEuro(); return; }
+    saveSettings({ [key]: n }); renderMain();
+  });
+  param('portalMl', 'portaleMl'); param('portalEuro', 'portaleEuro');
+  const set = (k, v)=>{ portalFilters[k] = v; portalShow = 40; renderMain(); };
+  document.getElementById('pfVista')?.addEventListener('change', e=>set('vista', e.target.value));
+  document.getElementById('pfFase')?.addEventListener('change', e=>set('fase', e.target.value));
+  document.getElementById('pfProv')?.addEventListener('change', e=>set('prov', e.target.value));
+  document.getElementById('pfMin')?.addEventListener('change', e=>set('minUnita', Math.max(0, parseInt(e.target.value, 10) || 0)));
+  document.getElementById('pfNoti')?.addEventListener('change', e=>set('noti', e.target.checked));
+  document.getElementById('pfNuovi')?.addEventListener('change', e=>set('nuovi', e.target.checked));
+  document.getElementById('pfRistr')?.addEventListener('change', e=>set('ristrutturazioni', e.target.checked));
+  const q = document.getElementById('pfQ');
+  q?.addEventListener('input', ()=>{ clearTimeout(window.__pfT); window.__pfT = setTimeout(()=>{ set('q', q.value); const n = document.getElementById('pfQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 350); });
+  document.getElementById('portalMoreBtn')?.addEventListener('click', ()=>{ portalShow += 40; renderMain(); });
+  main.querySelectorAll('[data-contact-id]').forEach(el=>el.addEventListener('click', ()=>{ selectedId = el.dataset.contactId; view='detail'; setActiveTab('navContacts'); renderMain(); }));
+  main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
+  main.querySelectorAll('[data-portal-state]').forEach(b=>b.addEventListener('click', ()=>{ const [pid, st] = b.dataset.portalState.split('|'); b.disabled = true; setPortalState(pid, st); }));
+  main.querySelectorAll('[data-portal-contact]').forEach(b=>b.addEventListener('click', ()=>{
+    const [pid, i] = b.dataset.portalContact.split('|'), p = portalFindProject(pid), s = p && p.soggetti[+i];
+    if(!s) return;
+    const per = portalPerson(s.nome), tel = (s.tel[0]||'').replace(/^\+39/, '');
+    const company = !per ? s.nome : (s.altro||[])[0] || '';
+    window.__editing = { nome: per ? per.nome : '', cognome: per ? per.cognome : '', professione: per ? per.professione : '',
+      azienda: company, via: s.via || '', citta: (s.citta||'').replace(/^\d{5}\s+/, '').replace(/\s*\([A-Z]{2}\)\s*$/, ''),
+      cellulare: /^3/.test(tel) ? formatPhone(tel) : '', telefono: /^3/.test(tel) ? '' : formatPhone(tel), email: s.email[0] || '',
+      note: `Dal portale NII Progetti: ${p.titolo} (${p.comune}), ${s.ruolo || 'soggetto'}.` };
+    window.__returnToPortal = true; view = 'new'; setActiveTab('navContacts'); renderMain();
+  }));
+  main.querySelectorAll('[data-portal-project]').forEach(b=>b.addEventListener('click', ()=>{
+    const pid = b.dataset.portalProject, p = portalFindProject(pid); if(!p) return;
+    const ix = portalIndex(), vc = portalViaCitta(p), seen = new Set();
+    const partecipanti = p.soggetti.map(s=>({ s, m: portalMatch(s, ix) })).filter(x=>x.m && !seen.has(x.m.c.id) && seen.add(x.m.c.id)).map(x=>({ contactId:x.m.c.id, ruolo: portalRole(x.s.ruolo) }));
+    window.__editingProject = { nome: p.titolo, via: vc.via, citta: vc.citta, partecipanti, portaleId: p.id,
+      note: [`Dal portale NII Progetti, ID ${p.id}${p.dataNotizia ? ' (notizia del '+p.dataNotizia+')' : ''}.`, [p.fase && 'Fase '+p.fase, p.intervento, p.unita ? p.unita+' unità abitative' : '', p.valore ? 'valore opera '+fmtEuro(p.valore) : ''].filter(Boolean).join(' · '), p.descrizione].filter(Boolean).join('\n') };
+    view = 'projectForm'; renderMain();
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Forecast: solo commesse aperte (ne' perse ne' con ordine confermato). Valore
 // ponderato = importo offerta x probabilita' di chiusura. Campi sul progetto:
 // probabilita (0-100; se assente si usa quella suggerita per la fase),
@@ -2397,7 +2769,7 @@ const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale
 // Nel Forecast non si ridisegna mentre si sta scrivendo in un campo (le cifre si aggiornano a parte).
 function canAutoRender(){
   const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main input');
-  return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && !(view==='call' && callStep==='entry') && !(view==='forecast' && typing)
+  return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && !(view==='call' && callStep==='entry') && !((view==='forecast' || view==='portal') && typing)
     && !(view==='projectDetail' && (orderEdit || loseFormProjectId));
 }
 function onProjectsSnapshot(snap){
@@ -2561,6 +2933,7 @@ function projectsListView(){
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
         <button class="btn" id="newProjectBtn">+ Nuovo progetto</button>
         <button class="btn secondary" id="orderPdfBtn" title="Legge la conferma d'ordine e apre il progetto con l'ordine già compilato">Ordine da PDF</button>
+        <button class="btn secondary" id="portalBtn" title="Analizza il PDF dei cantieri scaricato dal portale">Cantieri dal portale</button>
       </div>
     </div>
     <div id="projList">${projectsListHtml()}</div>`;
@@ -2576,6 +2949,7 @@ function bindProjectsList(){
   document.getElementById('projPhaseFilter').addEventListener('change', e=>{ projectsPhaseFilter = e.target.value; renderMain(); });
   document.getElementById('newProjectBtn').addEventListener('click', ()=>{ window.__editingProject = { partecipanti:[] }; view = 'projectForm'; renderMain(); });
   document.getElementById('orderPdfBtn').addEventListener('click', ()=>pickOrderPdf(null));
+  document.getElementById('portalBtn').addEventListener('click', ()=>{ view='portal'; renderMain(); });
 }
 
 // ---- modulo nuovo / modifica progetto ----
@@ -2623,7 +2997,7 @@ function projectFormView(){
 }
 function bindProjectForm(){
   const p = window.__editingProject || {};
-  const cancel = ()=>{ window.__editingProject = null; view = p.id ? 'projectDetail' : (p.fromContactId ? 'detail' : 'projects'); if(p.fromContactId){ selectedId = p.fromContactId; setActiveTab('navContacts'); } renderMain(); };
+  const cancel = ()=>{ window.__editingProject = null; view = p.id ? 'projectDetail' : (p.portaleId ? 'portal' : p.fromContactId ? 'detail' : 'projects'); if(p.fromContactId){ selectedId = p.fromContactId; setActiveTab('navContacts'); } renderMain(); };
   document.getElementById('projFormCancel').addEventListener('click', cancel);
   document.getElementById('projFormCancelTop').addEventListener('click', cancel);
   const box = document.getElementById('fPParts');
@@ -2663,7 +3037,7 @@ async function saveProject(){
     if(p.id){ await db.collection('projects').doc(p.id).update(data); selectedProjectId = p.id; }
     else{
       const rich = document.getElementById('fPRichiesta').value;
-      const ref = await db.collection('projects').add({ ...data, fasi: rich ? { richiesta: rich } : {}, importoDeliberato: null, createdAt: Date.now() });
+      const ref = await db.collection('projects').add({ ...data, fasi: rich ? { richiesta: rich } : {}, importoDeliberato: null, createdAt: Date.now(), ...(p.portaleId ? { portaleId: p.portaleId } : {}) });
       selectedProjectId = ref.id;
     }
     window.__editingProject = null; view = 'projectDetail'; setActiveTab('navProjects'); renderMain();
@@ -4671,6 +5045,7 @@ function bindNewForm(){
   document.getElementById('cancelBtn').addEventListener('click', ()=>{
     window.__editing=null;
     if(window.__returnToCall){ window.__returnToCall=false; view='call'; callStep='pick'; }
+    else if(window.__returnToPortal){ window.__returnToPortal=false; view='portal'; setActiveTab('navProjects'); }
     else{ view=selectedId?'detail':'contactsList'; }
     renderMain();
   });
@@ -4746,6 +5121,7 @@ async function saveContact(){
     window.__studioChoice = null;
     window.__editing=null;
     if(window.__returnToCall){ window.__returnToCall=false; view='call'; callStep='entry'; }
+    else if(window.__returnToPortal){ window.__returnToPortal=false; view='portal'; setActiveTab('navProjects'); }
     else{ view='detail'; }
     renderMain();
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
