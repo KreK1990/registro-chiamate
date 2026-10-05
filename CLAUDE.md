@@ -224,7 +224,13 @@ Campi principali:
   (blocco "Cantieri seguiti nelle chiamate"). Nella scheda contatto il riquadro "Cantieri dal portale"
   (`contactPortalHtml`) elenca i cantieri seguiti (con nota) e quelli ancora da esaminare in cui
   compare il contatto; il clic apre la pagina giusta della sezione ed evidenzia il cantiere
-  (`portalFocus`). Aprire la scheda avvia la lettura di `portaleImport` se non ancora fatta. "Crea contatto" / "Crea progetto" aprono i moduli
+  (`portalFocus`). Aprire la scheda avvia la lettura di `portaleImport` se non ancora fatta.
+  Collegamento cantiere-progetto (blocco "Cantieri del portale collegati ai propri progetti"):
+  `projects.portaleIds` [ID portale] (+ vecchio `portaleId`, `projectPortalIds`); `portalCandidates`
+  propone i progetti simili (stesso comune obbligatorio, poi stessa via +3, parola del nome nella
+  descrizione +2, stesso professionista +3; soglia 4, "molto probabilmente" da 8); "Collega a un
+  progetto…" cerca per ID/nome/via; i collegati escono da "Da esaminare" (casella per vederli);
+  nella scheda progetto la voce "Portale NII" riporta alla scheda del cantiere. "Crea contatto" / "Crea progetto" aprono i moduli
   precompilati (`__returnToPortal`, `projects.portaleId`).
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
