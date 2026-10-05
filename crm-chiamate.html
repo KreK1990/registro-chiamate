@@ -1622,25 +1622,30 @@ function pdfInfoHtml(info){
 // con il promemoria del suo calendario.
 // ---------------------------------------------------------------------------
 const INVITE_MINUTES = 60;
+const INVITE_SUBJECT = 'PROMEMORIA APPUNTAMENTO TAGLIO TERMICO - SCHOCK';
+const PROF_TITLES = { Architetto:'Arch.', Ingegnere:'Ing.', Geometra:'Geom.', Avvocato:'Avv.', Notaio:'Notaio', Commercialista:'Dott.' };
+function inviteSalutation(c){   // "Gentile Arch. Izzo" / "Gentile Mario Rossi" / "Buongiorno,"
+  const t = PROF_TITLES[c.professione];
+  if(c.cognome) return `Gentile ${t || c.nome || ''} ${c.cognome}`.replace(/\s+/g,' ').trim();
+  if(c.nome) return `Gentile ${t ? t+' ' : ''}${c.nome}`;
+  return 'Buongiorno,';
+}
 function isoWithOffset(local){   // 'YYYY-MM-DDTHH:MM' (ora italiana del dispositivo) -> ISO con fuso
   const d = new Date(local), off = -d.getTimezoneOffset(), a = Math.abs(off);
   const pad = n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${off>=0 ? '+' : '-'}${pad(Math.floor(a/60))}:${pad(a%60)}`;
-}
-function inviteTopic(k){
-  const proj = (k.progetti||[]).map(id=>projects.find(p=>p.id===id)).filter(Boolean).map(p=>p.nome ? `${p.nome} (${p.codice})` : p.codice);
-  return [k.progetto, ...proj].filter(Boolean).join(', ');
 }
 function outlookInviteUrl(k){
   const c = contacts.find(x=>x.id===k.contactId) || {};
   const start = new Date(k.appuntamento), end = new Date(start.getTime() + INVITE_MINUTES*60000);
   const pad = n=>String(n).padStart(2,'0');
   const endLocal = `${end.getFullYear()}-${pad(end.getMonth()+1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
-  const when = start.toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long' });
-  const time = `${pad(start.getHours())}:${pad(start.getMinutes())}`;
-  const topic = inviteTopic(k), place = fullAddress(c);
-  const body = ['Buongiorno,', '', `le confermo il nostro incontro di ${when} alle ore ${time}${place ? `, presso ${place}` : ''}.`, topic ? `Argomento: ${topic}.` : '', '', 'Cordiali saluti'].filter((l, i, a)=>l || (a[i-1] && a[i-1]!=='')).join('\n');
-  const q = new URLSearchParams({ path:'/calendar/action/compose', rru:'addevent', subject:`Incontro Schöck Italia${topic ? ' – '+topic : ''}`,
+  // Testo del promemoria che l'utente manda di solito (es. "mercoledì 09 alle ore 15").
+  const when = `${start.toLocaleDateString('it-IT', { weekday:'long' })} ${pad(start.getDate())}`;
+  const time = start.getMinutes() ? `${start.getHours()}:${pad(start.getMinutes())}` : String(start.getHours());
+  const place = fullAddress(c);
+  const body = [inviteSalutation(c), '', `Come da intese telefoniche, le mando questo promemoria per l'appuntamento di ${when} alle ore ${time} presso i vostri uffici.`, '', 'Cordiali Saluti'].join('\n');
+  const q = new URLSearchParams({ path:'/calendar/action/compose', rru:'addevent', subject: INVITE_SUBJECT,
     startdt: isoWithOffset(k.appuntamento), enddt: isoWithOffset(endLocal), location: place, body });
   if(c.email) q.set('to', c.email);
   return 'https://outlook.office.com/calendar/0/deeplink/compose?' + q.toString();

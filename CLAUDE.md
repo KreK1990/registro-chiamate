@@ -171,7 +171,9 @@ Campi principali:
 - **Invito Outlook** (blocco "Invito Outlook"): pulsante "Invia invito Outlook" sugli
   appuntamenti futuri (elenco Appuntamenti, dettaglio della chiamata) e proposta nella barra in
   alto dopo aver fissato un appuntamento (solo versione online, `offerOutlookInvite`). Apre il
-  deeplink di Outlook web (`outlook.office.com/calendar/0/deeplink/compose`) con oggetto, testo,
+  deeplink di Outlook web (`outlook.office.com/calendar/0/deeplink/compose`) con oggetto fisso
+  `INVITE_SUBJECT` e il testo del promemoria che l'utente manda di solito (saluto per professione
+  `inviteSalutation`, "Come da intese telefoniche... di mercoledì 09 alle ore 15 presso i vostri uffici"),
   luogo (indirizzo del cliente), invitato (`to` = email del cliente), inizio/fine (1 ora,
   `INVITE_MINUTES`) con il fuso del dispositivo (`isoWithOffset`); l'utente preme "Invia".
   Il clic passa da un ascoltatore in cattura su #main (`onInviteClick`).
