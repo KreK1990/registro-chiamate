@@ -231,6 +231,8 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .map-pop-c{margin-top:6px;}
 .map-pop-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
 .map-pop-actions .btn{text-decoration:none;}
+.ai-prio{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+.ai-prio.alta{color:var(--accent);border-color:var(--accent);}
 .todo-section{margin-top:10px;}
 .todo-act{font-size:12.5px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap;}
 .todo-act .name-link{font-weight:600;}
@@ -1388,6 +1390,7 @@ function bindTodo(main){
     selectedId = b.dataset.todoCall; clearFollowUpOnEntry = false; view = 'call'; callStep = 'entry';
     setActiveTab('navCall'); renderMain();
   }));
+  document.getElementById('aiRunBtn')?.addEventListener('click', runAiSugg);
   document.getElementById('todoMoreRecall')?.addEventListener('click', ()=>{ todoShowAll.ricontatto = !todoShowAll.ricontatto; renderMain(); });
   main.querySelectorAll('[data-go-forecast]').forEach(b=>b.addEventListener('click', ()=>{ view='forecast'; setActiveTab('navForecast'); renderMain(); }));
 }
@@ -1913,6 +1916,60 @@ async function bindMap(){
   drawMapPoints(true);
   if(mapNear) mapObj.setView([mapNear.lat, mapNear.lng], 11);
   runMapGeocoding();
+}
+
+// ---------------------------------------------------------------------------
+// Suggeriti da Claude (in Oggi, solo versione online): la function "suggest" manda a
+// Claude dati anonimi (professione, date ed esiti, incontri, commesse; niente nomi o
+// note) e restituisce i 10 clienti da ricontattare con priorita', azione e motivo.
+// L'analisi del giorno resta salvata (users/<uid>/suggerimenti/<data>): riaprendo l'app
+// non si paga di nuovo; "Nuova analisi" la rifa' (massimo 5 al giorno).
+// ---------------------------------------------------------------------------
+let aiSugg, aiBusy = false, aiMsg = '';   // aiSugg: undefined = da caricare, null = nessuna analisi oggi
+async function suggestApi(method){
+  const token = await firebase.auth().currentUser.getIdToken();
+  const res = await fetch('/.netlify/functions/suggest', { method, headers:{ Authorization:'Bearer '+token } });
+  let body = {}; try{ body = await res.json(); }catch(e){}
+  if(!res.ok) throw new Error(body.error || ('errore '+res.status));
+  return body;
+}
+function refreshAgenda(){ if(view==='agenda' && canAutoRender()) renderMain(); }
+async function loadAiSugg(){
+  aiSugg = null;
+  try{ const r = await suggestApi('GET'); aiSugg = r.items ? r : null; }catch(e){ aiMsg = e.message; }
+  refreshAgenda();
+}
+async function runAiSugg(){
+  if(aiBusy) return;
+  aiBusy = true; aiMsg = ''; refreshAgenda();
+  try{ aiSugg = await suggestApi('POST'); }catch(e){ aiMsg = e.message; }
+  aiBusy = false; refreshAgenda();
+}
+function aiCardHtml(){
+  if(!cloudBackups()) return '';
+  if(aiSugg===undefined){ aiSugg = null; setTimeout(loadAiSugg, 0); return ''; }   // una sola lettura anche se si ridisegna subito
+  const now = new Date();
+  const items = (aiSugg && aiSugg.items || []).map(s=>({ ...s, c: contacts.find(x=>x.id===s.contactId) }))
+    .filter(s=>s.c && !snoozed(s.c) && !(s.c.followUp && new Date(s.c.followUp) > now));
+  const when = aiSugg && aiSugg.creatoIl ? new Date(aiSugg.creatoIl).toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' }) : '';
+  const btn = `<button class="btn ${aiSugg ? 'secondary ' : ''}small" id="aiRunBtn" ${aiBusy ? 'disabled' : ''}>${aiBusy ? 'Claude sta analizzando…' : aiSugg ? 'Nuova analisi' : 'Chiedi a Claude'}</button>`;
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h3 style="margin:0;">Suggeriti da Claude${items.length ? ` (${items.length})` : ''}</h3>${btn}
+    </div>
+    <div class="fc-note" style="margin:4px 0 6px;">${aiSugg
+      ? `Analisi di oggi alle ${when} su ${aiSugg.candidati} clienti senza progetti in corso.`
+      : 'Claude sceglie i clienti più promettenti da ricontattare. Riceve solo professione, date ed esiti delle chiamate, senza nomi né note.'}</div>
+    ${aiMsg ? `<div class="pdf-warn" style="font-size:13px;">${esc(aiMsg)}</div>` : ''}
+    ${aiSugg && !items.length && !aiBusy ? '<div class="empty">Nessun suggerimento in sospeso.</div>' : ''}
+    ${items.map(s=>`<div class="todo-row">
+      <div class="todo-main"><span class="name-link" data-contact-id="${s.c.id}">${esc(fullName(s.c))}</span>${s.c.azienda ? `<span class="fc-addr"> · ${esc(s.c.azienda)}</span>` : ''}
+        <span class="ai-prio ${s.priorita==='alta' ? 'alta' : ''}">${s.priorita==='alta' ? 'priorità alta' : 'priorità media'}</span>
+        <div class="todo-sub"><strong>${esc(s.azione.charAt(0).toUpperCase()+s.azione.slice(1))}:</strong> ${esc(s.motivo)}</div>
+        <div class="todo-sub">${phoneLinks(s.c,'font-size:12.5px;')}</div></div>
+      <div class="todo-actions"><button class="btn small" data-todo-call="${s.c.id}">Richiama</button><button class="btn secondary small" data-todo-snooze-c="${s.c.id}">Rimanda 30 gg</button></div>
+    </div>`).join('')}
+  </div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -4095,6 +4152,7 @@ function agendaView(){
       ${fuHtml}
     </div>
     ${todoCardHtml()}
+    ${aiCardHtml()}
     ${completeCardHtml()}`;
 }
 

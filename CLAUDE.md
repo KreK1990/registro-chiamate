@@ -32,7 +32,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
   ultimi 30 giorni e per sempre la copia del primo del mese. Logica comune in
   `netlify/lib/backup.mjs` (fuori da `functions/` per non diventare una function).
   Il service worker non mette in cache nulla sotto `/.netlify/`.
-- `package.json` (dipendenze: `firebase-admin`, `@netlify/blobs`) e `netlify.toml` (build minimale,
+- `package.json` (dipendenze: `firebase-admin`, `@netlify/blobs`, `@anthropic-ai/sdk`) e `netlify.toml` (build minimale,
   `functions = "netlify/functions"`, redirect della radice verso l'app e blocco dei file
   che non devono essere serviti: `CLAUDE.md`, `package.json`, `netlify.toml`, `netlify/*`).
 
@@ -189,6 +189,16 @@ Campi principali:
   al secondo, solo l'indirizzo), salvate in `contacts.geo` / `projects.geo` = {lat, lng, a}
   (`a` = indirizzo cercato: se cambia si ricerca; `nf` = non trovato). "Vicino a…" (località o
   posizione del telefono) elenca cosa c'è entro 20 km. `canAutoRender` esclude la mappa.
+- **Suggeriti da Claude** (in Oggi, blocco "Suggeriti da Claude", solo versione online):
+  function `netlify/functions/suggest.mjs` (GET = analisi di oggi gia' salvata, gratis; POST =
+  nuova analisi, max 5 al giorno) con `@anthropic-ai/sdk`, modello `claude-sonnet-5-5` (scelto
+  dall'utente per il costo), effort `medium`, uscita JSON con schema, `fallbacks: "default"`
+  (beta `server-side-fallback-2026-07-01`). Chiave nella variabile Netlify `ANTHROPIC_API_KEY`.
+  A Claude vanno SOLO dati anonimi (professione, giorni ed esiti delle ultime chiamate, incontri,
+  commesse confermate/perse; ID sostituiti da sigle c1, c2...): niente nomi, note, telefoni,
+  email o indirizzi (scelta concordata con l'utente, 2026-10-05). Candidati con le stesse
+  esclusioni di "Da ricontattare" e non sentiti da almeno 14 giorni. Risultato salvato in
+  `users/<uid>/suggerimenti/<YYYY-MM-DD>`. Costo stimato ~2 $/mese con un'analisi al giorno.
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,
