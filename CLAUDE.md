@@ -210,9 +210,13 @@ Campi principali:
   x `settings.portaleEuro` (80 €/m); priorita' pesata per fase (Progettazione 1,2,
   Programmazione 1, Esecuzione 0,6), ristrutturazione 0,5, clienti noti 1,5; stelle da 8.000 e
   25.000. Di default solo nuove costruzioni (l'utente non segue le ristrutturazioni). Soggetti
-  confrontati con la rubrica per email, telefono (ultime 9 cifre), cognome+nome, studio. Stato
-  "seguito"/"scartato" in collection `portale` {pid, stato, dati (scheda ridotta)}; ID visti in
-  `settings.portaleVisti` per marcare i nuovi. "Crea contatto" / "Crea progetto" aprono i moduli
+  confrontati con la rubrica per email, telefono (ultime 9 cifre), cognome+nome, studio. Importazione salvata
+  in collection `portaleImport` (un documento per cantiere, ID = ID portale: {pid, dati, scartato,
+  nuovo, importatoIl}; scritta a batch da 400, letta solo aprendo la sezione) con i metadati in
+  `settings.portaleImport`; un nuovo PDF la sostituisce (mantiene gli scartati, segna "nuovo"
+  cio' che non c'era). Pagine "Da esaminare" (si ripulisce con Da seguire / Scarta) e "Cantieri
+  seguiti": collection `portale` {pid, stato:'seguito', dati, nota, seguitoIl, aggiornatoIl},
+  mai toccata dalle importazioni (solo `dati` aggiornati con la scheda piu' recente). "Crea contatto" / "Crea progetto" aprono i moduli
   precompilati (`__returnToPortal`, `projects.portaleId`).
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
