@@ -187,7 +187,11 @@ Campi principali:
   raggruppati per indirizzo (cerchi blu), cantieri in corso / confermati / persi (quadrati
   ambra / viola / vuoti; colori validati per daltonismo). Coordinate da Nominatim (1 richiesta
   al secondo, solo l'indirizzo), salvate in `contacts.geo` / `projects.geo` = {lat, lng, a}
-  (`a` = indirizzo cercato: se cambia si ricerca; `nf` = non trovato). "Vicino a…" (località o
+  (`a` = indirizzo cercato: se cambia si ricerca; `nf` = non trovato; `v` = `GEO_V`, i "non trovati"
+  con regole precedenti si ritentano). `geocodeSmart`: indirizzo intero, prima via (prima di "-", "/",
+  " e "), senza civico, infine solo comune (`approx`, bordo tratteggiato). Progetti senza indirizzo:
+  quello della scheda del portale collegata (`projectGeoAddr`). Riquadro "Non sulla mappa"
+  (`mapMissingHtml`) con progetti/clienti mancanti e motivo. "Vicino a…" (località o
   posizione del telefono) elenca cosa c'è entro 20 km. `canAutoRender` esclude la mappa.
 - **Suggeriti da Claude** (in Oggi, blocco "Suggeriti da Claude", solo versione online):
   function `netlify/functions/suggest.mjs` (GET = analisi di oggi gia' salvata, gratis; POST =

@@ -226,6 +226,8 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .map-sw.sq.persi,.map-mk.sq.persi{background:#fff;border-color:#8a96a3;box-shadow:0 0 0 1px #8a96a3;}
 .map-mk{width:14px;height:14px;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font:700 9px/1 var(--sans);}
 .map-mk.sq{border-radius:2px;}
+.map-mk.approx{outline:2px dashed #4a5560;outline-offset:2px;}
+.map-missing summary{cursor:pointer;}
 .map-pop{font-size:13px;line-height:1.45;min-width:180px;}
 .map-pop .name-link{font-weight:600;cursor:pointer;}
 .map-pop-c{margin-top:6px;}
@@ -1803,7 +1805,29 @@ function loadLeaflet(){
   });
 }
 function geoKey(a){ return String(a||'').trim().toLowerCase().replace(/\s+/g,' '); }
-function docGeo(x, addr){ return x.geo && geoKey(x.geo.a)===geoKey(addr) ? x.geo : null; }
+// Versione delle regole di ricerca: gli indirizzi segnati "non trovati" con regole precedenti si
+// ritentano una volta. Indirizzi difficili: si prova l'indirizzo intero, poi la prima via
+// ("Via Bellardi-Strada Basse di Dora" -> "Via Bellardi"), poi senza civico, infine il solo
+// comune (posizione approssimativa, geo.approx). Progetti senza indirizzo: quello della scheda
+// del portale collegata.
+const GEO_V = 2;
+function contactGeoAddr(c){ return { a: fullAddress(c), citta: c.citta || '' }; }
+function projectGeoAddr(p){
+  const a = projectAddress(p);
+  if(a) return { a, citta: p.citta || '' };
+  for(const pid of projectPortalIds(p)){
+    const s = portalFindProject(pid); if(!s) continue;
+    const vc = portalViaCitta(s), a2 = [vc.via, vc.citta].filter(Boolean).join(', ');
+    if(a2) return { a: a2, citta: vc.citta };
+  }
+  return { a:'', citta:'' };
+}
+function docGeo(x, addr){
+  const g = x.geo;
+  if(!g || geoKey(g.a)!==geoKey(addr)) return null;
+  if(g.nf && g.v!==GEO_V) return null;   // non trovato con le regole vecchie: si ritenta
+  return g;
+}
 async function geocode(q){
   const k = geoKey(q);
   if(geoCache.has(k)) return geoCache.get(k);
@@ -1814,36 +1838,80 @@ async function geocode(q){
   geoCache.set(k, g);
   return g;
 }
+function geoVariants(addr, citta){
+  const out = [addr];
+  const parts = addr.split(','), via = parts[0].trim(), city = citta || parts.slice(1).join(',').trim();
+  if(city && via && parts.length > 1){
+    const first = via.split(/\s*[-–\/]\s*|\s+e\s+/i)[0].trim();
+    out.push(`${first}, ${city}`);
+    const noNum = first.replace(/\s+\d+\s*[a-z]?$/i, '').trim();
+    if(noNum) out.push(`${noNum}, ${city}`);
+  }
+  return [...new Set(out.map(s=>s.trim()).filter(Boolean))];
+}
+async function geocodeSmart(addr, citta, pause){
+  for(const q of geoVariants(addr, citta)){
+    const cached = geoCache.has(geoKey(q));
+    const g = await geocode(q);
+    if(!cached) await pause();
+    if(g) return g;
+  }
+  const city = citta || addr.split(',').slice(1).join(',').trim();
+  if(city){
+    const cached = geoCache.has(geoKey(city));
+    const g = await geocode(city);
+    if(!cached) await pause();
+    if(g) return { ...g, approx:true };
+  }
+  return null;
+}
 function mapPoints(){
   const pts = [];
   if(mapFilters.clienti){
     const byAddr = new Map();
-    contacts.forEach(c=>{ const a = fullAddress(c); if(!a) return; const g = docGeo(c, a); if(!g || g.nf) return;
-      const k = geoKey(a); const e = byAddr.get(k) || { kind:'cliente', addr:a, lat:g.lat, lng:g.lng, contacts:[] }; e.contacts.push(c); byAddr.set(k, e); });
+    contacts.forEach(c=>{ const { a } = contactGeoAddr(c); if(!a) return; const g = docGeo(c, a); if(!g || g.nf) return;
+      const k = geoKey(a); const e = byAddr.get(k) || { kind:'cliente', addr:a, lat:g.lat, lng:g.lng, contacts:[], approx: !!g.approx }; e.contacts.push(c); byAddr.set(k, e); });
     pts.push(...byAddr.values());
   }
   projects.forEach(p=>{
     const st = isLost(p) ? 'persi' : isWon(p) ? 'confermati' : 'aperti';
     if(!mapFilters[st]) return;
-    const a = projectAddress(p); if(!a) return; const g = docGeo(p, a); if(!g || g.nf) return;
-    pts.push({ kind:'cantiere', st, addr:a, lat:g.lat, lng:g.lng, p });
+    const { a } = projectGeoAddr(p); if(!a) return; const g = docGeo(p, a); if(!g || g.nf) return;
+    pts.push({ kind:'cantiere', st, addr:a, lat:g.lat, lng:g.lng, p, approx: !!g.approx });
   });
   return pts;
 }
-// Elementi senza coordinate (o con indirizzo cambiato), da cercare.
+// Elementi senza coordinate (o con indirizzo cambiato, o non trovati con regole vecchie), da cercare.
 function mapToGeocode(){
   const out = [];
-  contacts.forEach(c=>{ const a = fullAddress(c); if(a && !docGeo(c, a)) out.push({ col:'contacts', x:c, a }); });
-  projects.forEach(p=>{ const a = projectAddress(p); if(a && !docGeo(p, a)) out.push({ col:'projects', x:p, a }); });
+  contacts.forEach(c=>{ const { a, citta } = contactGeoAddr(c); if(a && !docGeo(c, a)) out.push({ col:'contacts', x:c, a, citta }); });
+  projects.forEach(p=>{ const { a, citta } = projectGeoAddr(p); if(a && !docGeo(p, a)) out.push({ col:'projects', x:p, a, citta }); });
   return out;
+}
+// Chi non compare sulla mappa e perche' (progetti non persi e clienti).
+function mapMissingHtml(){
+  const projMiss = projects.filter(p=>!isLost(p)).map(p=>{
+    const { a } = projectGeoAddr(p);
+    if(!a) return { p, why:'senza indirizzo: aggiungi via e città nel progetto' };
+    const g = docGeo(p, a);
+    return g && g.nf ? { p, why:'indirizzo non trovato: '+a } : null;
+  }).filter(Boolean);
+  const cliMiss = contacts.map(c=>{ const { a } = contactGeoAddr(c); if(!a) return null; const g = docGeo(c, a); return g && g.nf ? { c, why:'indirizzo non trovato: '+a } : null; }).filter(Boolean);
+  const noAddr = contacts.filter(c=>!fullAddress(c)).length;
+  if(!projMiss.length && !cliMiss.length && !noAddr) return '';
+  return `<details class="card map-missing" ${projMiss.length ? 'open' : ''}><summary><strong>Non sulla mappa</strong> <span class="fc-note">${projMiss.length} progetti · ${cliMiss.length} clienti con indirizzo non trovato · ${noAddr} contatti senza indirizzo</span></summary>
+    ${projMiss.map(x=>`<div class="todo-row"><div class="todo-main"><span class="proj-code">${esc(x.p.codice||'')}</span> <span class="name-link" data-map-project="${x.p.id}">${esc(x.p.nome||'Progetto')}</span><div class="todo-sub">${esc(x.why)}</div></div></div>`).join('')}
+    ${cliMiss.map(x=>`<div class="todo-row"><div class="todo-main"><span class="name-link" data-map-contact="${x.c.id}">${esc(fullName(x.c))}</span><div class="todo-sub">${esc(x.why)}</div></div></div>`).join('')}
+    ${noAddr ? `<div class="fc-note" style="margin-top:6px;">${noAddr} contatti non hanno né via né città: per vederli sulla mappa aggiungi l'indirizzo nella loro scheda.</div>` : ''}
+  </details>`;
 }
 function lastContactDays(c){ const d = calls.filter(k=>k.contactId===c.id).map(k=>k.data||'').sort().pop(); return d ? daysBetween(d, todayISO()) : null; }
 function mapPopupHtml(pt){
   if(pt.kind==='cantiere'){ const p = pt.p, ph = projectPhase(p);
     return `<div class="map-pop"><div class="proj-code">${esc(p.codice||'')}</div><strong>${esc(p.nome||'Progetto')}</strong>
-      <div>${esc(pt.addr)}</div><div class="fc-note">${isLost(p) ? 'Persa' : ph ? esc(ph.label) : 'Da avviare'}${p.importoOfferta!=null ? ' · '+fmtEuro(projectAmount(p)) : ''}</div>
+      <div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}<div class="fc-note">${isLost(p) ? 'Persa' : ph ? esc(ph.label) : 'Da avviare'}${p.importoOfferta!=null ? ' · '+fmtEuro(projectAmount(p)) : ''}</div>
       <div class="map-pop-actions"><button class="btn small" data-map-project="${p.id}">Apri progetto</button><a class="btn secondary small" href="${mapsUrl({ via:p.via, citta:p.citta })}" target="_blank" rel="noopener">Indicazioni</a></div></div>`; }
-  return `<div class="map-pop"><div>${esc(pt.addr)}</div>
+  return `<div class="map-pop"><div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}
     ${pt.contacts.map(c=>{ const d = lastContactDays(c); return `<div class="map-pop-c"><span class="name-link" data-map-contact="${c.id}">${esc(fullName(c))}</span>${c.azienda ? ` · ${esc(c.azienda)}` : ''}<div class="fc-note">${d==null ? 'mai sentito' : `ultimo contatto ${d} giorni fa`}</div></div>`; }).join('')}
     <div class="map-pop-actions"><a class="btn secondary small" href="${mapsUrl(pt.contacts[0])}" target="_blank" rel="noopener">Indicazioni</a></div></div>`;
 }
@@ -1872,6 +1940,7 @@ function mapView(){
     </div>
     <div id="mapBox" class="map-box"></div>
     <div id="mapNear">${mapNearHtml()}</div>
+    <div id="mapMissing">${mapMissingHtml()}</div>
     <div class="fc-note" style="margin-top:6px;">Mappa © OpenStreetMap. Gli indirizzi vengono posizionati una volta sola con il servizio di OpenStreetMap (solo l'indirizzo, senza nomi).</div>`;
 }
 function drawMapPoints(fit){
@@ -1879,7 +1948,7 @@ function drawMapPoints(fit){
   mapLayer.clearLayers();
   const pts = mapPoints();
   pts.forEach(pt=>{
-    const cls = pt.kind==='cantiere' ? `map-mk sq ${pt.st}` : 'map-mk cl';
+    const cls = (pt.kind==='cantiere' ? `map-mk sq ${pt.st}` : 'map-mk cl') + (pt.approx ? ' approx' : '');
     const n = pt.kind==='cliente' && pt.contacts.length>1 ? `<span>${pt.contacts.length}</span>` : '';
     L.marker([pt.lat, pt.lng], { icon: L.divIcon({ className:'', html:`<div class="${cls}">${n}</div>`, iconSize:[18,18], iconAnchor:[9,9] }),
       title: pt.kind==='cantiere' ? `${pt.p.codice} ${pt.p.nome||''}` : pt.contacts.map(fullName).join(', ') })
@@ -1887,27 +1956,26 @@ function drawMapPoints(fit){
   });
   if(fit && pts.length) mapObj.fitBounds(L.latLngBounds(pts.map(p=>[p.lat, p.lng])), { padding:[30,30], maxZoom:13 });
   const nearEl = document.getElementById('mapNear'); if(nearEl) nearEl.innerHTML = mapNearHtml();
+  const missEl = document.getElementById('mapMissing'); if(missEl) missEl.innerHTML = mapMissingHtml();
 }
 async function runMapGeocoding(){
   if(mapGeoRunning) return;
   mapGeoRunning = true;
   const todo = mapToGeocode();
-  let done = 0, found = 0;
+  let done = 0;
   const msg = t=>{ mapGeoMsg = t; const el = document.getElementById('mapGeoMsg'); if(el) el.textContent = t; };
+  const pause = ()=>new Promise(r=>setTimeout(r, 1100));   // regola di OpenStreetMap: max 1 richiesta al secondo
   try{
     for(const it of todo){
       if(view!=='map') break;
-      msg(`Posiziono gli indirizzi sulla mappa: ${done} di ${todo.length}… (solo la prima volta)`);
-      const cached = geoCache.has(geoKey(it.a));
-      const g = await geocode(it.a);
-      const geo = g ? { lat:g.lat, lng:g.lng, a:it.a } : { a:it.a, nf:true };
-      it.x.geo = geo; done++; if(g) found++;
+      msg(`Posiziono gli indirizzi sulla mappa: ${done} di ${todo.length}…`);
+      const g = await geocodeSmart(it.a, it.citta, pause);
+      const geo = g ? { lat:g.lat, lng:g.lng, a:it.a, v:GEO_V, ...(g.approx ? { approx:true } : {}) } : { a:it.a, nf:true, v:GEO_V };
+      it.x.geo = geo; done++;
       db.collection(it.col).doc(it.x.id).update({ geo }).catch(()=>{});
       if(g && done % 5 === 0) drawMapPoints(false);
-      if(!cached) await new Promise(r=>setTimeout(r, 1100));   // regola di OpenStreetMap: max 1 richiesta al secondo
     }
-    const nf = contacts.filter(c=>{ const g = docGeo(c, fullAddress(c)); return g && g.nf; }).length + projects.filter(p=>{ const g = docGeo(p, projectAddress(p)); return g && g.nf; }).length;
-    msg(todo.length ? `Indirizzi posizionati.${nf ? ` ${nf} non trovati: controlla via e città nelle schede.` : ''}` : '');
+    msg(todo.length ? 'Indirizzi posizionati. I punti con il bordo tratteggiato sono approssimativi (solo comune).' : '');
   }catch(e){ msg('Posizionamento interrotto: '+(e.message||e)); }
   mapGeoRunning = false;
   drawMapPoints(false);
@@ -1943,6 +2011,8 @@ async function bindMap(){
   mapLayer = L.layerGroup().addTo(mapObj);
   drawMapPoints(true);
   if(mapNear) mapObj.setView([mapNear.lat, mapNear.lng], 11);
+  // progetti senza indirizzo ma collegati al portale: serve l'importazione per leggere l'indirizzo del cantiere
+  if(!portalImportStarted && projects.some(p=>!projectAddress(p) && projectPortalIds(p).length)) startPortalImport();
   runMapGeocoding();
 }
 
@@ -2204,6 +2274,7 @@ function onPortalSnapshot(snap){
 function onPortalImportSnapshot(snap){
   portalImport = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
   if((view==='portal' || view==='detail' || view==='projectDetail') && canAutoRender() && !portalBusy) renderMain();
+  if(view==='map' && mapObj) runMapGeocoding();   // indirizzi dei progetti presi dal portale
 }
 function startPortalImport(){
   if(portalImportStarted) return;
