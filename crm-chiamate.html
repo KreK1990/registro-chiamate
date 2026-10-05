@@ -2384,7 +2384,7 @@ function bindPortal(){
   const q = document.getElementById('pfQ');
   q?.addEventListener('input', ()=>{ clearTimeout(window.__pfT); window.__pfT = setTimeout(()=>{ set('q', q.value); const n = document.getElementById('pfQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 350); });
   document.getElementById('portalMoreBtn')?.addEventListener('click', ()=>{ portalShow += 40; renderMain(); });
-  main.querySelectorAll('[data-contact-id]').forEach(el=>el.addEventListener('click', ()=>{ portalCallCtx = (el.closest('[data-pid]')||{}).dataset?.pid || null; selectedId = el.dataset.contactId; view='detail'; setActiveTab('navContacts'); renderMain(); }));
+  main.querySelectorAll('[data-contact-id]').forEach(el=>el.addEventListener('click', ()=>{ const pid = (el.closest('[data-pid]')||{}).dataset?.pid; portalCallCtx = pid ? { pid, contactId: el.dataset.contactId } : null; selectedId = el.dataset.contactId; view='detail'; setActiveTab('navContacts'); renderMain(); }));
   main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   main.querySelectorAll('[data-portal-follow]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; portalFollow(b.dataset.portalFollow); }));
   main.querySelectorAll('[data-portal-discard]').forEach(b=>b.addEventListener('click', ()=>{
@@ -2428,17 +2428,30 @@ function bindPortal(){
 // l'indirizzo del cantiere (se e' uno solo, o se si arriva da quel cantiere) e sotto si
 // propongono tutti i cantieri seguiti del contatto da scegliere con un clic.
 // ---------------------------------------------------------------------------
-let portalCallCtx = null;   // ID portale del cantiere da cui si e' aperto il contatto
+let portalCallCtx = null;   // { pid, contactId }: cantiere dal quale si e' aperto il contatto
 function portalSiteLabel(p){ const vc = portalViaCitta(p); return vc.via ? `${vc.via}, ${vc.citta}` : `${p.titolo}, ${p.comune}`; }
+// Il contatto e' uno dei soggetti del cantiere? Stessa email o telefono, stesso nome, oppure
+// stesso studio/impresa (cosi' valgono anche i colleghi dello stesso studio).
+function contactInSoggetto(c, s){
+  const em = (c.email||'').trim().toLowerCase();
+  if(em && (s.email||[]).includes(em)) return true;
+  const tels = [c.cellulare, c.telefono].map(digits9).filter(Boolean);
+  if(tels.length && (s.tel||[]).some(t=>tels.includes(digits9(t)))) return true;
+  const per = portalPerson(s.nome);
+  if(per && c.cognome && c.nome && normName(per.cognome)===normName(c.cognome) && normName(per.nome)===normName(c.nome)) return true;
+  const st = normStudio(c.azienda);
+  return st.length>=4 && [s.nome, ...(s.altro||[])].some(n=>normStudio(n)===st);
+}
 function followedSitesOf(c){
-  if(!c || !c.id || !portalSaved.size) return [];
-  const ix = portalIndex();
-  return [...portalSaved.values()].filter(x=>x.stato==='seguito' && x.dati && (x.dati.soggetti||[]).some(s=>{ const m = portalMatch(s, ix); return m && m.c.id===c.id; }))
-    .map(x=>x.dati);
+  if(!c || !c.id) return [];
+  const sites = [...portalSaved.values()].filter(x=>x.stato==='seguito' && x.dati && (x.dati.soggetti||[]).some(s=>contactInSoggetto(c, s))).map(x=>x.dati);
+  const ctx = portalCallCtx && portalCallCtx.contactId===c.id ? portalFindProject(portalCallCtx.pid) : null;
+  if(ctx && !sites.some(p=>p.id===ctx.id)) sites.unshift(ctx);
+  return sites;
 }
 function portalCallValue(c){
   const sites = followedSitesOf(c);
-  const ctx = portalCallCtx && sites.find(p=>p.id===portalCallCtx);
+  const ctx = portalCallCtx && portalCallCtx.contactId===c.id && sites.find(p=>p.id===portalCallCtx.pid);
   return ctx ? portalSiteLabel(ctx) : sites.length===1 ? portalSiteLabel(sites[0]) : '';
 }
 function portalCallSuggestHtml(c, inputId){
