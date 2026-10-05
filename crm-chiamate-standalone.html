@@ -252,6 +252,8 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .portal-vol span{font-size:12px;color:var(--muted);}
 .portal-addr{font-size:13px;margin-top:2px;}
 .portal-note{margin-top:8px;}
+.portal-suggest{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0 2px;}
+.portal-suggest .btn.small{padding:3px 8px;font-size:12px;text-align:left;}
 .portal-note textarea{width:100%;font-size:13.5px;}
 .portal-desc{font-size:13px;margin-top:6px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
 .portal-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 16px;margin-top:8px;font-size:13px;}
@@ -1081,7 +1083,8 @@ function renderMain(){
         <label>Note sulla chiamata</label>
         <textarea id="callNote" placeholder="Cosa vi siete detti..."></textarea>
         <label>Progetto / argomento trattato</label>
-        <input id="callProgetto" placeholder="Es. Ristrutturazione Via Roma 12">
+        <input id="callProgetto" placeholder="Es. Ristrutturazione Via Roma 12" value="${esc(portalCallValue(c))}">
+        ${portalCallSuggestHtml(c, 'callProgetto')}
         ${apptProjectsHtml(c.id)}
         <label style="margin-top:10px;">Email del cliente</label>
         <input id="callEmail" type="email" inputmode="email" autocomplete="off" value="${esc(c.email||'')}" placeholder="Se te la comunica, viene salvata nella scheda">
@@ -2522,7 +2525,7 @@ function portalFiltered(rows){
 function portalCardHtml(r){
   const p = r.p, stars = '★★★'.slice(0, r.stelle) + '☆☆☆'.slice(0, 3 - r.stelle), followed = portalTab==='seguiti';
   const vc = portalViaCitta(p);
-  return `<div class="card portal-card ${followed ? 'seguito' : ''}">
+  return `<div class="card portal-card ${followed ? 'seguito' : ''}" data-pid="${p.id}">
     <div class="portal-head">
       <div style="min-width:0;"><span class="portal-stars" title="Punteggio">${r.stelle ? stars : '–'}</span>
         <strong>${esc(p.titolo)}</strong> <span class="fc-addr">· ${esc(p.comune)}${r.prov ? ` (${r.prov})` : ''}</span>
@@ -2668,7 +2671,7 @@ function bindPortal(){
   const q = document.getElementById('pfQ');
   q?.addEventListener('input', ()=>{ clearTimeout(window.__pfT); window.__pfT = setTimeout(()=>{ set('q', q.value); const n = document.getElementById('pfQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 350); });
   document.getElementById('portalMoreBtn')?.addEventListener('click', ()=>{ portalShow += 40; renderMain(); });
-  main.querySelectorAll('[data-contact-id]').forEach(el=>el.addEventListener('click', ()=>{ selectedId = el.dataset.contactId; view='detail'; setActiveTab('navContacts'); renderMain(); }));
+  main.querySelectorAll('[data-contact-id]').forEach(el=>el.addEventListener('click', ()=>{ portalCallCtx = (el.closest('[data-pid]')||{}).dataset?.pid || null; selectedId = el.dataset.contactId; view='detail'; setActiveTab('navContacts'); renderMain(); }));
   main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   main.querySelectorAll('[data-portal-follow]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; portalFollow(b.dataset.portalFollow); }));
   main.querySelectorAll('[data-portal-discard]').forEach(b=>b.addEventListener('click', ()=>{
@@ -2704,6 +2707,39 @@ function bindPortal(){
       note: [`Dal portale NII Progetti, ID ${p.id}${p.dataNotizia ? ' (notizia del '+p.dataNotizia+')' : ''}.`, [p.fase && 'Fase '+p.fase, p.intervento, p.unita ? p.unita+' unità abitative' : '', p.valore ? 'valore opera '+fmtEuro(p.valore) : ''].filter(Boolean).join(' · '), p.descrizione].filter(Boolean).join('\n') };
     view = 'projectForm'; renderMain();
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Cantieri seguiti nelle chiamate: registrando una chiamata con un contatto che compare in
+// un cantiere seguito (Cantieri dal portale), il campo "Progetto / argomento" si compila con
+// l'indirizzo del cantiere (se e' uno solo, o se si arriva da quel cantiere) e sotto si
+// propongono tutti i cantieri seguiti del contatto da scegliere con un clic.
+// ---------------------------------------------------------------------------
+let portalCallCtx = null;   // ID portale del cantiere da cui si e' aperto il contatto
+function portalSiteLabel(p){ const vc = portalViaCitta(p); return vc.via ? `${vc.via}, ${vc.citta}` : `${p.titolo}, ${p.comune}`; }
+function followedSitesOf(c){
+  if(!c || !c.id || !portalSaved.size) return [];
+  const ix = portalIndex();
+  return [...portalSaved.values()].filter(x=>x.stato==='seguito' && x.dati && (x.dati.soggetti||[]).some(s=>{ const m = portalMatch(s, ix); return m && m.c.id===c.id; }))
+    .map(x=>x.dati);
+}
+function portalCallValue(c){
+  const sites = followedSitesOf(c);
+  const ctx = portalCallCtx && sites.find(p=>p.id===portalCallCtx);
+  return ctx ? portalSiteLabel(ctx) : sites.length===1 ? portalSiteLabel(sites[0]) : '';
+}
+function portalCallSuggestHtml(c, inputId){
+  const sites = followedSitesOf(c);
+  if(!sites.length) return '';
+  return `<div class="portal-suggest"><span class="fc-note">Cantieri seguiti con questo contatto:</span>
+    ${sites.map(p=>`<button type="button" class="btn secondary small" data-portal-fill="${inputId}" data-portal-label="${esc(portalSiteLabel(p))}">${esc(p.titolo)} · ${esc(portalSiteLabel(p))}</button>`).join('')}</div>`;
+}
+function onPortalFillClick(e){
+  const b = e.target.closest && e.target.closest('[data-portal-fill]');
+  if(!b) return;
+  e.preventDefault();
+  const inp = document.getElementById(b.dataset.portalFill);
+  if(inp){ inp.value = b.dataset.portalLabel; inp.focus(); }
 }
 
 // ---------------------------------------------------------------------------
@@ -4973,7 +5009,8 @@ function renderCallFlow(){
         </select></div>
       </div>
       <label>Progetto / argomento trattato</label>
-      <input id="qcProgetto" placeholder="Es. Ristrutturazione Via Roma 12">
+      <input id="qcProgetto" placeholder="Es. Ristrutturazione Via Roma 12" value="${esc(portalCallValue(c))}">
+      ${portalCallSuggestHtml(c, 'qcProgetto')}
       ${apptProjectsHtml(c.id)}
       <div style="margin-top:10px;"></div>
       <label>Note</label>
@@ -5658,6 +5695,7 @@ document.getElementById('navAppt').addEventListener('click', ()=>{
 document.getElementById('navSettings').addEventListener('click', goSettings);
 document.getElementById('navMap').addEventListener('click', ()=>{ view='map'; tableDetailCallId=null; setActiveTab('navMap'); renderMain(); });
 document.getElementById('main').addEventListener('click', onInviteClick, true);
+document.getElementById('main').addEventListener('click', onPortalFillClick);
 document.getElementById('navDashboard').addEventListener('click', ()=>{
   view='dashboard'; tableDetailCallId=null; dashboardDrilldown=null;
   setActiveTab('navDashboard');

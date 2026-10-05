@@ -216,7 +216,11 @@ Campi principali:
   `settings.portaleImport`; un nuovo PDF la sostituisce (mantiene gli scartati, segna "nuovo"
   cio' che non c'era). Pagine "Da esaminare" (si ripulisce con Da seguire / Scarta) e "Cantieri
   seguiti": collection `portale` {pid, stato:'seguito', dati, nota, seguitoIl, aggiornatoIl},
-  mai toccata dalle importazioni (solo `dati` aggiornati con la scheda piu' recente). "Crea contatto" / "Crea progetto" aprono i moduli
+  mai toccata dalle importazioni (solo `dati` aggiornati con la scheda piu' recente). Registrando
+  una chiamata con un contatto presente in un cantiere seguito, "Progetto / argomento" si compila
+  con l'indirizzo del cantiere (uno solo, o quello da cui si e' aperto il contatto:
+  `portalCallCtx`) e sotto ci sono i pulsanti dei cantieri seguiti del contatto
+  (blocco "Cantieri seguiti nelle chiamate"). "Crea contatto" / "Crea progetto" aprono i moduli
   precompilati (`__returnToPortal`, `projects.portaleId`).
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
