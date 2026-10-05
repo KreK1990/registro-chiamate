@@ -228,6 +228,9 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .map-mk.sq{border-radius:2px;}
 .map-mk.approx{outline:2px dashed #4a5560;outline-offset:2px;}
 .map-missing summary{cursor:pointer;}
+.geo-edit{display:grid;gap:6px;margin-top:10px;}
+.geo-edit-map{height:260px;border:1px solid var(--border);border-radius:6px;overflow:hidden;z-index:0;position:relative;}
+.geo-pin{width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:grab;}
 .map-pop{font-size:13px;line-height:1.45;min-width:180px;}
 .map-pop .name-link{font-weight:600;cursor:pointer;}
 .map-pop-c{margin-top:6px;}
@@ -774,7 +777,8 @@ function renderMain(){
         <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
         <div style="margin-top:8px;font-size:14px;">${phoneLinks(c)}${(c.cellulare||c.telefono)&&c.email?' · ':''}${c.email?`<a href="mailto:${esc(c.email)}" class="addr-link">${esc(c.email)}</a>`:''}</div>
         ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
-        ${fullAddress(c)?`<div class="map-embed"><iframe src="${mapEmbedUrl(c)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa: ${esc(fullAddress(c))}"></iframe></div>`:''}
+        ${fullAddress(c) && !geoEditing('contacts', c.id) ? `<div style="margin-top:6px;">${geoEditBtn('contacts', c)}</div>` : ''}
+        ${fullAddress(c)? (geoEditing('contacts', c.id) ? geoEditHtml(c) : `<div class="map-embed"><iframe src="${mapEmbedUrl(c)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa: ${esc(fullAddress(c))}"></iframe></div>`):''}
         ${c.tag?`<div style="margin-top:8px;">${tagPills(c.tag)}</div>`:''}
         ${c.note?`<div style="margin-top:8px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(c.note)}</div>`:''}
         ${followUpBadge(c.followUp,true)}
@@ -1910,7 +1914,7 @@ function mapPopupHtml(pt){
   if(pt.kind==='cantiere'){ const p = pt.p, ph = projectPhase(p);
     return `<div class="map-pop"><div class="proj-code">${esc(p.codice||'')}</div><strong>${esc(p.nome||'Progetto')}</strong>
       <div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}<div class="fc-note">${isLost(p) ? 'Persa' : ph ? esc(ph.label) : 'Da avviare'}${p.importoOfferta!=null ? ' · '+fmtEuro(projectAmount(p)) : ''}</div>
-      <div class="map-pop-actions"><button class="btn small" data-map-project="${p.id}">Apri progetto</button><a class="btn secondary small" href="${mapsUrl({ via:p.via, citta:p.citta })}" target="_blank" rel="noopener">Indicazioni</a></div></div>`; }
+      <div class="map-pop-actions"><button class="btn small" data-map-project="${p.id}">Apri progetto</button><a class="btn secondary small" href="${mapsUrl(p.via||p.citta ? p : { via: pt.addr })}" target="_blank" rel="noopener">Indicazioni</a></div></div>`; }
   return `<div class="map-pop"><div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}
     ${pt.contacts.map(c=>{ const d = lastContactDays(c); return `<div class="map-pop-c"><span class="name-link" data-map-contact="${c.id}">${esc(fullName(c))}</span>${c.azienda ? ` · ${esc(c.azienda)}` : ''}<div class="fc-note">${d==null ? 'mai sentito' : `ultimo contatto ${d} giorni fa`}</div></div>`; }).join('')}
     <div class="map-pop-actions"><a class="btn secondary small" href="${mapsUrl(pt.contacts[0])}" target="_blank" rel="noopener">Indicazioni</a></div></div>`;
@@ -2691,6 +2695,66 @@ function projectPortalCardHtml(pr){
 }
 
 // ---------------------------------------------------------------------------
+// Posizione corretta a mano (scheda cliente e scheda progetto, "Correggi posizione"): una piccola
+// mappa con il segnaposto da trascinare o da spostare con un clic. Salva geo = {lat, lng, a
+// (indirizzo attuale), manual:true}: vale per la Mappa, per la mappa della scheda e per
+// "Indicazioni"; se l'indirizzo cambia si torna alla ricerca automatica. Per i clienti la
+// posizione si applica anche ai colleghi con lo stesso indirizzo.
+// ---------------------------------------------------------------------------
+let geoEdit = null, geoEditMap = null;   // geoEdit = { col:'contacts'|'projects', id }
+function manualGeo(x){ const g = x && x.geo; return g && g.manual && geoKey(g.a)===geoKey(fullAddress(x)) ? g : null; }
+function geoEditing(col, id){ return !!geoEdit && geoEdit.col===col && geoEdit.id===id; }
+function geoTarget(){ return geoEdit ? (geoEdit.col==='contacts' ? contacts : projects).find(x=>x.id===geoEdit.id) : null; }
+function geoEditBtn(col, x){
+  return `<button type="button" class="btn secondary small" data-geo-edit="${col}|${x.id}">Correggi posizione</button>${manualGeo(x) ? ' <span class="fc-note">posizione corretta a mano</span>' : ''}`;
+}
+function geoEditHtml(x){
+  // la mappa si crea dopo l'inserimento nella pagina (anche se si torna sulla scheda con l'editor aperto)
+  setTimeout(()=>{ const el = document.getElementById('geoEditMap'); if(el && !el.classList.contains('leaflet-container')) initGeoEditor(); }, 0);
+  return `<div class="geo-edit">
+    <div id="geoEditMap" class="geo-edit-map"><div class="fc-note" style="padding:10px;">Caricamento della mappa…</div></div>
+    <div class="fc-note">Trascina il segnaposto, oppure clicca sulla mappa nel punto esatto, poi salva.</div>
+    <div class="todo-actions"><button type="button" class="btn small" id="geoEditSave">Salva posizione</button><button type="button" class="btn secondary small" id="geoEditCancel">Annulla</button>${manualGeo(x) ? '<button type="button" class="btn secondary small" id="geoEditReset">Torna alla posizione dell\'indirizzo</button>' : ''}</div>
+  </div>`;
+}
+async function saveManualGeo(x, a, lat, lng){
+  const geo = { lat, lng, a, v: GEO_V, manual: true };
+  const col = geoEdit.col;
+  const targets = col==='contacts' ? contacts.filter(c=>c.id===x.id || (a && geoKey(fullAddress(c))===geoKey(a))) : [x];
+  try{ for(const t of targets){ t.geo = geo; await db.collection(col).doc(t.id).update({ geo }); } }
+  catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+async function initGeoEditor(){
+  const el = document.getElementById('geoEditMap'), x = geoTarget();
+  if(!el || !x) return;
+  try{ await loadLeaflet(); }catch(e){ el.innerHTML = `<div class="fc-note" style="padding:10px;">${esc(e.message)}</div>`; return; }
+  const addr = geoEdit.col==='contacts' ? contactGeoAddr(x) : projectGeoAddr(x);
+  let g = x.geo && !x.geo.nf && x.geo.lat!=null && geoKey(x.geo.a)===geoKey(addr.a) ? x.geo : null;
+  if(!g && addr.a){ try{ g = await geocodeSmart(addr.a, addr.citta, ()=>new Promise(r=>setTimeout(r, 1100))); }catch(e){} }
+  if(!document.getElementById('geoEditMap')) return;   // nel frattempo si e' chiuso
+  const start = g ? [g.lat, g.lng] : [45.07, 7.68];
+  if(geoEditMap){ try{ geoEditMap.remove(); }catch(e){} }
+  el.innerHTML = '';
+  geoEditMap = L.map(el).setView(start, g ? 17 : 8);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(geoEditMap);
+  const mk = L.marker(start, { draggable:true, icon: L.divIcon({ className:'', html:'<div class="geo-pin"></div>', iconSize:[22,22], iconAnchor:[11,11] }) }).addTo(geoEditMap);
+  geoEditMap.on('click', e=>mk.setLatLng(e.latlng));
+  const close = ()=>{ geoEdit = null; if(geoEditMap){ try{ geoEditMap.remove(); }catch(e){} geoEditMap = null; } renderMain(); };
+  document.getElementById('geoEditSave').onclick = async ()=>{ const ll = mk.getLatLng(); await saveManualGeo(x, addr.a, ll.lat, ll.lng); close(); };
+  document.getElementById('geoEditCancel').onclick = close;
+  const reset = document.getElementById('geoEditReset');
+  if(reset) reset.onclick = async ()=>{ try{ x.geo = null; await db.collection(geoEdit.col).doc(x.id).update({ geo: null }); }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); } close(); };
+}
+function onGeoEditClick(e){
+  const b = e.target.closest && e.target.closest('[data-geo-edit]');
+  if(!b) return;
+  e.preventDefault();
+  const [col, id] = b.dataset.geoEdit.split('|');
+  geoEdit = { col, id };
+  renderMain();
+}
+
+// ---------------------------------------------------------------------------
 // Forecast: solo commesse aperte (ne' perse ne' con ordine confermato). Valore
 // ponderato = importo offerta x probabilita' di chiusura. Campi sul progetto:
 // probabilita (0-100; se assente si usa quella suggerita per la fase),
@@ -3115,7 +3179,7 @@ const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale
 // Nel Forecast non si ridisegna mentre si sta scrivendo in un campo (le cifre si aggiornano a parte).
 function canAutoRender(){
   const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main input, #main textarea');
-  return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && !(view==='call' && callStep==='entry') && !((view==='forecast' || view==='portal') && typing)
+  return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && !(geoEdit && document.getElementById('geoEditMap')) && !(view==='call' && callStep==='entry') && !((view==='forecast' || view==='portal') && typing)
     && !(view==='projectDetail' && (orderEdit || loseFormProjectId));
 }
 function onProjectsSnapshot(snap){
@@ -3462,6 +3526,7 @@ function projectDetailView(){
       <div class="proj-code">ID ${esc(p.codice||'')}</div>
       <h2>${esc(p.nome || 'Progetto senza nome')}</h2>
       ${p.via||p.citta ? `<div style="font-size:14px;margin-top:2px;"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc([p.via, p.citta].filter(Boolean).join(', '))} · Indicazioni</a></div>` : ''}
+      ${projectGeoAddr(p).a && !geoEditing('projects', p.id) ? `<div style="margin-top:6px;">${geoEditBtn('projects', p)}</div>` : ''}
       <div style="margin-top:10px;">${phaseBadge(p)}</div>
       <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:12px;">
         <div><label>Importo offerta</label><div style="font-size:16px;font-weight:600;">${fmtEuro(p.importoOfferta)}</div></div>
@@ -3471,7 +3536,7 @@ function projectDetailView(){
       </div>
       ${p.note ? `<div style="margin-top:10px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(p.note)}</div>` : ''}
       </div>
-      ${p.via||p.citta ? `<div class="map-embed proj-map"><iframe src="${mapEmbedUrl(p)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa del cantiere: ${esc(projectAddress(p))}"></iframe></div>` : ''}
+      ${geoEditing('projects', p.id) ? geoEditHtml(p) : p.via||p.citta ? `<div class="map-embed proj-map"><iframe src="${mapEmbedUrl(p)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa del cantiere: ${esc(projectAddress(p))}"></iframe></div>` : ''}
      </div>
     </div>
     <div class="card">
@@ -5643,6 +5708,7 @@ document.getElementById('navMap').addEventListener('click', ()=>{ view='map'; ta
 document.getElementById('main').addEventListener('click', onInviteClick, true);
 document.getElementById('main').addEventListener('click', onPortalFillClick);
 document.getElementById('main').addEventListener('click', onPortalGotoClick);
+document.getElementById('main').addEventListener('click', onGeoEditClick);
 document.getElementById('main').addEventListener('click', onPortalLinkClick);
 document.getElementById('main').addEventListener('input', onPortalLinkInput);
 document.getElementById('navDashboard').addEventListener('click', ()=>{
@@ -5774,9 +5840,9 @@ function fullName(c){
 }
 function tagPills(tag){ if(!tag) return ''; return tag.split(',').map(t=>t.trim()).filter(Boolean).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join(''); }
 function fullAddress(c){ if(c.via || c.citta) return [c.via, c.citta].filter(Boolean).join(', '); return c.indirizzo || ''; }
-function mapsUrl(c){ return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddress(c))}`; }
+function mapsUrl(c){ const g = manualGeo(c); return `https://www.google.com/maps/dir/?api=1&destination=${g ? g.lat+','+g.lng : encodeURIComponent(fullAddress(c))}`; }
 // Mappa incorporata (Google Maps "output=embed": non richiede chiave API).
-function mapEmbedUrl(c){ return `https://www.google.com/maps?q=${encodeURIComponent(fullAddress(c))}&z=16&output=embed`; }
+function mapEmbedUrl(c){ const g = manualGeo(c); return g ? `https://www.google.com/maps?q=${g.lat},${g.lng}&z=17&output=embed` : `https://www.google.com/maps?q=${encodeURIComponent(fullAddress(c))}&z=16&output=embed`; }
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function fmtDate(d){ if(!d) return ''; const [y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
 function fmtLongDate(dateStr){

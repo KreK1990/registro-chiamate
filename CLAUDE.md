@@ -191,7 +191,11 @@ Campi principali:
   con regole precedenti si ritentano). `geocodeSmart`: indirizzo intero, prima via (prima di "-", "/",
   " e "), senza civico, infine solo comune (`approx`, bordo tratteggiato). Progetti senza indirizzo:
   quello della scheda del portale collegata (`projectGeoAddr`). Riquadro "Non sulla mappa"
-  (`mapMissingHtml`) con progetti/clienti mancanti e motivo. "Vicino a…" (località o
+  (`mapMissingHtml`) con progetti/clienti mancanti e motivo. "Correggi posizione" nelle schede cliente e
+  progetto (blocco "Posizione corretta a mano"): editor Leaflet con segnaposto trascinabile, salva
+  `geo.manual` (vale per Mappa, mappa incorporata e "Indicazioni" via `manualGeo` in `mapsUrl`/
+  `mapEmbedUrl`; per i clienti anche ai colleghi con lo stesso indirizzo; si azzera se l'indirizzo
+  cambia o con "Torna alla posizione dell'indirizzo"). "Vicino a…" (località o
   posizione del telefono) elenca cosa c'è entro 20 km. `canAutoRender` esclude la mappa.
 - **Suggeriti da Claude** (in Oggi, blocco "Suggeriti da Claude", solo versione online):
   function `netlify/functions/suggest.mjs` (GET = analisi di oggi gia' salvata, gratis; POST =
