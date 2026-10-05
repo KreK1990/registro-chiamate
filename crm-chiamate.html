@@ -241,6 +241,7 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .portal-vol span{font-size:12px;color:var(--muted);}
 .portal-addr{font-size:13px;margin-top:2px;}
 .portal-note{margin-top:8px;}
+.portal-card.focus{box-shadow:0 0 0 2px var(--accent);}
 .portal-suggest{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0 2px;}
 .portal-suggest .btn.small{padding:3px 8px;font-size:12px;text-align:left;}
 .portal-note textarea{width:100%;font-size:13.5px;}
@@ -772,6 +773,7 @@ function renderMain(){
       </div>
       ${studioColleaguesHtml(c)}
       ${contactProjectsHtml(c)}
+      ${contactPortalHtml(c)}
       <div class="card">
         <h3>Storico chiamate (${myCalls.length})</h3>
         ${myCalls.length? `<div class="table-wrap"><table class="calls-table">
@@ -2195,7 +2197,7 @@ function onPortalSnapshot(snap){
 }
 function onPortalImportSnapshot(snap){
   portalImport = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
-  if(view==='portal' && canAutoRender() && !portalBusy) renderMain();
+  if((view==='portal' || view==='detail') && canAutoRender() && !portalBusy) renderMain();
 }
 function startPortalImport(){
   if(portalImportStarted) return;
@@ -2420,6 +2422,8 @@ function bindPortal(){
       note: [`Dal portale NII Progetti, ID ${p.id}${p.dataNotizia ? ' (notizia del '+p.dataNotizia+')' : ''}.`, [p.fase && 'Fase '+p.fase, p.intervento, p.unita ? p.unita+' unità abitative' : '', p.valore ? 'valore opera '+fmtEuro(p.valore) : ''].filter(Boolean).join(' · '), p.descrizione].filter(Boolean).join('\n') };
     view = 'projectForm'; renderMain();
   }));
+  // arrivo dalla scheda di un contatto: si va al cantiere e lo si evidenzia
+  if(portalFocus){ const card = document.querySelector(`.portal-card[data-pid="${portalFocus}"]`); if(card){ card.classList.add('focus'); card.scrollIntoView({ block:'start' }); } portalFocus = null; }
 }
 
 // ---------------------------------------------------------------------------
@@ -2466,6 +2470,42 @@ function onPortalFillClick(e){
   e.preventDefault();
   const inp = document.getElementById(b.dataset.portalFill);
   if(inp){ inp.value = b.dataset.portalLabel; inp.focus(); }
+}
+
+// Nella scheda contatto: cantieri del portale in cui compare (seguiti e ancora da esaminare).
+// Un clic apre la pagina giusta di "Cantieri dal portale" sul cantiere.
+let portalFocus = null;
+function contactPortalHtml(c){
+  if(!portalImportStarted) startPortalImport();   // la lista "Da esaminare" si legge alla prima occorrenza
+  const role = p=>{ const s = (p.soggetti||[]).find(s=>contactInSoggetto(c, s)); return s ? s.ruolo || '' : ''; };
+  const followed = [...portalSaved.values()].filter(x=>x.stato==='seguito' && x.dati && (x.dati.soggetti||[]).some(s=>contactInSoggetto(c, s)));
+  const exam = portalImport ? [...portalImport.values()].filter(x=>x.dati && !x.scartato && !isFollowed(x.pid) && !((portalSaved.get(x.pid)||{}).stato==='scartato')
+    && (x.dati.soggetti||[]).some(s=>contactInSoggetto(c, s))) : [];
+  if(!followed.length && !exam.length) return '';
+  const row = (x, tab)=>{ const p = x.dati, vc = portalViaCitta(p), sc = portalScore(p, true);
+    return `<div class="todo-row"><div class="todo-main">
+      <span class="name-link" data-portal-goto="${tab}|${p.id}">${esc(p.titolo)}</span><span class="fc-addr"> · ${esc(vc.via ? vc.via+', '+vc.citta : p.comune)}</span>
+      <div class="todo-sub">${esc([role(p), p.fase && 'Fase '+p.fase, p.intervento, p.unita ? p.unita+' unità' : '', sc.vol!=null ? 'volume stimato '+fmtEuro(sc.vol).replace(',00','') : ''].filter(Boolean).join(' · '))}</div>
+      ${x.nota ? `<div class="todo-sub"><strong>Nota:</strong> ${esc(x.nota)}</div>` : ''}
+    </div></div>`; };
+  return `<div class="card">
+    <h3>Cantieri dal portale (${followed.length + exam.length})</h3>
+    ${followed.length ? `<div class="todo-title">Seguiti (${followed.length})</div>${followed.map(x=>row(x, 'seguiti')).join('')}` : ''}
+    ${exam.length ? `<div class="todo-title" style="margin-top:${followed.length ? 12 : 0}px;">Da esaminare (${exam.length})</div>${exam.map(x=>row(x, 'esamina')).join('')}` : ''}
+  </div>`;
+}
+function onPortalGotoClick(e){
+  const el = e.target.closest && e.target.closest('[data-portal-goto]');
+  if(!el) return;
+  e.preventDefault();
+  const [tab, pid] = el.dataset.portalGoto.split('|');
+  portalTab = tab;
+  const target = portalFindProject(pid);
+  portalFilters = { ristrutturazioni: !(target && target.nuovaCostruzione), noti:false, nuovi:false, fase:'', prov:'', minUnita:0, q:'', scartati:false };
+  const idx = portalFiltered(tab==='seguiti' ? portalFollowRows() : portalExamRows()).findIndex(r=>r.p.id===pid);
+  portalShow = Math.max(40, idx + 10);
+  portalFocus = pid;
+  view = 'portal'; setActiveTab('navProjects'); renderMain();
 }
 
 // ---------------------------------------------------------------------------
@@ -5419,6 +5459,7 @@ document.getElementById('navSettings').addEventListener('click', goSettings);
 document.getElementById('navMap').addEventListener('click', ()=>{ view='map'; tableDetailCallId=null; setActiveTab('navMap'); renderMain(); });
 document.getElementById('main').addEventListener('click', onInviteClick, true);
 document.getElementById('main').addEventListener('click', onPortalFillClick);
+document.getElementById('main').addEventListener('click', onPortalGotoClick);
 document.getElementById('navDashboard').addEventListener('click', ()=>{
   view='dashboard'; tableDetailCallId=null; dashboardDrilldown=null;
   setActiveTab('navDashboard');

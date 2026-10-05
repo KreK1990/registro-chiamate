@@ -221,7 +221,10 @@ Campi principali:
   con l'indirizzo del cantiere (uno solo, o quello da cui si e' aperto il contatto:
   `portalCallCtx` = {pid, contactId}, vale sempre per quel contatto); legame contatto-cantiere con
   `contactInSoggetto` (email, telefono, cognome+nome o stesso studio: valgono anche i colleghi) e sotto ci sono i pulsanti dei cantieri seguiti del contatto
-  (blocco "Cantieri seguiti nelle chiamate"). "Crea contatto" / "Crea progetto" aprono i moduli
+  (blocco "Cantieri seguiti nelle chiamate"). Nella scheda contatto il riquadro "Cantieri dal portale"
+  (`contactPortalHtml`) elenca i cantieri seguiti (con nota) e quelli ancora da esaminare in cui
+  compare il contatto; il clic apre la pagina giusta della sezione ed evidenzia il cantiere
+  (`portalFocus`). Aprire la scheda avvia la lettura di `portaleImport` se non ancora fatta. "Crea contatto" / "Crea progetto" aprono i moduli
   precompilati (`__returnToPortal`, `projects.portaleId`).
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
