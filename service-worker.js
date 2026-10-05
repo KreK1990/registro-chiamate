@@ -1,6 +1,7 @@
 // Service worker: keeps the app installable and available offline,
 // but always prefers the freshest version when online.
-const CACHE_NAME = 'registro-chiamate-v5';
+const CACHE_NAME = 'registro-chiamate-v6';
+const CDN_CACHED = /^https:\/\/(www\.gstatic\.com\/firebasejs\/|cdnjs\.cloudflare\.com\/ajax\/libs\/|fonts\.(googleapis|gstatic)\.com\/)/;
 const APP_SHELL = [
   './crm-chiamate-standalone.html',
   './manifest.json',
@@ -39,7 +40,23 @@ self.addEventListener('notificationclick', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
+  if (event.request.method !== 'GET') return;
+
+  // Librerie esterne con la versione nell'indirizzo (Firebase, SheetJS, html2pdf) e font:
+  // dalla cache se ci sono, cosi' l'app si apre anche senza rete (i dati li tiene Firestore).
+  if (url.origin !== self.location.origin) {
+    if (!CDN_CACHED.test(event.request.url)) return;
+    event.respondWith(
+      caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+        if (response && (response.ok || response.type === 'opaque')) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      }))
+    );
+    return;
+  }
   // Functions (backup, calendario): sempre dalla rete, mai in cache (dati personali).
   if (url.pathname.startsWith('/.netlify/')) return;
 

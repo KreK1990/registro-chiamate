@@ -32,7 +32,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
   ultimi 30 giorni e per sempre la copia del primo del mese. Logica comune in
   `netlify/lib/backup.mjs` (fuori da `functions/` per non diventare una function).
   Il service worker non mette in cache nulla sotto `/.netlify/`.
-- `package.json` (dipendenze: `firebase-admin`, `/blobs`) e `netlify.toml` (build minimale,
+- `package.json` (dipendenze: `firebase-admin`, `@netlify/blobs`) e `netlify.toml` (build minimale,
   `functions = "netlify/functions"`, redirect della radice verso l'app e blocco dei file
   che non devono essere serviti: `CLAUDE.md`, `package.json`, `netlify.toml`, `netlify/*`).
 
@@ -138,6 +138,28 @@ Campi principali:
   Contatti, Chiamate, Progetti, Ordini; sostituisce il vecchio export CSV) e, solo online, le
   copie automatiche notturne. (La mail di presentazione da modello e' stata provata e tolta
   su richiesta dell'utente: eventuali `mailOggetto`/`mailTesto` in settings sono inutilizzati.)
+- **Oggi → "Da fare"** (blocco "Da fare (in Oggi)", prima del Forecast): calcolato dai dati.
+  Offerte da sollecitare (offertaPresentata raggiunta, non confermata ne' persa, da
+  `promemoria.sollecito` giorni contati dall'ultimo `projects.sollecitatoIl`); commesse ferme
+  (prima dell'offerta, nessuna fase da `promemoria.ferma` giorni); da ricontattare (clienti con
+  chiamate, senza progetti in corso o acquisiti, senza follow-up o appuntamenti futuri, senza
+  "Non interessato" nell'ultimo anno, fermi da `promemoria.ricontatto` giorni o
+  `promemoria.nonRaggiunto` se l'ultimo esito e' in `ESITI_NON_RAGGIUNTO`; prima Interessato/Da
+  richiamare). "Rimanda" scrive `rimandaAl` (YYYY-MM-DD) su progetto o contatto. Intervalli in
+  Impostazioni (`settings.promemoria`, default `TODO_DEFAULTS`). Sotto, "Dati da completare"
+  (commesse aperte senza importo/chiusura prevista, confermate senza deliberato ne' offerta,
+  contatti dei progetti senza email/telefono).
+- **Offline** (solo versione online): `enablePersistence` all'avvio; `firestoreAdapter` avvolge
+  le scritture con `settleWrite` (non si aspetta il server oltre 2,5 s, `add` crea l'ID sul
+  dispositivo) cosi' l'app non resta bloccata senza rete. Il service worker tiene in cache anche
+  gli script Firebase/cdnjs e i font (`CDN_CACHED`). I dati restano sul dispositivo anche dopo
+  "Esci" (pensato per dispositivi personali).
+- **Storico del forecast**: collection `forecastStorico`, un documento per mese (`mese`,
+  ponderato, offerte, aperte, `anni{YYYY:{stima, fatturato, daSpedire, forecast, conferme,
+  budget}}`), aggiornato da solo (`recordForecastSnapshot`, 3 s dopo i cambi di progetti o
+  impostazioni, solo se i valori cambiano). Grafico "Andamento nel tempo" nel Forecast: HTML +
+  SVG a linee (`--trend-1`/`--trend-2`, colori validati per daltonismo, chiaro e scuro), linea
+  del budget tratteggiata, finestrella al passaggio, tabella "Vedi i valori".
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,

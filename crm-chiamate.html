@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&family=Fira+Sans+Condensed:wght@600;700;800&family=Fira+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#EEEEEE; --panel:#FFFFFF; --border:#D3DBE5; --border-strong:#BEC8DA; --text:#1A1A1A; --muted:#5F6B77;
+  --bg:#EEEEEE; --panel:#FFFFFF; --border:#D3DBE5; --border-strong:#BEC8DA; --text:#1A1A1A; --muted:#5F6B77; --trend-1:#2a6fb0; --trend-2:#b97f00;
   --accent:#00487E; --accent-soft:#E3E9F1; --on-accent:#FFFFFF; --brand-yellow:#DC9D00; --danger:#B3261E;
   --serif:"Fira Sans Condensed","Arial Narrow",sans-serif;
   --sans:"Fira Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -18,13 +18,13 @@
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0D1822; --panel:#14222F; --border:#27394B; --border-strong:#34506A; --text:#E6ECF2; --muted:#98A8B8;
+    --bg:#0D1822; --panel:#14222F; --border:#27394B; --border-strong:#34506A; --text:#E6ECF2; --muted:#98A8B8; --trend-1:#4a8acb; --trend-2:#c08a10;
     --accent:#7DB2E3; --accent-soft:#1B3246; --on-accent:#0D1822; --danger:#F08C80;
   }
   :root:not([data-theme="light"]) .followup.due{background:#3E1F1C;}
 }
 :root[data-theme="dark"]{
-  --bg:#0D1822; --panel:#14222F; --border:#27394B; --border-strong:#34506A; --text:#E6ECF2; --muted:#98A8B8;
+  --bg:#0D1822; --panel:#14222F; --border:#27394B; --border-strong:#34506A; --text:#E6ECF2; --muted:#98A8B8; --trend-1:#4a8acb; --trend-2:#c08a10;
   --accent:#7DB2E3; --accent-soft:#1B3246; --on-accent:#0D1822; --danger:#F08C80;
 }
 html{scroll-padding-top:env(safe-area-inset-top,0px);}
@@ -177,6 +177,47 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .fc-report .fc-value{font-size:22px;}
 .fc-report .fc-q-row{grid-template-columns:minmax(170px,230px) 1fr auto;}
 .fc-report .fc-q-track{grid-column:auto;grid-row:auto;}
+.trend-legend{display:flex;gap:6px 18px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-bottom:10px;}
+.trend-legend strong{color:var(--text);}
+.trend-sw{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:3px;}
+.trend-sw.stima{background:var(--trend-1);}
+.trend-sw.ponderato{background:var(--trend-2);}
+.trend-sw.budget{background:none;border-top:2px dashed var(--muted);height:0;}
+.trend-plot{position:relative;height:180px;margin-left:58px;margin-top:6px;}
+.trend-plot svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;}
+.trend-grid{stroke:var(--border);stroke-width:1;}
+.trend-budget{stroke:var(--muted);stroke-width:1.5;stroke-dasharray:6 4;}
+.trend-line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round;}
+.trend-line.stima{stroke:var(--trend-1);}
+.trend-line.ponderato{stroke:var(--trend-2);}
+.trend-dot{position:absolute;width:9px;height:9px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 2px var(--panel);pointer-events:none;}
+.trend-dot.stima{background:var(--trend-1);}
+.trend-dot.ponderato{background:var(--trend-2);}
+.trend-ylab{position:absolute;right:calc(100% + 8px);transform:translateY(-50%);font-size:11px;color:var(--muted);white-space:nowrap;}
+.trend-hit{position:absolute;top:0;bottom:0;cursor:pointer;}
+.trend-hit.on{background:linear-gradient(to right,transparent calc(50% - 0.5px),var(--border-strong) calc(50% - 0.5px),var(--border-strong) calc(50% + 0.5px),transparent calc(50% + 0.5px));}
+.trend-tip{position:absolute;top:-6px;transform:translateY(-100%);z-index:2;background:var(--panel);border:1px solid var(--border-strong);border-radius:4px;padding:7px 10px;font-size:12.5px;line-height:1.5;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.12);pointer-events:none;}
+.trend-tip.hidden{display:none;}
+.trend-x{position:relative;height:18px;margin-left:58px;margin-top:4px;font-size:11px;color:var(--muted);}
+.trend-x span{position:absolute;transform:translateX(-50%);white-space:nowrap;}
+.trend-table{margin-top:8px;}
+.trend-table summary{cursor:pointer;}
+.trend-trow{display:grid;grid-template-columns:1.2fr 1.4fr 1.2fr 1.4fr 0.6fr;gap:10px;padding:4px 8px;border-bottom:1px solid var(--border);font-size:12.5px;}
+.trend-trow span:not(:first-child){text-align:right;}
+.trend-th{font-weight:600;color:var(--muted);}
+.todo-section{margin-top:10px;}
+.todo-section + .todo-section{margin-top:16px;}
+.todo-title{font-weight:700;font-size:14px;color:var(--accent);}
+.todo-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px 14px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border);}
+.todo-main{flex:1 1 260px;min-width:0;font-size:14px;}
+.todo-main .name-link{font-weight:600;cursor:pointer;}
+.todo-sub{font-size:12.5px;color:var(--muted);margin-top:2px;}
+.todo-actions{display:flex;gap:6px;flex-wrap:wrap;}
+.todo-complete summary{cursor:pointer;list-style-position:outside;}
+.todo-sets{display:grid;gap:8px;max-width:560px;}
+.todo-set{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0;font-size:13.5px;}
+.todo-set span{display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.todo-set input{width:76px;}
 .rep-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--accent);padding-bottom:8px;margin-bottom:14px;}
 .rep-title{font-family:var(--serif);font-size:24px;font-weight:700;color:var(--accent);}
 .rep-brand{font-weight:600;color:var(--brand-yellow);}
@@ -465,6 +506,7 @@ async function init(){
     renderSidebarToday();
   });
   db.collection('projects').onSnapshot(onProjectsSnapshot);
+  db.collection('forecastStorico').onSnapshot(onHistorySnapshot);
   db.collection('settings').onSnapshot(onSettingsSnapshot);
 }
 
@@ -530,6 +572,7 @@ function renderMain(){
     main.querySelectorAll('[data-mail-done]').forEach(btn=>{
       btn.addEventListener('click', ()=>{ btn.disabled = true; markMailSent(btn.dataset.mailDone); });
     });
+    bindTodo(main);
     return;
   }
   if(view==='followup'){
@@ -1027,7 +1070,8 @@ function onSettingsSnapshot(snap){
   const d = snap.docs[0];
   settingsDocId = d ? d.id : null;
   appSettings = d ? d.data() : {};
-  if(canAutoRender() && (view==='settings' || view==='forecast')) renderMain();
+  scheduleForecastSnapshot();
+  if(canAutoRender() && (view==='settings' || view==='forecast' || view==='agenda')) renderMain();
 }
 async function saveSettings(patch){
   Object.assign(appSettings, patch);
@@ -1104,6 +1148,7 @@ function settingsView(){
   const cloud = cloudBackups();
   if(cloud && backupList===null) setTimeout(loadBackupList, 0);
   return `<h2 style="margin-bottom:16px;">Impostazioni</h2>
+  ${promemoriaSettingsHtml()}
   <div class="card">
     <h3>Backup</h3>
     <div class="fc-note" style="margin-bottom:10px;">Excel con contatti, chiamate, progetti e ordini: utile da conservare o da girare al responsabile.</div>
@@ -1118,9 +1163,289 @@ function settingsView(){
   </div>`;
 }
 function bindSettings(){
+  bindPromemoriaSettings();
   document.getElementById('excelAllBtn').addEventListener('click', exportAllExcel);
   document.getElementById('backupNowBtn')?.addEventListener('click', e=>backupNow(e.target));
   document.querySelectorAll('[data-backup-date]').forEach(b=>b.addEventListener('click', ()=>downloadBackup(b.dataset.backupDate, b)));
+}
+
+// ---------------------------------------------------------------------------
+// Da fare (in Oggi): promemoria calcolati dai dati, senza doverli impostare a mano.
+// - Offerte da sollecitare: offerta presentata (non confermata ne' persa) da piu' di
+//   N giorni, contati dall'ultimo sollecito (projects.sollecitatoIl) se c'e'.
+// - Commesse ferme: prima dell'offerta, nessuna fase nuova da N giorni.
+// - Da ricontattare: clienti gia' sentiti senza progetti in corso, fermi da N giorni
+//   (meno se l'ultima volta non si e' riusciti a parlarci). Esclusi: follow-up o
+//   appuntamento in programma, commessa acquisita, "Non interessato" nell'ultimo anno.
+// "Rimanda" nasconde la voce fino a una data (projects/contacts.rimandaAl).
+// Intervalli in Impostazioni (settings.promemoria).
+// ---------------------------------------------------------------------------
+const TODO_DEFAULTS = { sollecito:15, ferma:30, ricontatto:60, nonRaggiunto:30 };
+let todoShowAll = { ricontatto:false };
+function todoDays(k){ const v = Number((appSettings.promemoria||{})[k]); return v>0 ? v : TODO_DEFAULTS[k]; }
+function addDaysISO(iso, n){ const d = new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function snoozed(x){ return !!x.rimandaAl && x.rimandaAl > todayISO(); }
+function lastPhaseDate(p){ const t = todayISO(); return PROJECT_PHASES.map(ph=>p.fasi && p.fasi[ph.key]).filter(d=>d && d<=t).sort().pop() || ''; }
+function openProjects(){ return projects.filter(p=>!isLost(p) && !isWon(p)); }
+
+function offersToChase(){
+  const t = todayISO(), n = todoDays('sollecito');
+  return openProjects().filter(p=>phaseDone(p, 'offertaPresentata') && !snoozed(p)).map(p=>{
+    const since = [p.fasi.offertaPresentata, p.sollecitatoIl||''].sort().pop();
+    return { p, since, days: daysBetween(since, t) };
+  }).filter(x=>x.days >= n).sort((a,b)=>b.days - a.days);
+}
+function stalledProjects(){
+  const t = todayISO(), n = todoDays('ferma');
+  return openProjects().filter(p=>!phaseDone(p, 'offertaPresentata') && !snoozed(p)).map(p=>{
+    const since = lastPhaseDate(p) || (p.createdAt ? new Date(p.createdAt).toISOString().slice(0,10) : '');
+    return { p, since, days: since ? daysBetween(since, t) : null };
+  }).filter(x=>x.days!=null && x.days >= n).sort((a,b)=>b.days - a.days);
+}
+function contactsToRecall(){
+  const now = new Date(), t = todayISO();
+  const nRag = todoDays('ricontatto'), nNon = todoDays('nonRaggiunto');
+  const yearAgo = addDaysISO(t, -365);
+  const byContact = new Map();
+  calls.forEach(k=>{ if(k.contactId) (byContact.get(k.contactId) || byContact.set(k.contactId, []).get(k.contactId)).push(k); });
+  const out = [];
+  contacts.forEach(c=>{
+    const list = byContact.get(c.id);
+    if(!list || !list.length || snoozed(c)) return;
+    if(c.followUp && new Date(c.followUp) > now) return;
+    if(list.some(k=>k.appuntamento && new Date(k.appuntamento) > now)) return;
+    const projs = projectsOfContact(c.id);
+    if(projs.some(isWon) || projs.some(p=>!isLost(p))) return;   // acquisito o in corso: lo segue il progetto
+    const sorted = list.slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    const last = sorted[0];
+    if(sorted.some(k=>k.esito==='Non interessato' && (k.data||'') >= yearAgo)) return;
+    const lastAppt = list.map(k=>k.appuntamento||'').filter(a=>a && new Date(a) <= now).sort().pop() || '';
+    const since = [last.data||'', lastAppt.slice(0,10)].sort().pop();
+    if(!since) return;
+    const reached = !ESITI_NON_RAGGIUNTO.includes(last.esito);
+    const days = daysBetween(since, t);
+    if(days < (reached || lastAppt ? nRag : nNon)) return;
+    const hot = ['Interessato','Da richiamare'].includes(last.esito) ? 0 : lastAppt ? 1 : reached ? 2 : 3;
+    out.push({ c, last, since, days, met: !!lastAppt, reached, hot });
+  });
+  return out.sort((a,b)=>a.hot - b.hot || b.days - a.days);
+}
+function dataToComplete(){
+  const items = [];
+  openProjects().sort(byProjectId).forEach(p=>{
+    const miss = [];
+    if(p.importoOfferta==null || p.importoOfferta==='') miss.push('importo dell\'offerta');
+    if(!p.chiusuraPrevista) miss.push('chiusura prevista');
+    if(miss.length) items.push({ kind:'project', p, miss });
+  });
+  projects.filter(isWon).sort(byProjectId).forEach(p=>{
+    if(p.importoDeliberato==null && (p.importoOfferta==null || p.importoOfferta==='')) items.push({ kind:'project', p, miss:['deliberato (serve per la % di merce spedita)'] });
+  });
+  const inProjects = new Set(projects.filter(p=>!isLost(p)).flatMap(p=>(p.partecipanti||[]).map(x=>x.contactId)));
+  contacts.filter(c=>inProjects.has(c.id)).sort((a,b)=>fullName(a).localeCompare(fullName(b))).forEach(c=>{
+    const miss = [];
+    if(!c.email) miss.push('email');
+    if(!c.cellulare && !c.telefono) miss.push('telefono');
+    if(miss.length) items.push({ kind:'contact', c, miss });
+  });
+  return items;
+}
+
+function todoProjLine(p){
+  const addr = projectAddress(p);
+  return `<span class="proj-code">${esc(p.codice||'')}</span> <span class="name-link" data-open-project="${p.id}">${esc(p.nome || 'Progetto senza nome')}</span>${addr ? `<span class="fc-addr"> · ${esc(addr)}</span>` : ''}`;
+}
+function todoPeople(p){
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  return (p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).slice(0,2).map(c=>
+    `<div class="todo-sub"><span class="name-link" data-contact-id="${c.id}">${esc(fullName(c))}</span>${c.azienda ? ` · ${esc(c.azienda)}` : ''} ${phoneLinks(c,'font-size:12.5px;')}</div>`).join('');
+}
+function todoCardHtml(){
+  const chase = offersToChase(), stalled = stalledProjects(), recall = contactsToRecall();
+  const total = chase.length + stalled.length + recall.length;
+  const section = (title, hint, rows)=>rows ? `<div class="todo-section"><div class="todo-title">${title}</div><div class="fc-note" style="margin:-2px 0 6px;">${hint}</div>${rows}</div>` : '';
+  const chaseRows = chase.map(({p, since, days})=>`<div class="todo-row">
+      <div class="todo-main">${todoProjLine(p)}
+        <div class="todo-sub">${p.sollecitatoIl && p.sollecitatoIl===since ? 'sollecitata' : 'offerta presentata'} il ${fmtDate(since)} · <strong>${days} giorni</strong>${p.importoOfferta!=null ? ` · ${fmtEuro(p.importoOfferta)}` : ''}</div>
+        ${todoPeople(p)}</div>
+      <div class="todo-actions"><button class="btn small" data-todo-chased="${p.id}">Sollecitata</button><button class="btn secondary small" data-todo-snooze-p="${p.id}">Rimanda 7 gg</button></div>
+    </div>`).join('');
+  const stalledRows = stalled.map(({p, days})=>{ const cur = projectPhase(p); const next = PROJECT_PHASES[cur ? PROJECT_PHASES.indexOf(cur)+1 : 0];
+    return `<div class="todo-row">
+      <div class="todo-main">${todoProjLine(p)}
+        <div class="todo-sub">${cur ? esc(cur.label) : 'Da avviare'} · ferma da <strong>${days} giorni</strong>${next ? ` · prossima: ${esc(next.label)}${next.owner ? ` (${esc(next.owner)})` : ''}` : ''}</div></div>
+      <div class="todo-actions"><button class="btn secondary small" data-todo-snooze-p="${p.id}">Rimanda 7 gg</button></div>
+    </div>`; }).join('');
+  const recallShown = todoShowAll.ricontatto ? recall : recall.slice(0, 8);
+  const recallRows = recallShown.map(({c, last, days, met, reached})=>`<div class="todo-row">
+      <div class="todo-main"><span class="name-link" data-contact-id="${c.id}">${esc(fullName(c))}</span>${c.azienda ? `<span class="fc-addr"> · ${esc(c.azienda)}</span>` : ''}
+        <div class="todo-sub">${met ? 'incontrato, nessun progetto' : reached ? 'sentito' : 'non raggiunto'} · ultimo contatto ${days} giorni fa${last.esito ? ` (${esc(last.esito)})` : ''}</div>
+        <div class="todo-sub">${phoneLinks(c,'font-size:12.5px;')}</div></div>
+      <div class="todo-actions"><button class="btn small" data-todo-call="${c.id}">Richiama</button><button class="btn secondary small" data-todo-snooze-c="${c.id}">Rimanda 30 gg</button></div>
+    </div>`).join('') + (recall.length > 8 ? `<button class="btn secondary small" id="todoMoreRecall" style="margin-top:6px;">${todoShowAll.ricontatto ? 'Mostra meno' : `Mostra tutti (${recall.length})`}</button>` : '');
+  return `<div class="card">
+    <h3>Da fare${total ? ` (${total})` : ''}</h3>
+    ${total ? '' : '<div class="empty">Niente in sospeso: offerte, commesse e clienti sono tutti seguiti.</div>'}
+    ${section(`Offerte da sollecitare (${chase.length})`, `presentate da almeno ${todoDays('sollecito')} giorni senza conferma`, chaseRows)}
+    ${section(`Commesse ferme (${stalled.length})`, `prima dell'offerta, nessun passo avanti da ${todoDays('ferma')} giorni`, stalledRows)}
+    ${section(`Da ricontattare (${recall.length})`, `clienti senza progetti in corso, non sentiti da ${todoDays('ricontatto')} giorni (${todoDays('nonRaggiunto')} se non raggiunti)`, recallRows)}
+  </div>`;
+}
+function completeCardHtml(){
+  const items = dataToComplete();
+  if(!items.length) return '';
+  const rows = items.map(x=>x.kind==='project'
+    ? `<div class="todo-row"><div class="todo-main">${todoProjLine(x.p)}<div class="todo-sub">manca: ${x.miss.join(', ')}</div></div>
+        ${x.miss.includes('chiusura prevista') ? '<div class="todo-actions"><button class="btn secondary small" data-go-forecast>Apri il Forecast</button></div>' : ''}</div>`
+    : `<div class="todo-row"><div class="todo-main"><span class="name-link" data-contact-id="${x.c.id}">${esc(fullName(x.c))}</span>${x.c.azienda ? `<span class="fc-addr"> · ${esc(x.c.azienda)}</span>` : ''}<div class="todo-sub">manca: ${x.miss.join(', ')}</div></div></div>`).join('');
+  return `<details class="card todo-complete">
+    <summary><h3 style="display:inline;margin:0;">Dati da completare (${items.length})</h3> <span class="fc-note">commesse senza importo o chiusura prevista, contatti dei progetti senza email o telefono</span></summary>
+    <div style="margin-top:10px;">${rows}</div>
+  </details>`;
+}
+function bindTodo(main){
+  const fail = e=>alert('Errore nel salvataggio: '+(e.message||e.code||''));
+  const upd = (col, id, data)=>db.collection(col).doc(id).update({ ...data, updatedAt:Date.now() }).catch(fail);
+  main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', e=>{ e.stopPropagation(); openProject(el.dataset.openProject); }));
+  main.querySelectorAll('[data-todo-chased]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd('projects', b.dataset.todoChased, { sollecitatoIl: todayISO() }); }));
+  main.querySelectorAll('[data-todo-snooze-p]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd('projects', b.dataset.todoSnoozeP, { rimandaAl: addDaysISO(todayISO(), 7) }); }));
+  main.querySelectorAll('[data-todo-snooze-c]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd('contacts', b.dataset.todoSnoozeC, { rimandaAl: addDaysISO(todayISO(), 30) }); }));
+  main.querySelectorAll('[data-todo-call]').forEach(b=>b.addEventListener('click', ()=>{
+    selectedId = b.dataset.todoCall; clearFollowUpOnEntry = false; view = 'call'; callStep = 'entry';
+    setActiveTab('navCall'); renderMain();
+  }));
+  document.getElementById('todoMoreRecall')?.addEventListener('click', ()=>{ todoShowAll.ricontatto = !todoShowAll.ricontatto; renderMain(); });
+  main.querySelectorAll('[data-go-forecast]').forEach(b=>b.addEventListener('click', ()=>{ view='forecast'; setActiveTab('navForecast'); renderMain(); }));
+}
+function promemoriaSettingsHtml(){
+  const f = (k, label)=>`<label class="todo-set">${label}<span><input type="number" min="1" max="365" inputmode="numeric" data-todo-set="${k}" value="${todoDays(k)}"> giorni</span></label>`;
+  return `<div class="card">
+    <h3>Promemoria in "Oggi"</h3>
+    <div class="fc-note" style="margin-bottom:10px;">Dopo quanti giorni una voce compare nella sezione "Da fare".</div>
+    <div class="todo-sets">
+      ${f('sollecito', 'Sollecitare un\'offerta presentata dopo')}
+      ${f('ferma', 'Segnalare una commessa ferma (prima dell\'offerta) dopo')}
+      ${f('ricontatto', 'Ricontattare un cliente sentito o incontrato dopo')}
+      ${f('nonRaggiunto', 'Riprovare un cliente non raggiunto dopo')}
+    </div>
+  </div>`;
+}
+function bindPromemoriaSettings(){
+  document.querySelectorAll('[data-todo-set]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const n = Math.round(Number(inp.value)), k = inp.dataset.todoSet;
+    if(!isFinite(n) || n<1 || n>365){ inp.value = todoDays(k); return; }
+    inp.value = n;
+    saveSettings({ promemoria: { ...TODO_DEFAULTS, ...(appSettings.promemoria||{}), [k]: n } });
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Storico del forecast: collection "forecastStorico", un documento per mese
+// ({mese:'YYYY-MM', ponderato, offerte, aperte, anni:{'YYYY':{stima, fatturato,
+// daSpedire, forecast, conferme, budget}}, aggiornatoIl}). Il documento del mese in
+// corso si aggiorna da solo quando cambiano progetti o budget: a fine mese resta la
+// fotografia di quel mese. Nel Forecast: grafico "Andamento nel tempo".
+// ---------------------------------------------------------------------------
+let forecastHistory = [], historyLoaded = false, projectsSeen = false, historyTimer = null;
+function onHistorySnapshot(snap){
+  forecastHistory = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(h=>/^\d{4}-\d{2}$/.test(h.mese||'')).sort((a,b)=>a.mese.localeCompare(b.mese));
+  historyLoaded = true;
+  scheduleForecastSnapshot();
+  if(view==='forecast' && canAutoRender()){ const t = document.getElementById('fcTrend'); if(t){ t.outerHTML = trendCardHtml(); bindTrend(); } }
+}
+function scheduleForecastSnapshot(){ clearTimeout(historyTimer); historyTimer = setTimeout(recordForecastSnapshot, 3000); }
+function forecastSnapshotValues(){
+  const open = openForecastProjects(), y0 = +currentYear();
+  const round = v=>Math.round((Number(v)||0)*100)/100;
+  const anni = {};
+  [String(y0), String(y0+1)].forEach(y=>{
+    anni[y] = { stima: round(estimateInYear(y)), fatturato: round(invoicedInYear(y)), daSpedire: round(toShipInYear(y)),
+      forecast: round(weightedInYear(y)), budget: budgetOf(y),
+      conferme: round(projects.filter(p=>isWon(p) && (p.fasi.confermaOrdine||'').startsWith(y)).reduce((s,p)=>s+(Number(projectAmount(p))||0), 0)) };
+  });
+  return { ponderato: round(open.reduce((s,p)=>s+forecastWeighted(p), 0)), offerte: round(open.reduce((s,p)=>s+(Number(p.importoOfferta)||0), 0)), aperte: open.length, anni };
+}
+async function recordForecastSnapshot(){
+  if(!db || !historyLoaded || !projectsSeen || !projects.length) return;
+  const mese = todayISO().slice(0,7), vals = forecastSnapshotValues();
+  const cur = forecastHistory.find(h=>h.mese===mese);
+  const same = cur && JSON.stringify({ ponderato:cur.ponderato, offerte:cur.offerte, aperte:cur.aperte, anni:cur.anni }) === JSON.stringify(vals);
+  if(same) return;
+  try{
+    if(cur) await db.collection('forecastStorico').doc(cur.id).update({ ...vals, aggiornatoIl: Date.now() });
+    else await db.collection('forecastStorico').add({ mese, ...vals, aggiornatoIl: Date.now() });
+  }catch(e){ console.warn('Storico forecast non salvato:', e); }
+}
+
+// --- Grafico: stima di fatturato dell'anno scelto e ponderato totale, mese per mese ---
+function monthShort(ym){ return `${MONTHS_SHORT[+ym.slice(5,7)-1]} ${ym.slice(2,4)}`; }
+function niceMax(v){ if(v<=0) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))); const f = v/e; return (f<=1 ? 1 : f<=2 ? 2 : f<=2.5 ? 2.5 : f<=5 ? 5 : 10) * e; }
+function eurShort(v){ return v>=1e6 ? (Math.round(v/1e5)/10).toLocaleString('it-IT')+' M€' : v>=1e3 ? Math.round(v/1e3).toLocaleString('it-IT')+'K €' : Math.round(v)+' €'; }
+function trendData(){
+  return forecastHistory.map(h=>({ mese:h.mese, stima: h.anni && h.anni[budgetYear] ? h.anni[budgetYear].stima : null, ponderato: h.ponderato, fatturato: h.anni && h.anni[budgetYear] ? h.anni[budgetYear].fatturato : null, aperte: h.aperte }));
+}
+function trendCardHtml(){
+  const data = trendData(), budget = budgetOf(budgetYear);
+  const head = `<h3 style="margin-bottom:4px;">Andamento nel tempo</h3>
+    <div class="fc-note" style="margin-bottom:10px;">Ogni mese l'app registra la situazione del forecast: così vedi se la previsione cresce o cala.</div>`;
+  if(!data.length) return `<div class="card" id="fcTrend" style="margin-top:14px;">${head}<div class="fc-note">Il primo punto viene registrato tra pochi secondi, appena i dati sono caricati.</div></div>`;
+  const vals = data.flatMap(d=>[d.stima, d.ponderato]).filter(v=>v!=null);
+  const max = niceMax(Math.max(...vals, budget||0) * 1.05);
+  const n = data.length, pad = 6;
+  const xp = i=>n===1 ? 50 : pad + i*(100-2*pad)/(n-1);       // percentuale della larghezza
+  const yp = v=>100 - v*100/max;                               // percentuale dell'altezza
+  const line = key=>{ const pts = data.map((d,i)=>d[key]==null ? null : `${xp(i)*10},${yp(d[key])*2}`).filter(Boolean); return pts.length>1 ? `<polyline class="trend-line ${key}" points="${pts.join(' ')}" vector-effect="non-scaling-stroke"/>` : ''; };
+  const dots = key=>data.map((d,i)=>d[key]==null ? '' : `<span class="trend-dot ${key}" style="left:${xp(i)}%;top:${yp(d[key])}%;"></span>`).join('');
+  const ticks = [0, 0.5, 1].map(f=>`<line class="trend-grid" x1="0" x2="1000" y1="${yp(max*f)*2}" y2="${yp(max*f)*2}" vector-effect="non-scaling-stroke"/>`).join('');
+  const yLabels = [0, 0.5, 1].map(f=>`<span class="trend-ylab" style="top:${yp(max*f)}%;">${eurShort(max*f)}</span>`).join('');
+  const step = Math.ceil(n/8);
+  const xLabels = data.map((d,i)=>i%step && i!==n-1 ? '' : `<span style="left:${xp(i)}%;">${monthShort(d.mese)}</span>`).join('');
+  const hits = data.map((d,i)=>`<div class="trend-hit" data-trend-i="${i}" style="left:${n===1 ? 0 : (i===0 ? 0 : (xp(i-1)+xp(i))/2)}%;width:${n===1 ? 100 : ((i===n-1 ? 100 : (xp(i)+xp(i+1))/2) - (i===0 ? 0 : (xp(i-1)+xp(i))/2))}%;"></div>`).join('');
+  const last = data[n-1];
+  return `<div class="card" id="fcTrend" style="margin-top:14px;">${head}
+    <div class="trend-legend">
+      <span><i class="trend-sw stima"></i>Fatturato stimato ${budgetYear}${last.stima!=null ? ` <strong>${eurShort(last.stima)}</strong>` : ''}</span>
+      <span><i class="trend-sw ponderato"></i>Forecast ponderato (tutte le aperte) <strong>${eurShort(last.ponderato)}</strong></span>
+      ${budget ? `<span><i class="trend-sw budget"></i>Budget ${budgetYear} <strong>${eurShort(budget)}</strong></span>` : ''}
+    </div>
+    <div class="trend">
+      <div class="trend-plot">
+        <svg viewBox="0 0 1000 200" preserveAspectRatio="none" aria-hidden="true">${ticks}
+          ${budget ? `<line class="trend-budget" x1="0" x2="1000" y1="${yp(budget)*2}" y2="${yp(budget)*2}" vector-effect="non-scaling-stroke"/>` : ''}
+          ${line('ponderato')}${line('stima')}</svg>
+        ${yLabels}${dots('ponderato')}${dots('stima')}${hits}
+        <div class="trend-tip hidden" id="trendTip"></div>
+      </div>
+      <div class="trend-x">${xLabels}</div>
+    </div>
+    ${n===1 ? '<div class="fc-note" style="margin-top:6px;">Per ora c\'è solo il mese in corso: la linea si forma dal mese prossimo.</div>' : ''}
+    <details class="trend-table"><summary class="fc-note">Vedi i valori</summary>
+      <div class="rep-table"><div class="trend-trow trend-th"><span>Mese</span><span>Fatturato stimato ${budgetYear}</span><span>di cui fatturato</span><span>Forecast ponderato</span><span>Aperte</span></div>
+      ${data.slice().reverse().map(d=>`<div class="trend-trow"><span>${monthLabel(d.mese)}</span><span>${fmtEuro(d.stima)}</span><span>${fmtEuro(d.fatturato)}</span><span>${fmtEuro(d.ponderato)}</span><span>${d.aperte ?? '—'}</span></div>`).join('')}</div>
+    </details>
+  </div>`;
+}
+function bindTrend(){
+  const tip = document.getElementById('trendTip');
+  if(!tip) return;
+  const data = trendData();
+  const show = el=>{
+    const d = data[+el.dataset.trendI]; if(!d) return;
+    tip.innerHTML = `<strong>${esc(monthLabel(d.mese))}</strong>
+      <div><i class="trend-sw stima"></i>Fatturato stimato ${budgetYear}: ${fmtEuro(d.stima)}</div>
+      <div><i class="trend-sw ponderato"></i>Forecast ponderato: ${fmtEuro(d.ponderato)}</div>
+      <div class="fc-note">di cui fatturato: ${fmtEuro(d.fatturato)} · ${d.aperte ?? 0} commesse aperte</div>`;
+    tip.classList.remove('hidden');
+    const plot = el.parentElement.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const cx = r.left + r.width/2 - plot.left;
+    tip.style.left = Math.max(0, Math.min(plot.width - tip.offsetWidth, cx - tip.offsetWidth/2)) + 'px';
+    document.querySelectorAll('.trend-hit.on').forEach(h=>h.classList.remove('on')); el.classList.add('on');
+  };
+  document.querySelectorAll('.trend-hit').forEach(el=>{
+    el.addEventListener('mouseenter', ()=>show(el));
+    el.addEventListener('click', ()=>show(el));
+  });
+  document.querySelector('.trend-plot')?.addEventListener('mouseleave', ()=>{ tip.classList.add('hidden'); document.querySelectorAll('.trend-hit.on').forEach(h=>h.classList.remove('on')); });
 }
 
 // ---------------------------------------------------------------------------
@@ -1450,6 +1775,7 @@ function forecastView(){
     <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Commesse aperte con la probabilità di chiusura che stimi: il valore ponderato (offerta × probabilità) dà un obiettivo verosimile su ciò che oggi è in corso. Per ogni commessa puoi indicare come si distribuirà il fatturato tra quest'anno e i prossimi.</div>
     <div id="fcSummary">${forecastSummaryHtml()}</div>
     ${budgetCardHtml()}
+    ${trendCardHtml()}
     <div class="card" style="margin-top:14px;">
       <h3>Forecast ponderato per anno</h3>
       <div class="fc-note" style="margin-bottom:6px;">Ogni commessa aperta è divisa sugli anni secondo la ripartizione indicata qui sotto; dentro l'anno, per trimestre di chiusura prevista.</div>
@@ -1486,6 +1812,7 @@ function bindForecast(){
   document.getElementById('fcSort').addEventListener('change', e=>{ forecastSort = e.target.value; renderMain(); });
   document.getElementById('fcPdfBtn').addEventListener('click', e=>exportForecastPdf(e.currentTarget));
   bindBudget();
+  bindTrend();
   document.querySelectorAll('#fcRows [data-open-project], #fcShipRows [data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   const fail = e=>alert('Errore nel salvataggio: '+(e.message||e.code||''));
   bindSplits(fail);
@@ -1551,6 +1878,7 @@ function canAutoRender(){
 }
 function onProjectsSnapshot(snap){
   projects = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  projectsSeen = true; scheduleForecastSnapshot();
   if(canAutoRender()) renderMain();
 }
 // Una fase conta come raggiunta solo se la sua data e' oggi o passata (le date future sono "previste").
@@ -3287,7 +3615,9 @@ function agendaView(){
     <div class="card">
       <h3>Follow-up da fare${dueFU.length?` (${dueFU.length} scaduti)`:''}</h3>
       ${fuHtml}
-    </div>`;
+    </div>
+    ${todoCardHtml()}
+    ${completeCardHtml()}`;
 }
 
 function followupView(){
