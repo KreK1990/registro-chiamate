@@ -241,6 +241,7 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .portal-vol span{font-size:12px;color:var(--muted);}
 .portal-addr{font-size:13px;margin-top:2px;}
 .portal-note{margin-top:8px;}
+.ai-prio.warn{color:var(--danger);border-color:var(--danger);}
 .portal-match{margin-top:8px;padding:6px 10px;border-left:3px solid var(--brand-yellow);background:var(--bg);font-size:13px;display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center;}
 .portal-link-box{margin-top:8px;display:grid;gap:6px;max-width:560px;}
 .portal-link-results{display:flex;flex-direction:column;gap:4px;align-items:flex-start;}
@@ -391,6 +392,7 @@ details[open] > summary .part-toggle::before{content:"\25BE  ";}
 .ptrack.lost .pt-dot.current{box-shadow:none;}
 
 .proj-head{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start;}
+@media (max-width:980px){ .proj-head{grid-template-columns:minmax(0,1fr);} .proj-head .proj-map{height:220px;} }
 .proj-head .proj-map{margin-top:0;height:230px;}
 .dash-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:6px;}
 .dash-legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;border-radius:2px;}
@@ -2201,7 +2203,7 @@ function onPortalSnapshot(snap){
 }
 function onPortalImportSnapshot(snap){
   portalImport = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
-  if((view==='portal' || view==='detail') && canAutoRender() && !portalBusy) renderMain();
+  if((view==='portal' || view==='detail' || view==='projectDetail') && canAutoRender() && !portalBusy) renderMain();
 }
 function startPortalImport(){
   if(portalImportStarted) return;
@@ -2212,7 +2214,7 @@ function startPortalImport(){
 const isFollowed = pid=>{ const s = portalSaved.get(pid); return !!(s && s.stato==='seguito'); };
 function portalRow(p, extra){
   const ix = extra.ix, matches = (p.soggetti||[]).map(s=>({ s, m: portalMatch(s, ix) })), noti = matches.filter(x=>x.m);
-  return { p, matches, noti, proj: portalProjectOf(p.id), prov: portalProv(p), ...extra, ...portalScore(p, noti.length>0) };
+  return { p, matches, noti, proj: portalProjectOf(p.id), projs: portalProjectsOf(p.id), prov: portalProv(p), ...extra, ...portalScore(p, noti.length>0) };
 }
 function portalExamRows(){
   if(!portalImport) return [];
@@ -2249,7 +2251,7 @@ function portalCardHtml(r){
     <div class="portal-head">
       <div style="min-width:0;"><span class="portal-stars" title="Punteggio">${r.stelle ? stars : '–'}</span>
         <strong>${esc(p.titolo)}</strong> <span class="fc-addr">· ${esc(p.comune)}${r.prov ? ` (${r.prov})` : ''}</span>
-        ${r.nuovo ? '<span class="ai-prio alta">nuovo</span>' : ''}${r.proj ? `<span class="ai-prio">progetto ${esc(r.proj.codice||'')}</span>` : ''}</div>
+        ${r.nuovo ? '<span class="ai-prio alta">nuovo</span>' : ''}${(r.projs||[]).map(pr=>`<span class="ai-prio">progetto ${esc(pr.codice||'')}</span>`).join('')}${(r.projs||[]).length > 1 ? '<span class="ai-prio warn">collegata a più progetti</span>' : ''}</div>
       <div class="portal-vol">${r.vol!=null ? `<strong>${fmtEuro(r.vol).replace(',00','')}</strong><span>${p.unita} unità · ${p.unita*portalMl()} m</span>` : '<span>unità non indicate</span>'}</div>
     </div>
     ${vc.via ? `<div class="portal-addr"><a href="${mapsUrl({ via:vc.via, citta:vc.citta })}" target="_blank" rel="noopener" class="addr-link">${esc(vc.via)}, ${esc(vc.citta)} · Indicazioni</a></div>` : ''}
@@ -2268,7 +2270,7 @@ function portalCardHtml(r){
       ${followed ? `<button class="btn secondary small" data-portal-unfollow="${p.id}">Non seguire più</button>`
         : r.scartato ? `<button class="btn secondary small" data-portal-discard="${p.id}|0">Ripristina</button>`
         : `<button class="btn small" data-portal-follow="${p.id}">Da seguire</button><button class="btn secondary small" data-portal-discard="${p.id}|1">Scarta</button>`}
-      ${r.proj ? `<button class="btn secondary small" data-open-project="${r.proj.id}">Apri progetto</button><button class="btn secondary small" data-portal-unlink="${p.id}">Scollega</button>` : `<button class="btn secondary small" data-portal-linkopen="${p.id}">Collega a un progetto…</button><button class="btn secondary small" data-portal-project="${p.id}">Crea progetto</button>`}
+      ${r.proj ? (r.projs||[r.proj]).map(pr=>`<button class="btn secondary small" data-open-project="${pr.id}">Apri ${esc(pr.codice||'progetto')}</button><button class="btn secondary small" data-portal-unlink="${p.id}|${pr.id}">Scollega ${esc(pr.codice||'')}</button>`).join('') : `<button class="btn secondary small" data-portal-linkopen="${p.id}">Collega a un progetto…</button><button class="btn secondary small" data-portal-project="${p.id}">Crea progetto</button>`}
     </div>
   </div>`;
 }
@@ -2570,8 +2572,8 @@ async function portalLink(pid, projId){
   try{ await db.collection('projects').doc(pr.id).update({ portaleIds: [...new Set([...projectPortalIds(pr), pid])], updatedAt: Date.now() }); }
   catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
 }
-async function portalUnlink(pid){
-  const pr = portalProjectOf(pid); if(!pr) return;
+async function portalUnlink(pid, projId){
+  const pr = projId ? projects.find(x=>x.id===projId) : portalProjectOf(pid); if(!pr) return;
   try{ await db.collection('projects').doc(pr.id).update({ portaleIds: projectPortalIds(pr).filter(x=>x!==pid), ...(pr.portaleId===pid ? { portaleId:'' } : {}), updatedAt: Date.now() }); }
   catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
 }
@@ -2582,7 +2584,7 @@ function onPortalLinkClick(e){
   if(t.dataset.portalLink){ const [pid, projId] = t.dataset.portalLink.split('|'); t.disabled = true; portalLink(pid, projId); return; }
   if(t.dataset.portalLinkopen){ portalLinking = t.dataset.portalLinkopen; portalLinkQ = ''; renderMain(); const i = document.querySelector('[data-portal-linksearch]'); if(i) i.focus(); return; }
   if(t.hasAttribute('data-portal-linkcancel')){ portalLinking = null; portalLinkQ = ''; renderMain(); return; }
-  if(t.dataset.portalUnlink){ t.disabled = true; portalUnlink(t.dataset.portalUnlink); }
+  if(t.dataset.portalUnlink){ t.disabled = true; const [pid, projId] = t.dataset.portalUnlink.split('|'); portalUnlink(pid, projId); }
 }
 function onPortalLinkInput(e){
   const i = e.target.closest && e.target.closest('[data-portal-linksearch]');
@@ -2590,6 +2592,31 @@ function onPortalLinkInput(e){
   portalLinkQ = i.value;
   const box = document.getElementById('plr-'+i.dataset.portalLinksearch);
   if(box) box.innerHTML = portalLinkResults(portalLinkQ, i.dataset.portalLinksearch);
+}
+
+// Scheda progetto: riquadro "NII Progetti" con le schede del portale collegate (dati del
+// cantiere, Apri scheda, Scollega) e avviso se una scheda e' collegata anche ad altri progetti.
+function portalProjectsOf(pid){ return projects.filter(x=>projectPortalIds(x).includes(pid)); }
+function projectPortalCardHtml(pr){
+  const ids = projectPortalIds(pr);
+  if(!ids.length) return '';
+  if(!portalImportStarted) startPortalImport();
+  return `<div class="card">
+    <h3>NII Progetti (${ids.length})</h3>
+    ${ids.map(pid=>{
+      const p = portalFindProject(pid), others = portalProjectsOf(pid).filter(x=>x.id!==pr.id);
+      const vc = p ? portalViaCitta(p) : null, sc = p ? portalScore(p, false) : null;
+      return `<div class="todo-row"><div class="todo-main">
+        ${p ? `<span class="name-link" data-portal-goto="${isFollowed(pid) ? 'seguiti' : 'esamina'}|${pid}">${esc(p.titolo)}</span><span class="fc-addr"> · ${esc(vc.via ? vc.via+', '+vc.citta : p.comune)}</span>
+          <div class="todo-sub">${esc(['scheda '+pid, p.fase && 'Fase '+p.fase, p.intervento, p.unita ? p.unita+' unità' : '', sc.vol!=null ? 'volume stimato '+fmtEuro(sc.vol).replace(',00','') : '', isFollowed(pid) ? 'cantiere seguito' : ''].filter(Boolean).join(' · '))}</div>`
+          : `<strong>Scheda ${esc(pid)}</strong><div class="todo-sub">${portalImport ? 'Non presente nell\'importazione attuale del portale.' : 'Caricamento…'}</div>`}
+        ${others.length ? `<div class="pdf-warn" style="font-size:12.5px;">Collegata anche a: ${others.map(o=>esc(portalProjectLabel(o))).join('; ')}</div>` : ''}
+      </div><div class="todo-actions">
+        ${p ? `<button type="button" class="btn secondary small" data-portal-goto="${isFollowed(pid) ? 'seguiti' : 'esamina'}|${pid}">Apri scheda</button>` : ''}
+        <button type="button" class="btn secondary small" data-portal-unlink="${pid}|${pr.id}">Scollega</button>
+      </div></div>`;
+    }).join('')}
+  </div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -3369,7 +3396,6 @@ function projectDetailView(){
         <div><label>Importo offerta</label><div style="font-size:16px;font-weight:600;">${fmtEuro(p.importoOfferta)}</div></div>
         <div><label>Importo deliberato</label><div style="font-size:16px;font-weight:600;">${f.confermaOrdine ? (p.importoDeliberato!=null ? fmtEuro(p.importoDeliberato) : '<span style="color:var(--danger);font-size:13px;">da confermare</span>') : '—'}</div></div>
         ${!isLost(p) && !isWon(p) && p.importoOfferta!=null ? `<div><label>Forecast</label><div style="font-size:16px;font-weight:600;">${fmtEuro(forecastWeighted(p))} <span style="font-size:12.5px;color:var(--muted);font-weight:400;">${forecastProb(p).value}%${forecastProb(p).suggested ? ' suggerita' : ''}${p.chiusuraPrevista ? ' · chiusura ' + monthLabel(p.chiusuraPrevista) : ''}</span></div></div>` : ''}
-        ${projectPortalIds(p).length ? `<div><label>Portale NII</label><div style="font-size:14px;">${projectPortalIds(p).map(pid=>`<a href="#" class="addr-link" data-portal-goto="${isFollowed(pid) ? 'seguiti' : 'esamina'}|${pid}">scheda ${esc(pid)}</a>`).join(' · ')}</div></div>` : ''}
         ${p.offertaUrl ? `<div><label>Offerta</label><div style="font-size:14px;"><a href="${esc(p.offertaUrl)}" target="_blank" rel="noopener" class="addr-link">Apri il PDF dell'offerta</a></div></div>` : ''}
       </div>
       ${p.note ? `<div style="margin-top:10px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(p.note)}</div>` : ''}
@@ -3415,6 +3441,7 @@ function projectDetailView(){
     </div>
     ${ordersCardHtml(p)}
     ${attachmentsCardHtml(p)}
+    ${projectPortalCardHtml(p)}
     <div class="card">
       <h3>Chiamate e incontri collegati (${linked.length})</h3>
       ${linked.length ? linked.map(k=>{ const c = byId[k.contactId]||{}; return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">

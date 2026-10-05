@@ -230,7 +230,9 @@ Campi principali:
   propone i progetti simili (stesso comune obbligatorio, poi stessa via +3, parola del nome nella
   descrizione +2, stesso professionista +3; soglia 4, "molto probabilmente" da 8); "Collega a un
   progetto…" cerca per ID/nome/via; i collegati escono da "Da esaminare" (casella per vederli);
-  nella scheda progetto la voce "Portale NII" riporta alla scheda del cantiere. "Crea contatto" / "Crea progetto" aprono i moduli
+  nella scheda progetto il riquadro "NII Progetti" (`projectPortalCardHtml`) elenca le schede
+  collegate con dati, "Apri scheda", "Scollega" e avviso se collegate anche ad altri progetti; sul
+  cantiere compaiono tutti i progetti collegati (`portalProjectsOf`), ognuno con Apri/Scollega. "Crea contatto" / "Crea progetto" aprono i moduli
   precompilati (`__returnToPortal`, `projects.portaleId`).
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
