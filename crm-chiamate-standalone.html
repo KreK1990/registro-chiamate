@@ -218,6 +218,11 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .pdf-info{border-left:3px solid var(--accent);background:var(--panel);padding:8px 12px;margin-bottom:10px;font-size:13px;display:grid;gap:4px;}
 .pdf-warn{color:var(--danger);font-weight:600;}
 .todo-section{margin-top:10px;}
+.todo-act{font-size:12.5px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap;}
+.todo-act .name-link{font-weight:600;}
+.todo-act .btn.small{padding:2px 8px;font-size:12px;}
+.todo-act.none{font-style:italic;}
+.todo-linked{color:var(--accent);font-weight:600;}
 .todo-section + .todo-section{margin-top:16px;}
 .todo-title{font-weight:700;font-size:14px;color:var(--accent);}
 .todo-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px 14px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border);}
@@ -1474,11 +1479,30 @@ function snoozed(x){ return !!x.rimandaAl && x.rimandaAl > todayISO(); }
 function lastPhaseDate(p){ const t = todayISO(); return PROJECT_PHASES.map(ph=>p.fasi && p.fasi[ph.key]).filter(d=>d && d<=t).sort().pop() || ''; }
 function openProjects(){ return projects.filter(p=>!isLost(p) && !isWon(p)); }
 
+// Ultima telefonata (data della chiamata) e ultimo incontro (appuntamento passato) con le
+// persone del progetto, collegati o no al progetto.
+function projectContactActivity(p){
+  const ids = new Set((p.partecipanti||[]).map(x=>x.contactId)), now = new Date(), t = todayISO();
+  const mine = calls.filter(k=>ids.has(k.contactId));
+  return {
+    lastCall: mine.filter(k=>k.data && k.data <= t).sort((a,b)=>b.data.localeCompare(a.data))[0] || null,
+    lastMeet: mine.filter(k=>k.appuntamento && new Date(k.appuntamento) <= now).sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento))[0] || null
+  };
+}
+// Ultima telefonata o incontro indicati come relativi al progetto (calls.progetti): contano
+// come contatto sulla commessa, il conteggio per il sollecito riparte da li'.
+function linkedActivityDate(p){
+  const now = new Date(), t = todayISO();
+  return calls.filter(k=>(k.progetti||[]).includes(p.id))
+    .flatMap(k=>[k.data && k.data <= t ? k.data : '', k.appuntamento && new Date(k.appuntamento) <= now ? k.appuntamento.slice(0,10) : ''])
+    .filter(Boolean).sort().pop() || '';
+}
 function offersToChase(){
   const t = todayISO(), n = todoDays('sollecito');
   return openProjects().filter(p=>phaseDone(p, 'offertaPresentata') && !snoozed(p)).map(p=>{
-    const since = [p.fasi.offertaPresentata, p.sollecitatoIl||''].sort().pop();
-    return { p, since, days: daysBetween(since, t) };
+    const sources = [[p.fasi.offertaPresentata, 'offerta presentata'], [p.sollecitatoIl||'', 'sollecitata'], [linkedActivityDate(p), 'ultimo contatto sulla commessa']];
+    const [since, label] = sources.filter(s=>s[0]).sort((a,b)=>a[0].localeCompare(b[0])).pop();
+    return { p, since, label, days: daysBetween(since, t) };
   }).filter(x=>x.days >= n).sort((a,b)=>b.days - a.days);
 }
 function stalledProjects(){
@@ -1546,13 +1570,28 @@ function todoPeople(p){
   return (p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).slice(0,2).map(c=>
     `<div class="todo-sub"><span class="name-link" data-contact-id="${c.id}">${esc(fullName(c))}</span>${c.azienda ? ` · ${esc(c.azienda)}` : ''} ${phoneLinks(c,'font-size:12.5px;')}</div>`).join('');
 }
+function todoActivityHtml(p){
+  const { lastCall, lastMeet } = projectContactActivity(p);
+  if(!lastCall && !lastMeet) return `<div class="todo-act none">Nessuna telefonata o incontro registrato con le persone del progetto.</div>`;
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  const line = (k, kind, date)=>{
+    const linked = (k.progetti||[]).includes(p.id), d = daysBetween(date, todayISO());
+    return `<div class="todo-act">
+      <span class="name-link" data-appt-call-id="${k.id}">${kind} ${fmtDate(date)}</span> con ${esc(fullName(byId[k.contactId]||{}))} · ${d===0 ? 'oggi' : d===1 ? 'ieri' : `${d} giorni fa`}${k.esito && kind==='Telefonata' ? ` (${esc(k.esito)})` : ''}
+      ${linked ? '<span class="todo-linked">riguardava questa commessa</span>' : `<button class="btn secondary small" data-todo-link="${k.id}" data-todo-proj="${p.id}">Riguardava questa commessa</button>`}
+    </div>`;
+  };
+  return (lastCall ? line(lastCall, 'Telefonata', lastCall.data) : '')
+    + (lastMeet ? line(lastMeet, 'Incontro', lastMeet.appuntamento.slice(0,10)) : '');
+}
 function todoCardHtml(){
   const chase = offersToChase(), stalled = stalledProjects(), recall = contactsToRecall();
   const total = chase.length + stalled.length + recall.length;
   const section = (title, hint, rows)=>rows ? `<div class="todo-section"><div class="todo-title">${title}</div><div class="fc-note" style="margin:-2px 0 6px;">${hint}</div>${rows}</div>` : '';
-  const chaseRows = chase.map(({p, since, days})=>`<div class="todo-row">
+  const chaseRows = chase.map(({p, since, label, days})=>`<div class="todo-row">
       <div class="todo-main">${todoProjLine(p)}
-        <div class="todo-sub">${p.sollecitatoIl && p.sollecitatoIl===since ? 'sollecitata' : 'offerta presentata'} il ${fmtDate(since)} · <strong>${days} giorni</strong>${p.importoOfferta!=null ? ` · ${fmtEuro(p.importoOfferta)}` : ''}</div>
+        <div class="todo-sub">${label} il ${fmtDate(since)} · <strong>${days} giorni</strong>${p.importoOfferta!=null ? ` · ${fmtEuro(p.importoOfferta)}` : ''}</div>
+        ${todoActivityHtml(p)}
         ${todoPeople(p)}</div>
       <div class="todo-actions"><button class="btn small" data-todo-chased="${p.id}">Sollecitata</button><button class="btn secondary small" data-todo-snooze-p="${p.id}">Rimanda 7 gg</button></div>
     </div>`).join('');
@@ -1594,6 +1633,13 @@ function bindTodo(main){
   const upd = (col, id, data)=>db.collection(col).doc(id).update({ ...data, updatedAt:Date.now() }).catch(fail);
   main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', e=>{ e.stopPropagation(); openProject(el.dataset.openProject); }));
   main.querySelectorAll('[data-todo-chased]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd('projects', b.dataset.todoChased, { sollecitatoIl: todayISO() }); }));
+  // Telefonata o incontro relativi alla commessa: il progetto si aggiunge a calls.progetti.
+  main.querySelectorAll('[data-todo-link]').forEach(b=>b.addEventListener('click', e=>{
+    e.stopPropagation(); b.disabled = true;
+    const k = calls.find(x=>x.id===b.dataset.todoLink); if(!k) return;
+    const progetti = [...new Set([...(k.progetti||[]), b.dataset.todoProj])];
+    db.collection('calls').doc(k.id).update({ progetti }).catch(fail);
+  }));
   main.querySelectorAll('[data-todo-snooze-p]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd('projects', b.dataset.todoSnoozeP, { rimandaAl: addDaysISO(todayISO(), 7) }); }));
   main.querySelectorAll('[data-todo-snooze-c]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd('contacts', b.dataset.todoSnoozeC, { rimandaAl: addDaysISO(todayISO(), 30) }); }));
   main.querySelectorAll('[data-todo-call]').forEach(b=>b.addEventListener('click', ()=>{

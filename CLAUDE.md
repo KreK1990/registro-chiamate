@@ -140,7 +140,7 @@ Campi principali:
   su richiesta dell'utente: eventuali `mailOggetto`/`mailTesto` in settings sono inutilizzati.)
 - **Oggi → "Da fare"** (blocco "Da fare (in Oggi)", prima del Forecast): calcolato dai dati.
   Offerte da sollecitare (offertaPresentata raggiunta, non confermata ne' persa, da
-  `promemoria.sollecito` giorni contati dall'ultimo `projects.sollecitatoIl`); commesse ferme
+  `promemoria.sollecito` giorni contati dall'ultimo `projects.sollecitatoIl` o dall'ultima telefonata/incontro collegati al progetto in `calls.progetti` (`linkedActivityDate`); per ogni offerta l'ultima telefonata e l'ultimo incontro con i partecipanti (`projectContactActivity`), con pulsante "Riguardava questa commessa" che aggiunge il progetto a `calls.progetti`); commesse ferme
   (prima dell'offerta, nessuna fase da `promemoria.ferma` giorni); da ricontattare (clienti con
   chiamate, senza progetti in corso o acquisiti, senza follow-up o appuntamenti futuri, senza
   "Non interessato" nell'ultimo anno, fermi da `promemoria.ricontatto` giorni o
