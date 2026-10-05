@@ -239,6 +239,7 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .portal-vol{text-align:right;white-space:nowrap;}
 .portal-vol strong{display:block;font-size:17px;color:var(--accent);}
 .portal-vol span{font-size:12px;color:var(--muted);}
+.portal-addr{font-size:13px;margin-top:2px;}
 .portal-desc{font-size:13px;margin-top:6px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
 .portal-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 16px;margin-top:8px;font-size:13px;}
 .portal-person .btn.small{padding:2px 8px;font-size:12px;}
@@ -2005,6 +2006,7 @@ function aiCardHtml(){
 // affidabile (pdf.js rinumera i font pagina per pagina).
 const PORTAL_ROLE = /^(Committenza|Progettazione|Progetto (di|Impianti|Strutture|esecutivo|definitivo)|Appalto|Responsabile|Direzione|Coordinatore|Contatto|Masterplan|Studio di Fattibilit|Promotore|Consulenza|Propriet|Stazione Appaltante|VAS|Commercializzazione|Sviluppatore|Investitore|General Contractor|Concessionari|Gestione|Collaud|Subappalto|Fornitur)/i;
 const PORTAL_SECTIONS = /^(Stato del Progetto|Livello di approfondimento|Categorie|Dettagli)$/;
+const PORTAL_HEAD_Y = 755;   // sopra questa altezza: riquadro di titolo e indirizzo
 function portalPageItems(items){
   return items.filter(it=>it.str && it.str.trim()).map(it=>({ x: it.transform[4], y: it.transform[5], s: it.str.trim(), bold: /_f3$/.test(it.fontName||'') }));
 }
@@ -2029,21 +2031,28 @@ function parsePortalPages(pages){   // pages = [[item...], ...] gia' passati da 
     const body = items.filter(it=>it.y >= 90);
     const left = body.filter(it=>it.x < 330), right = body.filter(it=>it.x >= 330);
     const lrows = portalRows(left);
-    // nuova scheda: titolo in alto a sinistra (y > 770) in grassetto
-    const titleRows = lrows.filter(r=>r.y > 770);
+    // nuova scheda: riquadro in alto a sinistra con titolo e indirizzo del cantiere (che puo'
+    // andare a capo); nei progetti PNRR sopra c'e' una fascia che sposta tutto piu' in basso.
+    const headRows = lrows.filter(r=>r.y > PORTAL_HEAD_Y);
+    const pnrr = headRows.some(r=>/^PNRR\b/.test(r.items[0].s));
+    const titleRows = headRows.filter(r=>!/^PNRR\b/.test(r.items[0].s));
     if(titleRows.length && (!cur || cur.closed)){
       finish();
       // in alto a destra: comune (anche su piu' righe) e zona ("Piemonte - Cuneo")
-      const rt = portalRows(right.filter(it=>it.y > 770)).map(r=>r.items.map(i=>i.s).join(' '));
+      const rt = portalRows(right.filter(it=>it.y > PORTAL_HEAD_Y)).map(r=>r.items.map(i=>i.s).join(' '));
       const iz = rt.findIndex(t=>/ - /.test(t));
-      cur = { titolo: titleRows[0].items.map(i=>i.s).join(' '), indirizzo: titleRows.slice(1).map(r=>r.items.map(i=>i.s).join(' ')).join(' '),
+      // le righe dall'indirizzo in poi hanno CAP o "( XX )"; quelle prima sono il titolo (anche su due righe)
+      const hr = titleRows.map(r=>r.items.map(i=>i.s).join(' '));
+      let ia = hr.findIndex((s, i)=>i>0 && /\(\s*[A-Z]{0,2}\s*\)?$|\b\d{5}\b/.test(s));
+      if(ia<0) ia = hr.length;
+      cur = { titolo: hr.slice(0, ia).join(' '), pnrr, indirizzo: hr.slice(ia).join(' ').replace(/\s+/g, ' '),
         comune: (iz>0 ? rt.slice(0, iz) : rt.slice(0, 1)).join(' '), zona: iz>=0 ? rt[iz] : (rt[1]||''),
         descrizione: [], soggetti: [], stato: [], categorie: [], dettagli: {}, pagina: pi+1 };
     }
     if(!cur) return;
     // colonna sinistra: descrizione (x<120, prima dei ruoli), ruoli (grassetto x<120), soggetti (x>=120)
     let ent = null, lastY = null, lastHeaderY = null;
-    lrows.filter(r=>r.y <= 770).forEach(r=>{
+    lrows.filter(r=>r.y <= PORTAL_HEAD_Y).forEach(r=>{
       const first = r.items[0];
       const line = r.items.map(i=>i.s).join(' ');
       if(first.x < 120 && line.length <= 60 && PORTAL_ROLE.test(line)){
@@ -2060,7 +2069,7 @@ function parsePortalPages(pages){   // pages = [[item...], ...] gia' passati da 
     });
     // colonna destra: sezioni con intestazione centrata in grassetto
     let sect = null;
-    portalRows(right.filter(it=>it.y <= 770)).forEach(r=>{
+    portalRows(right.filter(it=>it.y <= PORTAL_HEAD_Y)).forEach(r=>{
       const t = r.items.map(i=>i.s);
       if(r.items.length===1 && PORTAL_SECTIONS.test(t[0])){ sect = t[0]; return; }
       if(sect==='Stato del Progetto') cur.stato.push(t.join(' '));
@@ -2107,7 +2116,7 @@ function portalNormalize(p){
   const d = p.dettagli;
   const statoTxt = p.stato.join(' ');
   return {
-    id: p.id || '', titolo: p.titolo, indirizzo: p.indirizzo, comune: p.comune, zona: p.zona,
+    id: p.id || '', titolo: p.titolo, pnrr: !!p.pnrr, indirizzo: p.indirizzo, comune: p.comune, zona: p.zona,
     descrizione: p.descrizione.join(' '),
     fase: (/Fase\s+(\S+)/.exec(statoTxt) || [])[1] || '',
     stato: p.stato.join(' · '),
@@ -2133,7 +2142,11 @@ function portalEuro(){ return Number(appSettings.portaleEuro) > 0 ? Number(appSe
 function portalProv(p){ return (/\(\s*([A-Z]{2})\s*\)/.exec(p.indirizzo||'') || [])[1] || ''; }
 function portalViaCitta(p){
   const m = /^(.*?)\s*\d{5}\s+(.+?)\s*\(\s*[A-Z]{2}\s*\)/.exec(p.indirizzo||'');
-  return m ? { via: m[1].trim(), citta: m[2].trim() } : { via:'', citta: p.comune||'' };
+  if(m) return { via: m[1].trim(), citta: m[2].trim() };
+  // senza CAP: "C.so Giulio Cesare Torino ( TO )" -> via = testo prima del comune
+  const n = /^(.*?)\s*\(\s*[A-Z]{2}\s*\)/.exec(p.indirizzo||''), comune = p.comune||'';
+  if(n && comune && n[1].toLowerCase().endsWith(comune.toLowerCase())) return { via: n[1].slice(0, -comune.length).trim(), citta: comune };
+  return { via:'', citta: comune };
 }
 // --- confronto con la rubrica ---
 const PORTAL_TITLES = { 'arch.':'Architetto', 'ing.':'Ingegnere', 'geom.':'Geometra', 'p.i.':'Perito industriale', 'per.ind.':'Perito industriale', 'dott.':'', 'avv.':'Avvocato', 'arch':'Architetto', 'ing':'Ingegnere', 'geom':'Geometra' };
@@ -2191,7 +2204,7 @@ function portalFiltered(rows){
     if(f.fase && f.fase!=='presto' && p.fase!==f.fase) return false;
     if(f.prov && r.prov!==f.prov) return false;
     if(f.minUnita && !(p.unita >= f.minUnita)) return false;
-    if(q && !normName([p.titolo, p.comune, p.descrizione, ...p.soggetti.map(s=>s.nome+' '+(s.altro||[]).join(' '))].join(' ')).includes(q)) return false;
+    if(q && !normName([p.titolo, p.comune, p.indirizzo, p.descrizione, ...p.soggetti.map(s=>s.nome+' '+(s.altro||[]).join(' '))].join(' ')).includes(q)) return false;
     return true;
   }).sort((a,b)=>b.prio - a.prio || (b.p.unita||0) - (a.p.unita||0));
 }
@@ -2213,7 +2226,8 @@ function portalCardHtml(r){
         ${r.nuovo ? '<span class="ai-prio alta">nuovo</span>' : ''}${st==='seguito' ? '<span class="ai-prio alta">da seguire</span>' : ''}${r.proj ? `<span class="ai-prio">progetto ${esc(r.proj.codice||'')}</span>` : ''}</div>
       <div class="portal-vol">${r.vol!=null ? `<strong>${fmtEuro(r.vol).replace(',00','')}</strong><span>${p.unita} unità · ${p.unita*portalMl()} m</span>` : '<span>unità non indicate</span>'}</div>
     </div>
-    <div class="todo-sub">${esc([p.fase && 'Fase '+p.fase, p.intervento, p.valore ? 'valore opera '+fmtEuro(p.valore).replace(',00','') : '', p.inizio && p.inizio!=='ND' ? 'inizio '+p.inizio : '', p.dataNotizia && 'notizia del '+p.dataNotizia].filter(Boolean).join(' · '))}</div>
+    ${(()=>{ const vc = portalViaCitta(p); return vc.via ? `<div class="portal-addr"><a href="${mapsUrl({ via:vc.via, citta:vc.citta })}" target="_blank" rel="noopener" class="addr-link">${esc(vc.via)}, ${esc(vc.citta)} · Indicazioni</a></div>` : ''; })()}
+    <div class="todo-sub">${esc([p.pnrr && 'PNRR', p.fase && 'Fase '+p.fase, p.intervento, p.valore ? 'valore opera '+fmtEuro(p.valore).replace(',00','') : '', p.inizio && p.inizio!=='ND' ? 'inizio '+p.inizio : '', p.dataNotizia && 'notizia del '+p.dataNotizia].filter(Boolean).join(' · '))}</div>
     ${p.descrizione ? `<div class="portal-desc">${esc(p.descrizione)}</div>` : ''}
     <div class="portal-people">${r.matches.map(({s, m}, i)=>`<div class="portal-person">
       <span class="fc-note">${esc(s.ruolo || 'Soggetto')}</span>

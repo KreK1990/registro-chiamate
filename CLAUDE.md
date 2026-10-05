@@ -204,7 +204,9 @@ Campi principali:
   ~4 s), senza inviarlo a servizi esterni (il PDF e' coperto da copyright). `parsePortalPages`
   divide le colonne per coordinata x (soggetti a sinistra, stato/categorie/dettagli a destra),
   riconosce le intestazioni dal testo (`PORTAL_ROLE`, il grassetto non e' affidabile) e unisce
-  le pagine con lo stesso "ID Progetto". Volume = unita' abitative x `settings.portaleMl` (10 m)
+  le pagine con lo stesso "ID Progetto". Riquadro in alto (y > `PORTAL_HEAD_Y`): titolo e indirizzo
+  del cantiere (anche su due righe; fascia "PNRR" saltata), indirizzo mostrato nella scheda con
+  "Indicazioni" (`portalViaCitta`, anche senza CAP). Volume = unita' abitative x `settings.portaleMl` (10 m)
   x `settings.portaleEuro` (80 €/m); priorita' pesata per fase (Progettazione 1,2,
   Programmazione 1, Esecuzione 0,6), ristrutturazione 0,5, clienti noti 1,5; stelle da 8.000 e
   25.000. Di default solo nuove costruzioni (l'utente non segue le ristrutturazioni). Soggetti
