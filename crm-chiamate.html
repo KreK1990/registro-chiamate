@@ -1901,12 +1901,14 @@ function mapMissingHtml(){
     return g && g.nf ? { p, why:'indirizzo non trovato: '+a } : null;
   }).filter(Boolean);
   const cliMiss = contacts.map(c=>{ const { a } = contactGeoAddr(c); if(!a) return null; const g = docGeo(c, a); return g && g.nf ? { c, why:'indirizzo non trovato: '+a } : null; }).filter(Boolean);
-  const noAddr = contacts.filter(c=>!fullAddress(c)).length;
+  const noAddrList = contacts.filter(c=>!fullAddress(c)).sort((a,b)=>fullName(a).localeCompare(fullName(b)));
+  const noAddr = noAddrList.length;
   if(!projMiss.length && !cliMiss.length && !noAddr) return '';
   return `<details class="card map-missing" ${projMiss.length ? 'open' : ''}><summary><strong>Non sulla mappa</strong> <span class="fc-note">${projMiss.length} progetti · ${cliMiss.length} clienti con indirizzo non trovato · ${noAddr} contatti senza indirizzo</span></summary>
     ${projMiss.map(x=>`<div class="todo-row"><div class="todo-main"><span class="proj-code">${esc(x.p.codice||'')}</span> <span class="name-link" data-map-project="${x.p.id}">${esc(x.p.nome||'Progetto')}</span><div class="todo-sub">${esc(x.why)}</div></div></div>`).join('')}
     ${cliMiss.map(x=>`<div class="todo-row"><div class="todo-main"><span class="name-link" data-map-contact="${x.c.id}">${esc(fullName(x.c))}</span><div class="todo-sub">${esc(x.why)}</div></div></div>`).join('')}
-    ${noAddr ? `<div class="fc-note" style="margin-top:6px;">${noAddr} contatti non hanno né via né città: per vederli sulla mappa aggiungi l'indirizzo nella loro scheda.</div>` : ''}
+    ${noAddr ? `<div class="fc-note" style="margin-top:6px;">${noAddr} ${noAddr===1 ? 'contatto non ha' : 'contatti non hanno'} né via né città: per vederli sulla mappa aggiungi l'indirizzo nella scheda.</div>
+      ${noAddrList.map(c=>`<div class="todo-row"><div class="todo-main"><span class="name-link" data-map-contact="${c.id}">${esc(fullName(c))}</span>${c.azienda ? `<span class="fc-addr"> · ${esc(c.azienda)}</span>` : ''}<div class="todo-sub">senza indirizzo</div></div></div>`).join('')}` : ''}
   </details>`;
 }
 function lastContactDays(c){ const d = calls.filter(k=>k.contactId===c.id).map(k=>k.data||'').sort().pop(); return d ? daysBetween(d, todayISO()) : null; }
