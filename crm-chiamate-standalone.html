@@ -218,6 +218,23 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .trend-th{font-weight:600;color:var(--muted);}
 .pdf-info{border-left:3px solid var(--accent);background:var(--panel);padding:8px 12px;margin-bottom:10px;font-size:13px;display:grid;gap:4px;}
 .pdf-warn{color:var(--danger);font-weight:600;}
+.foto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;}
+.foto-thumb{position:relative;padding:0;margin:0;border:1px solid var(--border);border-radius:2px;background:var(--bg);aspect-ratio:1/1;overflow:hidden;cursor:pointer;}
+.foto-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.foto-thumb img:not([src]),.foto-thumb img.err{visibility:hidden;}
+.foto-thumb span{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:2px 6px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+body.foto-open{overflow:hidden;}
+.foto-viewer{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;background:#0d1117;color:#fff;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);}
+.foto-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;font-size:13px;}
+.foto-bar span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.foto-stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;touch-action:pan-y pinch-zoom;}
+.foto-stage img{width:100%;height:100%;object-fit:contain;}
+.foto-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:64px;border:none;border-radius:2px;background:rgba(0,0,0,.45);color:#fff;font-size:34px;line-height:1;cursor:pointer;}
+.foto-nav.prev{left:6px;}
+.foto-nav.next{right:6px;}
+.foto-info{background:var(--panel);color:var(--text);padding:10px 14px 12px;}
+.foto-fields{display:flex;gap:8px 12px;flex-wrap:wrap;}
+.foto-fields label{margin-top:0;}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -565,6 +582,7 @@ h2{color:var(--accent);font-weight:800;}
   input[type=date],input[type=time],input[type=datetime-local],input[type=month]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;min-height:40px;text-align:left;}
   input::-webkit-date-and-time-value{text-align:left;}
   .field-row > *{min-width:0;}
+  .foto-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;}
 }
 </style>
 </head>
@@ -1570,6 +1588,7 @@ function settingsView(){
   if(cloud && backupList===null) setTimeout(loadBackupList, 0);
   return `<h2 style="margin-bottom:16px;">Impostazioni</h2>
   ${promemoriaSettingsHtml()}
+  ${photoSettingsHtml()}
   <div class="card">
     <h3>Backup</h3>
     <div class="fc-note" style="margin-bottom:10px;">Excel con contatti, chiamate, progetti e ordini: utile da conservare o da girare al responsabile.</div>
@@ -1588,6 +1607,7 @@ function settingsView(){
 }
 function bindSettings(){
   bindPromemoriaSettings();
+  bindPhotoSettings();
   document.getElementById('excelAllBtn').addEventListener('click', exportAllExcel);
   document.getElementById('backupNowBtn')?.addEventListener('click', e=>backupNow(e.target));
   document.querySelectorAll('[data-backup-date]').forEach(b=>b.addEventListener('click', ()=>downloadBackup(b.dataset.backupDate, b)));
@@ -2140,6 +2160,242 @@ function bindAttachments(p, fail){
       await db.collection('projects').doc(p.id).update({ allegati: (p.allegati||[]).filter(x=>x.id!==a.id), updatedAt: Date.now() });
     }catch(err){ fail(err); }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Foto del cantiere (scheda progetto, solo versione online, Firebase Storage). Le foto si
+// riducono sul dispositivo prima del caricamento (lato lungo e qualita' JPEG da
+// FOTO_QUALITA, scelta in Impostazioni: settings.fotoQualita) e si salva anche un'anteprima
+// da FOTO_THUMB_PX per la griglia. La nuova codifica toglie i dati EXIF (posizione GPS
+// compresa); la data di scatto si legge prima dall'EXIF (o, se manca, dalla data del file).
+// File in users/<uid>/projects/<projectId>/foto/<id>.jpg e <id>-anteprima.jpg, elenco in
+// projects.foto [{id, path, thumb, data, nota, w, h, size, caricatoIl}]. Il visore a schermo
+// intero sta fuori da #main, cosi' gli aggiornamenti in tempo reale non lo chiudono.
+// ---------------------------------------------------------------------------
+const FOTO_QUALITA = {
+  normale: { px:2560, q:0.85, label:'Normale', sub:'2560 px, circa 1 MB a foto' },
+  alta:    { px:4000, q:0.9,  label:'Alta',    sub:'4000 px, circa 2-3 MB a foto' }
+};
+const FOTO_THUMB_PX = 480;
+let fotoBusy = '', fotoViewer = null;   // fotoViewer = { projectId, id, confirmDel }
+const fotoUrls = new Map();             // percorso -> Promise dell'URL di download
+function fotoQualita(){ return FOTO_QUALITA[appSettings.fotoQualita] ? appSettings.fotoQualita : 'normale'; }
+function fotoSorted(p){ return (p.foto||[]).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||'') || (b.id||'').localeCompare(a.id||'')); }
+function fotoUrl(path){
+  if(!fotoUrls.has(path)) fotoUrls.set(path, firebase.storage().ref(path).getDownloadURL().catch(e=>{ fotoUrls.delete(path); throw e; }));
+  return fotoUrls.get(path);
+}
+function fmtBytes(b){ return b>=1073741824 ? (Math.round(b/107374182.4)/10).toLocaleString('it-IT')+' GB' : fmtSize(b); }
+// Data di scatto (DateTimeOriginal) dall'EXIF di un JPEG, 'YYYY-MM-DD'; '' se manca.
+async function exifDate(file){
+  try{
+    const v = new DataView(await file.slice(0, 131072).arrayBuffer());
+    if(v.getUint16(0)!==0xFFD8) return '';
+    let o = 2;
+    while(o + 10 < v.byteLength){
+      const marker = v.getUint16(o), len = v.getUint16(o+2);
+      if((marker & 0xFF00)!==0xFF00) break;
+      if(marker===0xFFE1 && v.getUint32(o+4)===0x45786966){
+        const t = o + 10, le = v.getUint16(t)===0x4949;
+        const u16 = p=>v.getUint16(t+p, le), u32 = p=>v.getUint32(t+p, le);
+        const entry = (ifd, id)=>{ const n = u16(ifd); for(let i=0; i<n; i++){ const e = ifd + 2 + i*12; if(u16(e)===id) return e; } return -1; };
+        const ex = entry(u32(4), 0x8769); if(ex<0) return '';
+        const d = entry(u32(ex+8), 0x9003); if(d<0) return '';
+        const off = t + u32(d+8); let s = '';
+        for(let i=0; i<10; i++) s += String.fromCharCode(v.getUint8(off+i));
+        const m = /^(\d{4}):(\d{2}):(\d{2})$/.exec(s);
+        return m && m[1]!=='0000' ? `${m[1]}-${m[2]}-${m[3]}` : '';
+      }
+      o += 2 + len;
+    }
+  }catch(e){}
+  return '';
+}
+// Foto ridotta (lato lungo maxPx) e anteprima, JPEG. L'orientamento dell'EXIF lo applica il browser.
+async function fotoResize(file, maxPx, quality){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = new Image(); img.src = url;
+    try{ await img.decode(); }catch(e){ throw new Error(`"${file.name}" non è un'immagine leggibile`); }
+    const enc = async (px, q)=>{
+      const s = Math.min(1, px / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth*s), h = Math.round(img.naturalHeight*s);
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      const blob = await new Promise(r=>cv.toBlob(r, 'image/jpeg', q));
+      cv.width = cv.height = 0;   // libera subito la memoria (iPhone)
+      if(!blob) throw new Error(`"${file.name}": conversione non riuscita`);
+      return { blob, w, h };
+    };
+    return { full: await enc(maxPx, quality), thumb: await enc(FOTO_THUMB_PX, 0.75) };
+  }finally{ URL.revokeObjectURL(url); }
+}
+function renderFotoStatus(){ const s = document.getElementById('fotoStatus'); if(s) s.textContent = fotoBusy; }
+// Carica le foto una alla volta e salva l'elenco dopo ognuna: se una non riesce, le precedenti restano.
+async function addProjectPhotos(p, files){
+  const uid = firebase.auth().currentUser.uid, qa = FOTO_QUALITA[fotoQualita()];
+  const added = [];
+  try{ for(let i=0; i<files.length; i++){
+    const f = files[i], tag = files.length > 1 ? `Foto ${i+1} di ${files.length}: ` : '';
+    fotoBusy = tag+'preparazione…'; renderFotoStatus();
+    const r = await fotoResize(f, qa.px, qa.q);
+    const id = 'f'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    const base = `users/${uid}/projects/${p.id}/foto/${id}`;
+    fotoBusy = `${tag}caricamento (${fmtSize(r.full.blob.size)})…`; renderFotoStatus();
+    await firebase.storage().ref(base+'.jpg').put(r.full.blob, { contentType:'image/jpeg' });
+    await firebase.storage().ref(base+'-anteprima.jpg').put(r.thumb.blob, { contentType:'image/jpeg' });
+    const item = { id, path: base+'.jpg', thumb: base+'-anteprima.jpg', data: await exifDate(f) || isoDay(new Date(f.lastModified || Date.now())),
+      nota:'', w:r.full.w, h:r.full.h, size: r.full.blob.size + r.thumb.blob.size, caricatoIl: todayISO() };
+    const fresh = projects.find(x=>x.id===p.id) || p;
+    const list = [...(fresh.foto||[]).filter(x=>!added.some(a=>a.id===x.id)), ...added, item];
+    await db.collection('projects').doc(p.id).update({ foto: list, updatedAt: Date.now() });
+    added.push(item);
+  } }finally{ fotoBusy = ''; renderFotoStatus(); }
+  return added;
+}
+async function updatePhoto(projectId, id, fields){
+  const p = projects.find(x=>x.id===projectId); if(!p) return;
+  await db.collection('projects').doc(projectId).update({ foto: (p.foto||[]).map(f=>f.id===id ? { ...f, ...fields } : f), updatedAt: Date.now() });
+}
+async function deletePhoto(projectId, id){
+  const p = projects.find(x=>x.id===projectId); if(!p) return;
+  const f = (p.foto||[]).find(x=>x.id===id); if(!f) return;
+  for(const path of [f.path, f.thumb].filter(Boolean)){
+    await firebase.storage().ref(path).delete().catch(err=>{ if(err.code!=='storage/object-not-found') throw err; });
+    fotoUrls.delete(path);
+  }
+  await db.collection('projects').doc(projectId).update({ foto: (p.foto||[]).filter(x=>x.id!==id), updatedAt: Date.now() });
+}
+function photosCardHtml(p){
+  if(!storageAvailable()) return '';
+  const list = fotoSorted(p);
+  return `<div class="card" id="fotoCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <h3 style="margin:0;">Foto del cantiere (${list.length})</h3>
+      <button class="btn secondary small" id="fotoAddBtn" ${fotoBusy ? 'disabled' : ''}>+ Aggiungi foto</button>
+    </div>
+    <div class="fc-note" id="fotoStatus">${esc(fotoBusy)}</div>
+    ${list.length ? `<div class="foto-grid">${list.map(f=>`<button type="button" class="foto-thumb" data-foto-open="${f.id}" title="${esc(f.nota || 'Foto del '+fmtDate(f.data))}">
+        <img data-foto-src="${esc(f.thumb || f.path)}" alt="Foto del ${fmtDate(f.data)}">
+        <span>${fmtDate(f.data)}${f.nota ? ' · '+esc(f.nota) : ''}</span></button>`).join('')}</div>`
+      : `<div class="empty" style="padding:4px 0;">Nessuna foto. Dal telefono puoi scattarle o sceglierle dalla galleria: vengono ridotte prima del caricamento (qualità in Impostazioni).</div>`}
+  </div>`;
+}
+function bindPhotos(p, fail){
+  if(!storageAvailable()) return;
+  document.getElementById('fotoAddBtn')?.addEventListener('click', ()=>{
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+    input.addEventListener('change', async ()=>{
+      const files = [...(input.files||[])];
+      if(!files.length) return;
+      try{ await addProjectPhotos(p, files); }catch(e){ fail(e); }
+      renderMain();
+    });
+    input.click();
+  });
+  document.querySelectorAll('#fotoCard [data-foto-src]').forEach(img=>{
+    fotoUrl(img.dataset.fotoSrc).then(u=>{ img.src = u; }).catch(()=>img.classList.add('err'));
+  });
+  document.querySelectorAll('[data-foto-open]').forEach(b=>b.addEventListener('click', ()=>openFotoViewer(p.id, b.dataset.fotoOpen)));
+}
+
+// --- Visore a schermo intero ---
+function openFotoViewer(projectId, id){ fotoViewer = { projectId, id, confirmDel:false }; renderFotoViewer(); }
+function closeFotoViewer(){
+  fotoViewer = null;
+  document.getElementById('fotoViewer')?.remove();
+  document.body.classList.remove('foto-open');
+  document.removeEventListener('keydown', fotoKeys);
+}
+function fotoStep(dir){
+  const p = projects.find(x=>x.id===fotoViewer.projectId), list = p ? fotoSorted(p) : [];
+  const i = list.findIndex(f=>f.id===fotoViewer.id), next = list[i+dir];
+  if(next){ fotoViewer = { ...fotoViewer, id: next.id, confirmDel:false }; renderFotoViewer(); }
+}
+function fotoKeys(e){
+  if(!fotoViewer) return;
+  if(e.key==='Escape') closeFotoViewer();
+  else if(!e.target.matches('input, textarea') && (e.key==='ArrowLeft' || e.key==='ArrowRight')) fotoStep(e.key==='ArrowLeft' ? -1 : 1);
+}
+function renderFotoViewer(){
+  const p = projects.find(x=>x.id===fotoViewer.projectId), list = p ? fotoSorted(p) : [];
+  const i = list.findIndex(f=>f.id===fotoViewer.id);
+  if(i<0) return closeFotoViewer();
+  const f = list[i];
+  let el = document.getElementById('fotoViewer');
+  if(!el){
+    el = document.createElement('div'); el.id = 'fotoViewer'; el.className = 'foto-viewer';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Foto del cantiere');
+    document.body.appendChild(el); document.body.classList.add('foto-open');
+    document.addEventListener('keydown', fotoKeys);
+  }
+  el.innerHTML = `<div class="foto-bar"><span>${i+1} di ${list.length} · ${esc(p.codice ? p.codice+' ' : '')}${esc(p.nome||'')}</span>
+      <button class="btn secondary small" data-fv="close">Chiudi</button></div>
+    <div class="foto-stage">
+      <img id="fotoBig" alt="Foto del ${fmtDate(f.data)}">
+      ${i>0 ? '<button type="button" class="foto-nav prev" data-fv="prev" aria-label="Foto precedente">‹</button>' : ''}
+      ${i<list.length-1 ? '<button type="button" class="foto-nav next" data-fv="next" aria-label="Foto successiva">›</button>' : ''}
+    </div>
+    <div class="foto-info">
+      <div class="foto-fields">
+        <div><label>Data</label><input type="date" id="fvData" value="${esc(f.data||'')}"></div>
+        <div style="flex:1 1 220px;"><label>Nota</label><input id="fvNota" value="${esc(f.nota||'')}" placeholder="Es. getto del solaio del 2° piano"></div>
+      </div>
+      <div class="todo-actions" style="margin-top:8px;align-items:center;">
+        <button class="btn secondary small" data-fv="orig">Apri a piena dimensione</button>
+        ${fotoViewer.confirmDel ? `<span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare la foto?</span>
+          <button class="btn small" data-fv="del-yes" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì, elimina</button>
+          <button class="btn secondary small" data-fv="del-no">No</button>` : '<button class="btn secondary small" data-fv="del">Elimina</button>'}
+        <span class="fc-note">${f.w && f.h ? `${f.w}×${f.h} px · ` : ''}${fmtSize(f.size||0)}</span>
+      </div>
+      <div class="fc-note" id="fvMsg"></div>
+    </div>`;
+  const say = t=>{ const m = document.getElementById('fvMsg'); if(m) m.textContent = t; };
+  // anteprima subito, poi la foto intera
+  const big = document.getElementById('fotoBig');
+  if(f.thumb) fotoUrl(f.thumb).then(u=>{ if(!big.src) big.src = u; }).catch(()=>{});
+  fotoUrl(f.path).then(u=>{ const pre = new Image(); pre.onload = ()=>{ if(fotoViewer && fotoViewer.id===f.id) big.src = u; }; pre.src = u; }).catch(()=>say('Foto non disponibile (connessione?).'));
+  const act = {
+    close: closeFotoViewer, prev: ()=>fotoStep(-1), next: ()=>fotoStep(1),
+    orig: async ()=>{ const win = window.open('', '_blank');   // aperta subito: su iPhone una finestra aperta dopo un'attesa viene bloccata
+      try{ const u = await fotoUrl(f.path); if(win) win.location = u; else location.href = u; }catch(e){ if(win) win.close(); say('Foto non disponibile.'); } },
+    del: ()=>{ fotoViewer.confirmDel = true; renderFotoViewer(); },
+    'del-no': ()=>{ fotoViewer.confirmDel = false; renderFotoViewer(); },
+    'del-yes': async ()=>{
+      const target = list[i+1] || list[i-1];
+      try{ await deletePhoto(p.id, f.id); }catch(e){ say('Eliminazione non riuscita: '+(e.message||e.code||'')); return; }
+      if(target){ fotoViewer = { projectId: p.id, id: target.id, confirmDel:false }; renderFotoViewer(); } else closeFotoViewer();
+    }
+  };
+  el.querySelectorAll('[data-fv]').forEach(b=>b.addEventListener('click', ()=>act[b.dataset.fv]()));
+  const save = fields=>updatePhoto(p.id, f.id, fields).then(()=>say('Salvato.')).catch(e=>say('Non salvato: '+(e.message||e.code||'')));
+  document.getElementById('fvNota').addEventListener('change', e=>save({ nota: e.target.value.trim() }));
+  document.getElementById('fvData').addEventListener('change', e=>{ if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) save({ data: e.target.value }); });
+  // scorrimento col dito sul telefono
+  const stage = el.querySelector('.foto-stage'); let x0 = null;
+  stage.addEventListener('touchstart', e=>{ x0 = e.touches.length===1 ? e.touches[0].clientX : null; }, { passive:true });
+  stage.addEventListener('touchend', e=>{ if(x0==null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if(Math.abs(dx) > 50) fotoStep(dx < 0 ? 1 : -1); });
+}
+
+// --- Impostazioni: qualita' e spazio occupato ---
+function storageUsage(){
+  const u = { foto:0, nFoto:0, doc:0, nDoc:0 };
+  projects.forEach(p=>{ (p.foto||[]).forEach(f=>{ u.foto += f.size||0; u.nFoto++; }); (p.allegati||[]).forEach(a=>{ u.doc += a.size||0; u.nDoc++; }); });
+  return u;
+}
+function photoSettingsHtml(){
+  if(!storageAvailable()) return '';
+  const q = fotoQualita(), u = storageUsage();
+  return `<div class="card">
+    <h3>Foto del cantiere</h3>
+    <div class="fc-note" style="margin-bottom:8px;">Le foto vengono ridotte sul telefono prima del caricamento. Vale per le foto caricate da ora in poi.</div>
+    ${Object.entries(FOTO_QUALITA).map(([k, v])=>`<label style="display:flex;align-items:center;gap:7px;margin:4px 0;cursor:pointer;"><input type="radio" name="fotoQ" value="${k}" ${q===k ? 'checked' : ''} style="width:auto;margin:0;"> <strong>${v.label}</strong> <span class="fc-note">${v.sub}</span></label>`).join('')}
+    <div class="fc-note" style="margin-top:10px;">Spazio occupato: <strong>${fmtBytes(u.foto + u.doc)}</strong> (${u.nFoto} foto, ${fmtBytes(u.foto)} · ${u.nDoc} ${u.nDoc===1 ? 'documento' : 'documenti'}, ${fmtBytes(u.doc)}).</div>
+  </div>`;
+}
+function bindPhotoSettings(){
+  document.querySelectorAll('input[name=fotoQ]').forEach(r=>r.addEventListener('change', ()=>{ if(r.checked) saveSettings({ fotoQualita: r.value }); }));
 }
 
 // ---------------------------------------------------------------------------
@@ -4047,6 +4303,7 @@ function projectDetailView(){
       <div id="phaseErr" style="color:var(--danger);font-size:13px;"></div>
     </div>
     ${ordersCardHtml(p)}
+    ${photosCardHtml(p)}
     ${attachmentsCardHtml(p)}
     ${projectPortalCardHtml(p)}
     <div class="card">
@@ -4197,6 +4454,7 @@ function bindProjectDetail(){
     try{ await db.collection('projects').doc(p.id).update({ esito:'', persaIl:'', motivoPerdita:'', notePerdita:'', updatedAt:Date.now() }); }catch(e){ fail(e); }
   });
   bindOrders(p, fail);
+  bindPhotos(p, fail);
   bindAttachments(p, fail);
   // Date della timeline: mentre si scrive l'anno a mano il campo produce date intermedie
   // (0002, 0020, 0202...), quindi si salva solo all'uscita dal campo o dopo una pausa,

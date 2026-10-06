@@ -56,7 +56,7 @@
     initializeApp(){ this.apps.push({}); },
     auth: ()=>({ currentUser: user, onAuthStateChanged: cb=>{ later(()=>cb(user)); return ()=>{}; }, signOut: async()=>{}, signInWithEmailAndPassword: async()=>{}, sendPasswordResetEmail: async()=>{} }),
     firestore: ()=>fsApi,
-    storage: ()=>({ ref: p=>({ put: async f=>{ files.set(p, f); }, getDownloadURL: async()=>'https://example.test/'+encodeURIComponent(p), delete: async()=>{ files.delete(p); } }) })
+    storage: ()=>({ ref: p=>({ put: async f=>{ files.set(p, f); }, getDownloadURL: async()=>files.has(p) && files.get(p) instanceof Blob ? URL.createObjectURL(files.get(p)) : 'https://example.test/'+encodeURIComponent(p), delete: async()=>{ files.delete(p); } }) })
   };
   // dati iniziali e accesso ai dati per i controlli
   const seed = window.__seed || {};

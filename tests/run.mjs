@@ -111,6 +111,8 @@ async function openApp({ width = 1280, height = 900 } = {}) {
     const name = /pdf\.worker/.test(r.request().url()) ? 'pdf.worker.min.js' : 'pdf.min.js';
     r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync(path.join(pdfjsDir, name)) });
   });
+  // URL dei file di Storage del Firebase finto: un'immagine qualsiasi
+  await page.route('https://example.test/**', r => r.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') }));
   await page.route('**/.netlify/functions/suggest*', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
   await page.route('**/.netlify/functions/backups*', async r => {
     const req = r.request(), q = new URL(req.url()).searchParams.get('date');
@@ -222,6 +224,41 @@ await test('ripristino da una copia', async () => {
 
 await ctx.close();
 ({ ctx, page } = await openApp());
+
+await test('foto del cantiere: riduzione, caricamento, nota, eliminazione', async () => {
+  await show_(page, 'projectDetail', "selectedProjectId='p1'");
+  // foto finta 4000x3000 creata nel browser
+  await page.evaluate(async () => {
+    const cv = document.createElement('canvas'); cv.width = 4000; cv.height = 3000;
+    const g = cv.getContext('2d'); for (let i = 0; i < 400; i++) { g.fillStyle = `hsl(${i * 37 % 360},60%,${30 + i % 40}%)`; g.fillRect((i * 97) % 4000, (i * 53) % 3000, 300, 200); }
+    const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.95));
+    await addProjectPhotos(projects.find(p => p.id === 'p1'), [new File([blob], 'IMG_0001.JPG', { type: 'image/jpeg', lastModified: new Date('2026-09-20T10:00:00').getTime() })]);
+    renderMain();
+  });
+  let st = await page.evaluate(() => ({ foto: window.__fake.docs('projects').find(p => p.id === 'p1').foto, files: [...window.__fake.files.keys()] }));
+  expect(st.foto && st.foto.length === 1, 'foto non registrata nel progetto');
+  const f = st.foto[0];
+  expect(f.w === 2560 && f.h === 1920, `dimensioni ${f.w}x${f.h} (attese 2560x1920)`);
+  expect(f.data === '2026-09-20', 'data della foto: ' + f.data);
+  expect(st.files.includes(f.path) && st.files.includes(f.thumb), 'file non caricati su Storage');
+  await page.waitForSelector('#fotoCard [data-foto-open]');
+  if (shotsDir) { await page.waitForTimeout(300); await (await page.$('#fotoCard')).screenshot({ path: path.join(shotsDir, 'foto-scheda.png') }); }
+  await page.click('#fotoCard [data-foto-open]');
+  await page.waitForSelector('#fotoViewer #fvNota');
+  if (shotsDir) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(shotsDir, 'foto-visore.png') }); }
+  await page.fill('#fvNota', 'getto solaio');
+  await page.press('#fvNota', 'Tab');
+  await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p1').foto[0] || {}).nota === 'getto solaio');
+  await page.click('[data-fv="del"]');
+  await page.click('[data-fv="del-yes"]');
+  await page.waitForFunction(() => !document.getElementById('fotoViewer'));
+  st = await page.evaluate(() => ({ n: window.__fake.docs('projects').find(p => p.id === 'p1').foto.length, files: window.__fake.files.size }));
+  expect(st.n === 0 && st.files === 0, 'foto non eliminata: ' + JSON.stringify(st));
+  // qualita' alta da Impostazioni
+  await show_(page, 'settings');
+  await page.check('input[name=fotoQ][value=alta]');
+  await page.waitForFunction(() => fotoQualita() === 'alta');
+});
 
 const orderPdf = path.join(fixtures, 'conferma-ordine.pdf');
 await test('conferma d\'ordine da PDF', async () => {

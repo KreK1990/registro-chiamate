@@ -196,6 +196,18 @@ Campi principali:
   [{id, nome, path, tipo, size, caricatoIl, tag?}], max 20 MB. Regole in `storage.rules` (da
   pubblicare a mano in Console Firebase -> Storage -> Regole). "Ordine da PDF" propone di
   allegare il PDF (tag 'ordine'). I file non sono nei backup notturni (solo l'elenco).
+- **Foto del cantiere** (scheda progetto, sopra i Documenti; blocco omonimo, solo versione online):
+  ridotte sul dispositivo prima del caricamento (canvas -> JPEG; `FOTO_QUALITA`: normale 2560 px
+  q 0,85 ~1 MB, predefinita, o alta 4000 px q 0,9, scelta dall'utente il 2026-10-06; in Impostazioni,
+  `settings.fotoQualita`) piu' anteprima da 480 px. La nuova codifica toglie l'EXIF (anche il GPS);
+  la data di scatto viene dall'EXIF (`exifDate`) o dalla data del file. File in
+  `users/<uid>/projects/<projectId>/foto/<id>.jpg` e `<id>-anteprima.jpg`, elenco in `projects.foto`
+  [{id, path, thumb, data, nota, w, h, size, caricatoIl}], salvato dopo ogni foto. Visore a schermo
+  intero `#fotoViewer` appeso a body (fuori da #main, cosi' i ridisegni non lo chiudono): frecce,
+  scorrimento col dito, Esc, data e nota modificabili, "Apri a piena dimensione", Elimina con
+  conferma inline. In Impostazioni anche lo spazio occupato da foto e documenti (dalle `size`).
+  Come i documenti, i file non sono nei backup (solo l'elenco). Le regole di Storage esistenti
+  (`users/<uid>/**`, < 20 MB) coprono gia' le foto.
 - **Mappa** (voce di menu, blocco "Mappa"): Leaflet 1.9.4 (cdnjs) + tile OpenStreetMap; clienti
   raggruppati per indirizzo (cerchi blu), cantieri in corso / confermati / persi (quadrati
   ambra / viola / vuoti; colori validati per daltonismo). Coordinate da Nominatim (1 richiesta
