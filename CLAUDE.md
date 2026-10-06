@@ -9,15 +9,9 @@ con Claude (claude.ai), poi esportata qui per continuare lo sviluppo con Claude 
 Tutti i file stanno in `netlify-site/`, che corrisponde alla radice del repo GitHub ed è
 la cartella pubblicata su Netlify (deploy automatico a ogni push).
 
-- **`crm-chiamate.html`** — versione ospitata come Claude Artifact (claude.ai). Usa
-  `window.claude.use("db")`, un'API disponibile SOLO dentro l'ambiente Artifact di Claude.
-  Non è eseguibile/deployabile altrove così com'è: è tenuta come riferimento/cronologia
-  (su Netlify l'URL viene rediretto alla radice, vedi `netlify.toml`).
-  Link pubblico: https://claude.ai/artifact/Kiz9xzgpJCmLcgXFKRvhef (se ancora valido).
-
-- **`crm-chiamate-standalone.html`** — versione "vera", pensata per essere ospitata fuori da
-  Claude. Usa Firebase (Auth + Firestore) al posto di `window.claude.use("db")`. È il file
-  che va effettivamente in produzione. **Questa è la versione da mantenere aggiornata.**
+- **`crm-chiamate-standalone.html`** — l'app (unico file, Firebase Auth + Firestore). La vecchia
+  copia `crm-chiamate.html` per Claude Artifact e' stata eliminata il 2026-10-06 (resta nella
+  cronologia git); `/crm-chiamate.html` su Netlify rimanda alla radice.
 
 - `manifest.json`, `service-worker.js`, le icone — il "app shell" PWA installabile su
   iPhone (Aggiungi a Home Screen).
@@ -36,16 +30,9 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
   `functions = "netlify/functions"`, redirect della radice verso l'app e blocco dei file
   che non devono essere serviti: `CLAUDE.md`, `package.json`, `netlify.toml`, `netlify/*`).
 
-Le due HTML (`crm-chiamate.html` e `crm-chiamate-standalone.html`) devono restare
-allineate in termini di funzionalità applicativa: l'unica differenza voluta tra loro è il
-livello di inizializzazione del database (Claude `db` capability vs Firebase). Quando si
-aggiunge una funzionalità, va replicata in entrambe (a meno che riguardi solo
-l'autenticazione/hosting, che è specifica della versione standalone).
-
 ## Persistenza dati
 
-Due collection: `contacts` e `calls` (stesso schema logico sia nella versione Claude sia
-in quella Firebase).
+Due collection: `contacts` e `calls` (piu' quelle aggiunte nel tempo, descritte sotto).
 
 **Versione Firebase = multi-utente** (dal 2026-10-01): ogni account ha un archivio
 personale in `users/<uid>/contacts` e `users/<uid>/calls`; il documento `users/<uid>`
@@ -300,8 +287,8 @@ in abbonamento "Rimuovi avvisi" è disattivato.
   Tema scuro con le stesse variabili. Niente emoji nell'interfaccia; non riprodurre il logo
   aziendale. Le regole di stile Schöck sono raccolte in un blocco commentato subito prima
   del `@media (max-width:720px)`. Icone PWA: "R" bianca su blu con quadratino giallo.
-- Niente `confirm()`/`alert()` nativi per conferme critiche (bloccati nell'ambiente
-  Claude Artifact): le conferme di eliminazione sono implementate come UI inline nella
+- Niente `confirm()`/`alert()` nativi per conferme critiche (scelta storica, nata quando l'app
+  girava come Claude Artifact): le conferme di eliminazione sono implementate come UI inline nella
   pagina stessa (pattern già presente per contatti e chiamate — riusarlo per nuove
   funzionalità di eliminazione).
 - Ogni vista/tab (Oggi, Contatti, Chiamata, Follow-up, Appuntamenti, Tabella chiamate,
