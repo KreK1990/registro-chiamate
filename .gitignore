@@ -3,3 +3,6 @@
 *.txt
 .env
 .env.*
+
+# Dipendenze dei controlli automatici (tests/): si reinstallano con npm install.
+node_modules/

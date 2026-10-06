@@ -21,11 +21,28 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
   Calendar, senza export/import manuali).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
-  download, "Fai una copia adesso"): backup JSON di `users/<uid>/{contacts,calls,projects,settings}`
-  su **Netlify Blobs** (store `backups`, chiave `<uid>/<YYYY-MM-DD>.json`). Si tengono gli
-  ultimi 30 giorni e per sempre la copia del primo del mese. Logica comune in
+  download, "Fai una copia adesso"): backup JSON di
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico}` (version 2; restano fuori
+  `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
+  chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
+  manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
+  notturna del primo del mese. **Ripristino** dall'app (Impostazioni, "Ripristina" con conferma
+  inline, `restoreBackup`): prima una copia manuale di sicurezza dei dati attuali (POST), poi per
+  ogni collection della copia elimina i documenti che non c'erano e riscrive gli altri (batch da
+  400); il messaggio indica la copia di sicurezza da ripristinare per annullare. Logica comune in
   `netlify/lib/backup.mjs` (fuori da `functions/` per non diventare una function).
   Il service worker non mette in cache nulla sotto `/.netlify/`.
+- `tests/` — **controlli automatici da lanciare prima di ogni pubblicazione**: `cd tests`,
+  `npm install` (la prima volta), `npm test` (`node run.mjs`; `--show` apre il browser, `--shots`
+  salva le schermate del telefono in una cartella temporanea). playwright-core usa Chrome/Edge
+  installato; `fake-firebase.js` sostituisce gli script Firebase (stessa interfaccia compat, dati
+  in memoria da `window.__seed`, accesso dai test con `window.__fake`); functions, Nominatim,
+  mappe e font sono simulati. Controlla: tutte le pagine senza errori, cifre di forecast e budget,
+  Da fare, registrazione chiamata, doppioni e unione, ripristino, conferma d'ordine e PDF del
+  portale, schede del portale "Mostra tutto", nessuna pagina piu' larga dello schermo a 390 px. I
+  PDF di prova (dati di clienti, testo coperto da copyright) stanno FUORI dal repo in
+  `../test-fixtures/` (`conferma-ordine.pdf`, `portale.pdf`): se mancano quei test si saltano. Mai
+  committarli. `/tests/*` non e' servito da Netlify; `node_modules/` e' ignorato da git.
 - `package.json` (dipendenze: `firebase-admin`, `@netlify/blobs`, `@anthropic-ai/sdk`) e `netlify.toml` (build minimale,
   `functions = "netlify/functions"`, redirect della radice verso l'app e blocco dei file
   che non devono essere serviti: `CLAUDE.md`, `package.json`, `netlify.toml`, `netlify/*`).
@@ -58,6 +75,13 @@ Campi principali:
   (`studioIndex`). Il modulo suggerisce gli studi esistenti, al salvataggio usa la
   grafia prevalente (`bestStudioName`) e può propagare via/città/telefono agli altri
   membri. I doppioni di contatto si riconoscono dal cellulare, non dal telefono studio.
+  **Possibili doppioni** (Contatti -> "Possibili doppioni (N)", blocco omonimo, `view='dups'`):
+  gruppi (union-find) per stesso cellulare (`digits9`), stessa email (se generica tipo info@,
+  `GENERIC_MAIL`, solo con lo stesso cognome) o stesso nome+cognome anche invertiti. Si sceglie il
+  contatto da tenere (proposto quello con piu' chiamate/progetti/dati, `dupScore`); "Unisci"
+  (`mergeContacts`) riempie i campi vuoti, unisce tag e note, prende il follow-up piu' vicino,
+  sposta le chiamate e le partecipazioni ai progetti (senza duplicati) ed elimina gli altri. "Non
+  sono doppioni" salva le coppie in `settings.nonDoppioni` ("idA|idB" ordinati).
 - **calls**: contactId, data (YYYY-MM-DD), esito, progetto, note, appuntamento (datetime
   ISO), noteIncontro, createdAt, mailDaInviare (bool), mailInviataIl (YYYY-MM-DD).
   Promemoria "mail informativa" aperto = mailDaInviare && !mailInviataIl: compare in
@@ -101,7 +125,9 @@ Campi principali:
   × probabilità. Riepilogo: aperte, forecast ponderato, conferme d'ordine e fatturato stimato
   dell'anno (vedi sotto); tabella "Forecast ponderato per anno" (`forecastQuartersHtml`): ponderato diviso per anno con la
   ripartizione, dentro l'anno per trimestre di chiusura prevista (o "ripartito sull'anno").
-  I campi si salvano all'uscita e aggiornano le cifre senza ridisegnare la pagina.
+  I campi si salvano all'uscita e aggiornano le cifre senza ridisegnare la pagina. Sul telefono
+  (<=720px) la riga e' compatta: etichette accanto ai valori, offerta/ponderato, probabilita'/
+  chiusura, ripartizione (classi `fc-c-*`, `.fc-long` nascosto).
   Nel codice il blocco "Forecast" sta subito prima del blocco "Progetti".
   Fatturato per anno: `ripartizione {'YYYY': %}` sul progetto (3 campi: anno in corso e i due
   successivi; modificando un anno il resto fino a 100 passa al successivo, `rebalanceSplit`).
@@ -209,7 +235,10 @@ Campi principali:
   in collection `portaleImport` (un documento per cantiere, ID = ID portale: {pid, dati, scartato,
   nuovo, importatoIl}; scritta a batch da 400, letta solo aprendo la sezione) con i metadati in
   `settings.portaleImport`; un nuovo PDF la sostituisce (mantiene gli scartati, segna "nuovo"
-  cio' che non c'era). Pagine "Da esaminare" (si ripulisce con Da seguire / Scarta) e "Cantieri
+  cio' che non c'era). Descrizione salvata fino a 4000 caratteri (600 nelle importazioni prima del
+  2026-10-06: per il testo intero si ricarica il PDF). Le schede mostrano 3 righe di descrizione e il
+  primo telefono/email dei soggetti; "Mostra tutto" (o il titolo) apre testo completo e tutti i
+  recapiti (`portalOpen`, solo classe CSS `.open`, niente ridisegno). Pagine "Da esaminare" (si ripulisce con Da seguire / Scarta) e "Cantieri
   seguiti": collection `portale` {pid, stato:'seguito', dati, nota, seguitoIl, aggiornatoIl},
   mai toccata dalle importazioni (solo `dati` aggiornati con la scheda piu' recente). Registrando
   una chiamata con un contatto presente in un cantiere seguito, "Progetto / argomento" si compila
@@ -295,3 +324,5 @@ in abbonamento "Rimuovi avvisi" è disattivato.
   Dashboard) è una funzione JS che ritorna una stringa HTML, iniettata in `#main` da
   `renderMain()`. Il click-binding avviene subito dopo l'iniezione, dentro lo stesso
   `if(view===...)` block.
+- Telefono: i campi data/ora/mese sotto i 720px non hanno l'aspetto nativo (`appearance:none`,
+  `min-width:0`), perche' Safari su iPhone da' loro una larghezza minima che esce dallo schermo.

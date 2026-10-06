@@ -63,3 +63,10 @@
   to = "/404"
   status = 404
   force = true
+
+# Controlli automatici (solo per lo sviluppo, non servono sul sito).
+[[redirects]]
+  from = "/tests/*"
+  to = "/404"
+  status = 404
+  force = true

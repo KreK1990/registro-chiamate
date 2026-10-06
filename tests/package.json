@@ -1,0 +1,11 @@
+{
+  "name": "registro-chiamate-tests",
+  "private": true,
+  "type": "module",
+  "description": "Controlli automatici dell'app prima di pubblicare: npm install, poi npm test",
+  "scripts": { "test": "node run.mjs" },
+  "devDependencies": {
+    "playwright-core": "1.63.0",
+    "pdfjs-dist": "3.11.174"
+  }
+}

@@ -167,8 +167,8 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .budget-legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;border-radius:2px;}
 .budget-msg{margin-top:8px;font-size:13.5px;}
 .budget-msg.ok{color:var(--success,#2e7d32);font-weight:600;}
-.backup-list{margin-top:10px;max-width:420px;}
-.backup-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;}
+.backup-list{margin-top:10px;max-width:640px;}
+.backup-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px;}
 .fc-tile:nth-child(2){border-top:3px solid var(--brand-yellow);}
 .fc-label{font-size:12px;color:var(--muted);}
 .fc-value{font-family:var(--serif);font-size:22px;font-weight:700;color:var(--accent);margin-top:2px;}
@@ -242,6 +242,10 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .geo-edit{display:grid;gap:6px;margin-top:10px;}
 .geo-edit-map{height:260px;border:1px solid var(--border);border-radius:6px;overflow:hidden;z-index:0;position:relative;}
 .geo-pin{width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:grab;}
+.dup-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;}
+.dup-card{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;cursor:pointer;font-size:14px;color:var(--text);}
+.dup-card.main{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent);}
+.dup-card input{width:auto;margin-top:3px;}
 .map-pop{font-size:13px;line-height:1.45;min-width:180px;}
 .map-pop .name-link{font-weight:600;cursor:pointer;}
 .map-pop-c{margin-top:6px;}
@@ -267,11 +271,17 @@ table.calls-table tbody tr[data-call-id]:hover{background:var(--accent-soft);}
 .portal-suggest .btn.small{padding:3px 8px;font-size:12px;text-align:left;}
 .portal-note textarea{width:100%;font-size:13.5px;}
 .portal-desc{font-size:13px;margin-top:6px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.portal-card.open .portal-desc{display:block;-webkit-line-clamp:unset;overflow:visible;white-space:pre-line;}
+.portal-more{display:none;}
+.portal-card.open .portal-more{display:block;}
+.portal-card.open .portal-less{display:none;}
+.portal-toggle{margin-top:4px;font-size:12.5px;}
 .portal-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 16px;margin-top:8px;font-size:13px;}
 .portal-person .btn.small{padding:2px 8px;font-size:12px;}
 .portal-param{width:52px;display:inline-block;padding:2px 6px;font-size:12.5px;}
 .portal-filters{display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center;padding:12px 14px;}
 .portal-filters input[type=checkbox]{width:auto;margin:0;}
+.portal-filters select{max-width:100%;}
 .todo-section{margin-top:10px;}
 .todo-act{font-size:12.5px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap;}
 .todo-act .name-link{font-weight:600;}
@@ -517,9 +527,24 @@ h2{color:var(--accent);font-weight:800;}
   .fc-value{font-size:19px;}
   .fc-q-row{grid-template-columns:1fr auto;}
   .fc-q-track{grid-column:1/-1;grid-row:2;}
-  .fc-grid{grid-template-columns:1fr 1fr;}
-  .fc-split{gap:6px 10px;}
-  .fc-split input{width:52px;padding-left:6px;padding-right:4px;}
+  /* Forecast sul telefono: riga compatta. Offerta e ponderato su una riga, probabilita' e
+     chiusura sulla seconda, ripartizione per anno sulla terza; etichette accanto ai valori. */
+  .fc-row{padding:9px 12px;}
+  .fc-row .fc-head{margin-bottom:5px;gap:4px 8px;font-size:14px;}
+  .fc-row .fc-addr{font-size:12px;}
+  .fc-grid{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:5px 10px;align-items:center;}
+  .fc-grid > div{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap;}
+  .fc-grid label{margin:0;font-size:11.5px;color:var(--muted);white-space:nowrap;}
+  .fc-c-off{order:1;} .fc-c-w{order:2;} .fc-c-prob{order:3;} .fc-c-close{order:4;}
+  .fc-split-cell{order:5;}
+  .fc-grid .fc-amount{font-size:14px;padding:0;}
+  .fc-grid input,.fc-split input{padding:3px 6px;min-height:30px;height:30px;}
+  .fc-grid input.fc-prob{width:56px;}
+  .fc-grid input.fc-close{width:auto;min-width:0;max-width:150px !important;flex:1 1 0;}
+  .fc-long{display:none;}
+  .fc-split{gap:4px 10px;}
+  .fc-split-y{font-size:12px;gap:3px;}
+  .fc-split input{width:56px;padding-left:6px;padding-right:2px;}
   .order-item{grid-template-columns:1fr;grid-template-areas:"main" "sub" "actions";}
   .order-actions{justify-content:flex-start;margin-top:4px;}
   .part-row{grid-template-columns:1fr auto;grid-template-areas:"contact del" "role role";padding-bottom:8px;border-bottom:1px solid var(--border);}
@@ -535,6 +560,11 @@ h2{color:var(--accent);font-weight:800;}
   .week-nav{flex-wrap:wrap;}
   .week-nav .week-label{order:-1;width:100%;text-align:center;}
   input,textarea,select{font-size:16px;}
+  /* Safari su iPhone da' ai campi data/ora una larghezza minima propria che esce dallo schermo:
+     senza l'aspetto nativo il campo resta largo quanto la colonna (il selettore si apre lo stesso). */
+  input[type=date],input[type=time],input[type=datetime-local],input[type=month]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;min-height:40px;text-align:left;}
+  input::-webkit-date-and-time-value{text-align:left;}
+  .field-row > *{min-width:0;}
 }
 </style>
 </head>
@@ -880,6 +910,7 @@ function contactsListView(){
     <div style="display:flex;gap:8px;margin-top:10px;">
       <button class="btn" id="newContactBtn">+ Nuovo contatto</button>
       <button class="btn secondary" id="exportXlsBtn">⬇ Esporta tutto (Excel)</button>
+      <button class="btn secondary" id="dupsBtn">Possibili doppioni${(()=>{ const n = dupGroups().length; return n ? ` (${n})` : ''; })()}</button>
     </div>
   </div>`;
   const listHtml = filtered.length===0 ? '<div class="empty">Nessun contatto trovato.</div>' : filtered.map(c=>{
@@ -1022,6 +1053,7 @@ function renderMain(){
     const newBtn = document.getElementById('newContactBtn');
     if(newBtn) newBtn.addEventListener('click', ()=>{ window.__editing=null; view='new'; tableDetailCallId=null; renderMain(); });
     document.getElementById('exportXlsBtn')?.addEventListener('click', exportAllExcel);
+    document.getElementById('dupsBtn')?.addEventListener('click', ()=>{ view='dups'; renderMain(); });
     const cSearch = document.getElementById('contactsSearch');
     if(cSearch){
       cSearch.addEventListener('input', e=>{ contactsSearchQuery=e.target.value; renderMain(); });
@@ -1036,6 +1068,7 @@ function renderMain(){
   if(view==='settings'){ main.innerHTML = settingsView(); bindSettings(); return; }
   if(view==='map'){ main.innerHTML = mapView(); bindMap(); return; }
   if(view==='portal'){ main.innerHTML = portalView(); bindPortal(); return; }
+  if(view==='dups'){ main.innerHTML = dupsView(); bindDups(); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -1482,9 +1515,41 @@ async function loadBackupList(){
 }
 async function backupNow(btn){
   btn.disabled = true; btn.textContent = 'Copia in corso…';
-  try{ const r = await (await backupApi('POST')).json(); backupMsg = r.date ? `Copia del ${fmtDate(r.date)} salvata.` : 'Archivio vuoto: niente da copiare.'; }
+  try{ const r = await (await backupApi('POST')).json(); backupMsg = r.date ? `Copia del ${backupLabel(r.date)} salvata.` : 'Archivio vuoto: niente da copiare.'; }
   catch(e){ backupMsg = 'Copia non riuscita ('+e.message+').'; }
   backupList = null; loadBackupList();
+}
+// Ripristino da una copia: prima una copia di sicurezza dei dati attuali (copia manuale con
+// l'ora, cosi' il ripristino si puo' annullare ripristinando quella), poi per ogni collection
+// della copia si eliminano i documenti che non c'erano e si riscrivono gli altri. Le
+// collection non presenti nella copia (importazione del portale, suggerimenti) restano.
+let restoreConfirm = null, restoreMsg = '', restoreBusy = false;
+function backupLabel(k){ const d = fmtDate(k.slice(0, 10)); return k.length > 10 ? `${d} ore ${k.slice(11, 13)}:${k.slice(13, 15)} (manuale)` : `${d} (notturna)`; }
+async function restoreBackup(key){
+  if(restoreBusy) return;
+  restoreBusy = true;
+  const say = t=>{ restoreMsg = t; const el = document.getElementById('restoreMsg'); if(el) el.textContent = t; };
+  try{
+    say('1/3 Copia di sicurezza dei dati attuali…');
+    const safe = await (await backupApi('POST')).json();
+    say('2/3 Lettura della copia da ripristinare…');
+    const data = await (await backupApi('GET', '?date='+encodeURIComponent(key))).json();
+    if(!data || !data.collections) throw new Error('copia non leggibile');
+    const fs = firebase.firestore();
+    for(const [name, docs] of Object.entries(data.collections)){
+      const cur = await db.collection(name).get();
+      const keep = new Set(docs.map(d=>d.id));
+      const ops = [...cur.docs.filter(d=>!keep.has(d.id)).map(d=>['del', d.id]), ...docs.map(d=>['set', d])];
+      for(let i=0; i<ops.length; i+=400){
+        const b = fs.batch();
+        ops.slice(i, i+400).forEach(([t, x])=>{ if(t==='del') b.delete(db.doc(`${name}/${x}`)); else { const { id, ...rest } = x; b.set(db.doc(`${name}/${id}`), rest); } });
+        await b.commit();
+        say(`3/3 Ripristino: ${name} (${Math.min(ops.length, i+400)} di ${ops.length})…`);
+      }
+    }
+    say(`Ripristino completato dalla copia del ${backupLabel(key)}.${safe.date ? ` I dati di prima sono nella copia di sicurezza del ${backupLabel(safe.date)}: se serve, ripristina quella.` : ''}`);
+  }catch(e){ say('Ripristino non riuscito: '+(e.message||e)+'. Se era già partito, i dati di prima sono nella copia di sicurezza più recente.'); }
+  restoreBusy = false; restoreConfirm = null; backupList = null; loadBackupList();
 }
 async function downloadBackup(date, btn){
   btn.disabled = true;
@@ -1510,11 +1575,14 @@ function settingsView(){
     <div class="fc-note" style="margin-bottom:10px;">Excel con contatti, chiamate, progetti e ordini: utile da conservare o da girare al responsabile.</div>
     <button class="btn" id="excelAllBtn">⬇ Scarica tutto in Excel</button>
     ${cloud ? `<h3 style="margin-top:18px;">Copie automatiche</h3>
-      <div class="fc-note" style="margin-bottom:10px;">Ogni notte viene salvata una copia completa dell'archivio, separata da Firebase. Si tengono gli ultimi 30 giorni e, per sempre, la copia del primo giorno di ogni mese.</div>
+      <div class="fc-note" style="margin-bottom:10px;">Ogni notte viene salvata una copia completa dell'archivio (contatti, chiamate, progetti, cantieri seguiti con le note, impostazioni e storico del forecast), separata da Firebase. Si tengono gli ultimi 30 giorni e, per sempre, la copia notturna del primo giorno di ogni mese. "Ripristina" salva prima una copia di sicurezza dei dati attuali, quindi si può sempre tornare indietro.</div>
       <button class="btn secondary small" id="backupNowBtn">Fai una copia adesso</button>
       ${backupMsg ? `<div class="fc-note" style="margin-top:8px;">${esc(backupMsg)}</div>` : ''}
+      <div id="restoreMsg" class="fc-note" style="margin-top:8px;font-weight:600;">${esc(restoreMsg)}</div>
       <div class="backup-list">${backupList===null ? '<div class="fc-note">Caricamento…</div>'
-        : backupList.length ? backupList.map(d=>`<div class="backup-row"><span>${fmtDate(d)}</span><button class="btn secondary small" data-backup-date="${d}">Scarica</button></div>`).join('')
+        : backupList.length ? backupList.map(d=>`<div class="backup-row"><span>${backupLabel(d)}</span><span class="todo-actions">${restoreConfirm===d
+            ? `<span class="pdf-warn" style="font-size:12.5px;">Sostituire i dati attuali con questa copia?</span><button class="btn small" data-restore-yes="${d}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì, ripristina</button><button class="btn secondary small" data-restore-no>Annulla</button>`
+            : `<button class="btn secondary small" data-backup-date="${d}">Scarica</button><button class="btn secondary small" data-restore="${d}" ${restoreBusy ? 'disabled' : ''}>Ripristina</button>`}</span></div>`).join('')
         : '<div class="fc-note">Nessuna copia ancora: la prima arriva stanotte, oppure fanne una adesso.</div>'}</div>` : ''}
   </div>`;
 }
@@ -1523,6 +1591,9 @@ function bindSettings(){
   document.getElementById('excelAllBtn').addEventListener('click', exportAllExcel);
   document.getElementById('backupNowBtn')?.addEventListener('click', e=>backupNow(e.target));
   document.querySelectorAll('[data-backup-date]').forEach(b=>b.addEventListener('click', ()=>downloadBackup(b.dataset.backupDate, b)));
+  document.querySelectorAll('[data-restore]').forEach(b=>b.addEventListener('click', ()=>{ restoreConfirm = b.dataset.restore; renderMain(); }));
+  document.querySelector('[data-restore-no]')?.addEventListener('click', ()=>{ restoreConfirm = null; renderMain(); });
+  document.querySelector('[data-restore-yes]')?.addEventListener('click', e=>{ e.target.disabled = true; restoreBackup(e.target.dataset.restoreYes); });
 }
 
 // ---------------------------------------------------------------------------
@@ -2559,6 +2630,7 @@ function portalRole(r){ const x = PORTAL_ROLE_MAP.find(([re])=>re.test(r||'')); 
 // si apre la sezione. Cantieri seguiti: collection "portale" {pid, stato:'seguito', dati, nota,
 // seguitoIl, aggiornatoIl}: un nuovo PDF non li tocca mai.
 let portalImport = null, portalImportStarted = false, portalBusy = '', portalShow = 40, portalSaved = new Map(), portalTab = 'esamina';
+let portalOpen = new Set();   // cantieri aperti con "Mostra tutto"
 let portalFilters = { ristrutturazioni:false, noti:false, nuovi:false, fase:'', prov:'', minUnita:0, q:'', scartati:false, collegati:false };
 function onPortalSnapshot(snap){
   portalSaved = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
@@ -2611,21 +2683,26 @@ function portalFiltered(rows){
 function portalCardHtml(r){
   const p = r.p, stars = '★★★'.slice(0, r.stelle) + '☆☆☆'.slice(0, 3 - r.stelle), followed = portalTab==='seguiti';
   const vc = portalViaCitta(p);
-  return `<div class="card portal-card ${followed ? 'seguito' : ''}" data-pid="${p.id}">
+  const open = portalOpen.has(p.id);
+  const links = (list, kind)=>(list||[]).map(x=>kind==='tel' ? `<a href="tel:${esc(x)}" class="tel-link">${esc(x)}</a>` : `<a href="mailto:${esc(x)}" class="addr-link">${esc(x)}</a>`).join(' ');
+  return `<div class="card portal-card ${followed ? 'seguito' : ''} ${open ? 'open' : ''}" data-pid="${p.id}">
     <div class="portal-head">
       <div style="min-width:0;"><span class="portal-stars" title="Punteggio">${r.stelle ? stars : '–'}</span>
-        <strong>${esc(p.titolo)}</strong> <span class="fc-addr">· ${esc(p.comune)}${r.prov ? ` (${r.prov})` : ''}</span>
+        <strong class="name-link" data-portal-toggle="${p.id}" title="Mostra o nascondi tutti i dettagli">${esc(p.titolo)}</strong> <span class="fc-addr">· ${esc(p.comune)}${r.prov ? ` (${r.prov})` : ''}</span>
         ${r.nuovo ? '<span class="ai-prio alta">nuovo</span>' : ''}${(r.projs||[]).map(pr=>`<span class="ai-prio">progetto ${esc(pr.codice||'')}</span>`).join('')}${(r.projs||[]).length > 1 ? '<span class="ai-prio warn">collegata a più progetti</span>' : ''}</div>
       <div class="portal-vol">${r.vol!=null ? `<strong>${fmtEuro(r.vol).replace(',00','')}</strong><span>${p.unita} unità · ${p.unita*portalMl()} m</span>` : '<span>unità non indicate</span>'}</div>
     </div>
     ${vc.via ? `<div class="portal-addr"><a href="${mapsUrl({ via:vc.via, citta:vc.citta })}" target="_blank" rel="noopener" class="addr-link">${esc(vc.via)}, ${esc(vc.citta)} · Indicazioni</a></div>` : ''}
     <div class="todo-sub">${esc([p.pnrr && 'PNRR', p.fase && 'Fase '+p.fase, p.intervento, p.valore ? 'valore opera '+fmtEuro(p.valore).replace(',00','') : '', p.inizio && p.inizio!=='ND' ? 'inizio '+p.inizio : '', p.dataNotizia && 'notizia del '+p.dataNotizia].filter(Boolean).join(' · '))}</div>
     ${p.descrizione ? `<div class="portal-desc">${esc(p.descrizione)}</div>` : ''}
+    <div class="portal-toggle"><span class="name-link portal-less" data-portal-toggle="${p.id}">Mostra tutto</span><span class="name-link portal-more" data-portal-toggle="${p.id}">Riduci</span></div>
     <div class="portal-people">${r.matches.map(({s, m}, i)=>`<div class="portal-person">
       <span class="fc-note">${esc(s.ruolo || 'Soggetto')}</span>
       <div>${esc(s.nome)}${(s.altro||[]).length ? ` · ${esc(s.altro.join(' · '))}` : ''}${s.citta ? ` <span class="fc-note">· ${esc(s.citta)}</span>` : ''}</div>
       ${m ? `<div class="todo-linked"><span class="name-link" data-contact-id="${m.c.id}">già in rubrica: ${esc(fullName(m.c))}</span> <span class="fc-note">(${m.how==='email' ? 'stessa email' : 'stesso '+m.how})</span></div>`
-          : `<div class="todo-sub">${(s.tel||[])[0] ? `<a href="tel:${esc(s.tel[0])}" class="tel-link">${esc(s.tel[0])}</a> ` : ''}${(s.email||[])[0] ? `<a href="mailto:${esc(s.email[0])}" class="addr-link">${esc(s.email[0])}</a> ` : ''}<button class="btn secondary small" data-portal-contact="${p.id}|${i}">Crea contatto</button></div>`}
+          : ''}
+      <div class="portal-more todo-sub">${[links(s.tel, 'tel'), links(s.email, 'mail'), esc([s.via, s.citta].filter(Boolean).join(', ')), s.web ? `<a href="${esc(/^https?:/i.test(s.web) ? s.web : 'https://'+s.web)}" target="_blank" rel="noopener" class="addr-link">${esc(s.web)}</a>` : ''].filter(Boolean).join('<br>')}</div>
+      ${m ? '' : `<div class="todo-sub"><span class="portal-less">${(s.tel||[])[0] ? `<a href="tel:${esc(s.tel[0])}" class="tel-link">${esc(s.tel[0])}</a> ` : ''}${(s.email||[])[0] ? `<a href="mailto:${esc(s.email[0])}" class="addr-link">${esc(s.email[0])}</a> ` : ''}</span><button class="btn secondary small" data-portal-contact="${p.id}|${i}">Crea contatto</button></div>`}
     </div>`).join('')}</div>
     ${followed ? `<div class="portal-note"><label>Note${r.saved.nota && r.saved.aggiornatoIl ? ` <span class="fc-note">· aggiornate il ${new Date(r.saved.aggiornatoIl).toLocaleDateString('it-IT')}</span>` : ''}</label>
       <textarea rows="2" data-portal-note="${p.id}" placeholder="Es. chiamato lo studio, richiamare a novembre…">${esc(r.saved.nota||'')}</textarea></div>` : ''}
@@ -2678,7 +2755,7 @@ function portalView(){
     ${body}`;
 }
 function portalCompact(p){
-  return { ...p, descrizione: (p.descrizione||'').slice(0, 600), soggetti: (p.soggetti||[]).map(s=>({ ruolo:s.ruolo, nome:s.nome, altro:s.altro||[], tel:s.tel||[], email:s.email||[], via:s.via||'', citta:s.citta||'', web:s.web||'' })) };
+  return { ...p, descrizione: (p.descrizione||'').slice(0, 4000), soggetti: (p.soggetti||[]).map(s=>({ ruolo:s.ruolo, nome:s.nome, altro:s.altro||[], tel:s.tel||[], email:s.email||[], via:s.via||'', citta:s.citta||'', web:s.web||'' })) };
 }
 // Scritture in blocco (versione online: batch Firestore da 400; altrove una alla volta).
 async function portalWriteImport(sets, dels){
@@ -2740,6 +2817,12 @@ function bindPortal(){
     input.addEventListener('change', ()=>{ if(input.files && input.files[0]) loadPortalPdf(input.files[0]); });
     input.click();
   });
+  main.querySelectorAll('[data-portal-toggle]').forEach(el=>el.addEventListener('click', ()=>{
+    const pid = el.dataset.portalToggle, card = el.closest('.portal-card');
+    if(portalOpen.has(pid)) portalOpen.delete(pid); else portalOpen.add(pid);
+    card.classList.toggle('open', portalOpen.has(pid));
+    if(!portalOpen.has(pid)) card.scrollIntoView({ block:'nearest' });
+  }));
   document.getElementById('ptEsamina').addEventListener('click', ()=>{ portalTab = 'esamina'; portalShow = 40; renderMain(); });
   document.getElementById('ptSeguiti').addEventListener('click', ()=>{ portalTab = 'seguiti'; portalShow = 40; renderMain(); });
   const param = (id, key)=>document.getElementById(id).addEventListener('change', e=>{
@@ -3044,6 +3127,105 @@ function onGeoEditClick(e){
 }
 
 // ---------------------------------------------------------------------------
+// Possibili doppioni (Contatti -> "Possibili doppioni"): gruppi di contatti con lo stesso
+// cellulare, la stessa email (se e' di studio, tipo info@, solo con lo stesso cognome) o lo
+// stesso nome e cognome (anche invertiti). Il telefono dello studio non conta: e' condiviso dai
+// colleghi. "Unisci" tiene il contatto scelto, gli porta chiamate, partecipazioni ai progetti,
+// dati mancanti e note, ed elimina gli altri. "Non sono doppioni" (settings.nonDoppioni, chiavi
+// "idA|idB" ordinate) non li ripropone.
+// ---------------------------------------------------------------------------
+let dupMain = {};   // chiave gruppo -> id del contatto da tenere
+const DUP_FIELDS = ['nome','cognome','professione','cellulare','azienda','via','citta','telefono','email'];
+const GENERIC_MAIL = /^(info|segreteria|studio|amministrazione|ufficio|tecnico|contatti|mail|posta|office|admin|commerciale)[@.]/i;
+function dupPairKey(a, b){ return [a, b].sort().join('|'); }
+function dupIgnored(){ return new Set(appSettings.nonDoppioni || []); }
+function dupGroups(){
+  const parent = new Map(contacts.map(c=>[c.id, c.id]));
+  const find = x=>{ while(parent.get(x)!==x){ parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const ign = dupIgnored(), why = new Map();
+  const join = (a, b, reason)=>{
+    if(a.id===b.id || ign.has(dupPairKey(a.id, b.id))) return;
+    parent.set(find(a.id), find(b.id));
+    const k = dupPairKey(a.id, b.id); if(!why.has(k)) why.set(k, reason);
+  };
+  const by = (keyFn, reason, ok)=>{
+    const m = new Map();
+    contacts.forEach(c=>{ const k = keyFn(c); if(!k) return; (m.get(k) || m.set(k, []).get(k)).push(c); });
+    m.forEach(list=>{ for(let i=1; i<list.length; i++) if(!ok || ok(list[0], list[i])) join(list[0], list[i], reason); });
+  };
+  by(c=>digits9(c.cellulare), 'stesso cellulare');
+  by(c=>(c.email||'').trim().toLowerCase(), 'stessa email', (a, b)=>!GENERIC_MAIL.test(a.email) || (normName(a.cognome) && normName(a.cognome)===normName(b.cognome)));
+  by(c=>c.cognome && c.nome ? [normName(c.cognome), normName(c.nome)].sort().join('|') : '', 'stesso nome');
+  const groups = new Map();
+  contacts.forEach(c=>{ const r = find(c.id); (groups.get(r) || groups.set(r, []).get(r)).push(c); });
+  return [...groups.values()].filter(g=>g.length > 1).map(g=>{
+    const reasons = new Set();
+    for(let i=0; i<g.length; i++) for(let j=i+1; j<g.length; j++){ const r = why.get(dupPairKey(g[i].id, g[j].id)); if(r) reasons.add(r); }
+    return { key: g.map(c=>c.id).sort().join(','), contacts: g, reasons:[...reasons] };
+  }).sort((a,b)=>fullName(a.contacts[0]).localeCompare(fullName(b.contacts[0])));
+}
+function dupScore(c){ return calls.filter(k=>k.contactId===c.id).length*3 + projectsOfContact(c.id).length*3 + DUP_FIELDS.filter(f=>c[f]).length; }
+function dupsView(){
+  const groups = dupGroups();
+  return `<div class="top-actions"><button class="btn secondary small" id="dupBackBtn">← Contatti</button></div>
+    <h2 style="margin-bottom:4px;">Possibili doppioni (${groups.length})</h2>
+    <div class="fc-note" style="margin-bottom:12px;">Per ogni gruppo scegli il contatto da tenere: "Unisci" gli porta chiamate, progetti, dati mancanti e note, ed elimina gli altri. Il telefono dello studio non conta (lo condividono i colleghi).</div>
+    ${groups.length ? groups.map(g=>{
+      const main = dupMain[g.key] && g.contacts.some(c=>c.id===dupMain[g.key]) ? dupMain[g.key] : g.contacts.slice().sort((a,b)=>dupScore(b)-dupScore(a))[0].id;
+      return `<div class="card" data-dup-group="${g.key}">
+        <div class="todo-sub" style="margin-bottom:6px;">${esc(g.reasons.join(', '))}</div>
+        <div class="dup-grid">${g.contacts.map(c=>{ const nk = calls.filter(k=>k.contactId===c.id).length, np = projectsOfContact(c.id).length;
+          return `<label class="dup-card ${c.id===main ? 'main' : ''}"><input type="radio" name="dup-${g.key}" value="${c.id}" ${c.id===main ? 'checked' : ''}>
+            <div><strong>${esc(fullName(c))}</strong>${c.id===main ? ' <span class="ai-prio alta">da tenere</span>' : ''}
+            <div class="todo-sub">${esc([c.professione, c.azienda].filter(Boolean).join(' · '))}</div>
+            <div class="todo-sub">${esc([c.cellulare && 'cell. '+c.cellulare, c.telefono && 'tel. '+c.telefono, c.email].filter(Boolean).join(' · '))}</div>
+            <div class="todo-sub">${esc(fullAddress(c))}</div>
+            <div class="todo-sub">${nk} ${nk===1 ? 'chiamata' : 'chiamate'} · ${np} ${np===1 ? 'progetto' : 'progetti'} · <span class="name-link" data-contact-id="${c.id}">apri</span></div></div>
+          </label>`; }).join('')}</div>
+        <div class="todo-actions" style="margin-top:8px;"><button class="btn small" data-dup-merge="${g.key}">Unisci</button><button class="btn secondary small" data-dup-ignore="${g.key}">Non sono doppioni</button></div>
+      </div>`; }).join('') : '<div class="empty">Nessun possibile doppione trovato.</div>'}`;
+}
+async function mergeContacts(mainId, otherIds){
+  const main = contacts.find(c=>c.id===mainId), others = otherIds.map(id=>contacts.find(c=>c.id===id)).filter(Boolean);
+  if(!main || !others.length) return;
+  const upd = {};
+  DUP_FIELDS.forEach(f=>{ if(!main[f]){ const o = others.find(x=>x[f]); if(o) upd[f] = o[f]; } });
+  const tags = [...new Set([main, ...others].flatMap(c=>String(c.tag||'').split(',').map(t=>t.trim()).filter(Boolean)))];
+  if(tags.length) upd.tag = tags.join(', ');
+  const notes = [...new Set([main, ...others].map(c=>(c.note||'').trim()).filter(Boolean))];
+  if(notes.length > 1 || (notes.length===1 && !main.note)) upd.note = notes.join('\n');
+  if(!main.followUp){ const fu = others.map(c=>c.followUp).filter(Boolean).sort()[0]; if(fu) upd.followUp = fu; }
+  const ids = new Set(otherIds);
+  for(const k of calls.filter(k=>ids.has(k.contactId))) await db.collection('calls').doc(k.id).update({ contactId: mainId });
+  for(const p of projects.filter(p=>(p.partecipanti||[]).some(x=>ids.has(x.contactId)))){
+    const seen = new Set(), partecipanti = [];
+    (p.partecipanti||[]).forEach(x=>{ const cid = ids.has(x.contactId) ? mainId : x.contactId; if(!seen.has(cid)){ seen.add(cid); partecipanti.push({ ...x, contactId: cid }); } });
+    await db.collection('projects').doc(p.id).update({ partecipanti, updatedAt: Date.now() });
+  }
+  if(Object.keys(upd).length) await db.collection('contacts').doc(mainId).update(upd);
+  for(const o of others) await db.collection('contacts').doc(o.id).delete();
+}
+function bindDups(){
+  const main = document.getElementById('main');
+  document.getElementById('dupBackBtn').addEventListener('click', ()=>{ view='contactsList'; renderMain(); });
+  main.querySelectorAll('[data-contact-id]').forEach(el=>el.addEventListener('click', e=>{ e.preventDefault(); selectedId = el.dataset.contactId; view='detail'; renderMain(); }));
+  main.querySelectorAll('[data-dup-group] input[type=radio]').forEach(r=>r.addEventListener('change', ()=>{ dupMain[r.closest('[data-dup-group]').dataset.dupGroup] = r.value; renderMain(); }));
+  main.querySelectorAll('[data-dup-merge]').forEach(b=>b.addEventListener('click', async ()=>{
+    const box = b.closest('[data-dup-group]'), sel = box.querySelector('input[type=radio]:checked');
+    const ids = b.dataset.dupMerge.split(','), mainId = sel ? sel.value : ids[0];
+    b.disabled = true; b.textContent = 'Unione in corso…';
+    try{ await mergeContacts(mainId, ids.filter(id=>id!==mainId)); delete dupMain[b.dataset.dupMerge]; }
+    catch(e){ alert('Errore durante l\'unione: '+(e.message||e.code||'')); }
+    renderMain();
+  }));
+  main.querySelectorAll('[data-dup-ignore]').forEach(b=>b.addEventListener('click', ()=>{
+    const ids = b.dataset.dupIgnore.split(','), keys = new Set(appSettings.nonDoppioni || []);
+    for(let i=0; i<ids.length; i++) for(let j=i+1; j<ids.length; j++) keys.add(dupPairKey(ids[i], ids[j]));
+    b.disabled = true; saveSettings({ nonDoppioni: [...keys] }); renderMain();
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Forecast: solo commesse aperte (ne' perse ne' con ordine confermato). Valore
 // ponderato = importo offerta x probabilita' di chiusura. Campi sul progetto:
 // probabilita (0-100; se assente si usa quella suggerita per la fase),
@@ -3265,11 +3447,11 @@ function forecastRowsHtml(){
         ${phaseBadge(p)}
       </div>
       <div class="fc-grid">
-        <div><label>Offerta</label><div class="fc-amount">${fmtEuro(p.importoOfferta)}</div></div>
-        <div><label>Probabilità${pr.suggested ? ' <span class="fc-sugg">suggerita</span>' : ''}</label>
+        <div class="fc-c-off"><label>Offerta</label><div class="fc-amount">${fmtEuro(p.importoOfferta)}</div></div>
+        <div class="fc-c-prob"><label>Probabilità${pr.suggested ? ' <span class="fc-sugg">suggerita</span>' : ''}</label>
           <div style="display:flex;align-items:center;gap:4px;"><input type="number" class="fc-prob" min="0" max="100" step="5" inputmode="numeric" value="${pr.value}" style="max-width:84px;"> %</div></div>
-        <div><label>Ponderato</label><div class="fc-amount fc-weighted">${p.importoOfferta!=null ? fmtEuro(forecastWeighted(p)) : '—'}</div></div>
-        <div><label>Chiusura prevista</label><input type="month" class="fc-close" value="${esc(p.chiusuraPrevista||'')}" style="max-width:170px;"></div>
+        <div class="fc-c-w"><label>Ponderato</label><div class="fc-amount fc-weighted">${p.importoOfferta!=null ? fmtEuro(forecastWeighted(p)) : '—'}</div></div>
+        <div class="fc-c-close"><label>Chiusura<span class="fc-long"> prevista</span></label><input type="month" class="fc-close" value="${esc(p.chiusuraPrevista||'')}" style="max-width:170px;"></div>
         <div class="fc-split-cell"><label>Fatturato previsto per anno</label>${splitInputsHtml(p)}</div>
       </div>
     </div>`;
