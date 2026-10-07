@@ -251,6 +251,10 @@ body.foto-open{overflow:hidden;}
 .map-sw.cl,.map-mk.cl{border-radius:50%;background:#2a6fb0;}
 .map-sw.sq.aperti,.map-mk.sq.aperti{background:#b97f00;}
 .map-sw.sq.confermati,.map-mk.sq.confermati{background:#7a4fb5;}
+.map-sw.dm,.map-mk.dm{transform:rotate(45deg);border-radius:1px;}
+.map-sw.dm{width:10px;height:10px;margin-right:6px;}
+.map-sw.dm.seguito,.map-mk.dm.seguito{background:#d1495b;}
+.map-sw.dm.esame,.map-mk.dm.esame{background:#fff;border-color:#d1495b;box-shadow:0 0 0 1px #d1495b;}
 .map-sw.sq.persi,.map-mk.sq.persi{background:#fff;border-color:#8a96a3;box-shadow:0 0 0 1px #8a96a3;}
 .map-mk{width:14px;height:14px;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font:700 9px/1 var(--sans);}
 .map-mk.sq{border-radius:2px;}
@@ -2406,7 +2410,8 @@ function bindPhotoSettings(){
 // {lat, lng, a} (a = indirizzo cercato; se cambia si ricerca; nf = non trovato).
 // "Vicino a…": centra su una localita' e mostra cosa c'e' entro 20 km.
 // ---------------------------------------------------------------------------
-let mapObj = null, mapLayer = null, mapFilters = { clienti:true, aperti:true, confermati:true, persi:false };
+let mapObj = null, mapLayer = null, mapFilters = { clienti:true, aperti:true, confermati:true, persi:false, portaleSeguiti:true, portaleEsame:false };
+const geoTried = new Set();   // elementi gia' cercati in questa sessione (niente ricerche ripetute se il salvataggio non riesce)
 let mapNear = null, mapGeoRunning = false, mapGeoMsg = '';
 const geoCache = new Map();   // indirizzo -> {lat,lng} | null (non trovato)
 function loadLeaflet(){
@@ -2483,8 +2488,23 @@ async function geocodeSmart(addr, citta, pause){
   }
   return null;
 }
+// Cantieri del portale sulla mappa: seguiti (collection portale) e da esaminare (importazione, come
+// nella pagina "Da esaminare": non scartati, non collegati a un progetto, solo nuove costruzioni
+// salvo "Mostra anche ristrutturazioni"). Coordinate in geo sul documento di portale/portaleImport.
+function portalGeoAddr(p){ const vc = portalViaCitta(p), citta = vc.citta || p.comune || ''; return { a: vc.via ? `${vc.via}, ${citta}` : citta, citta }; }
+function mapPortalItems(){
+  const out = [];
+  if(mapFilters.portaleSeguiti) portalFollowRows().forEach(r=>out.push({ st:'seguito', r, e:r.saved, col:'portale' }));
+  if(mapFilters.portaleEsame && portalImport) portalExamRows().filter(r=>!r.scartato && !r.proj && (portalFilters.ristrutturazioni || r.p.nuovaCostruzione))
+    .sort((a,b)=>b.prio - a.prio).forEach(r=>out.push({ st:'esame', r, e:r.imp, col:'portaleImport' }));
+  return out;
+}
 function mapPoints(){
   const pts = [];
+  mapPortalItems().forEach(it=>{
+    const { a } = portalGeoAddr(it.r.p); if(!a) return; const g = docGeo(it.e, a); if(!g || g.nf) return;
+    pts.push({ kind:'portale', st:it.st, addr:a, lat:g.lat, lng:g.lng, r:it.r, approx: !!g.approx });
+  });
   if(mapFilters.clienti){
     const byAddr = new Map();
     contacts.forEach(c=>{ const { a } = contactGeoAddr(c); if(!a) return; const g = docGeo(c, a); if(!g || g.nf) return;
@@ -2504,7 +2524,8 @@ function mapToGeocode(){
   const out = [];
   contacts.forEach(c=>{ const { a, citta } = contactGeoAddr(c); if(a && !docGeo(c, a)) out.push({ col:'contacts', x:c, a, citta }); });
   projects.forEach(p=>{ const { a, citta } = projectGeoAddr(p); if(a && !docGeo(p, a)) out.push({ col:'projects', x:p, a, citta }); });
-  return out;
+  mapPortalItems().forEach(it=>{ const { a, citta } = portalGeoAddr(it.r.p); if(a && it.e && it.e.docId && !docGeo(it.e, a)) out.push({ col:it.col, x:it.e, id:it.e.docId, a, citta }); });
+  return out.filter(it=>!geoTried.has(`${it.col}/${it.id || it.x.id}/${geoKey(it.a)}`));
 }
 // Chi non compare sulla mappa e perche' (progetti non persi e clienti).
 function mapMissingHtml(){
@@ -2527,6 +2548,13 @@ function mapMissingHtml(){
 }
 function lastContactDays(c){ const d = calls.filter(k=>k.contactId===c.id).map(k=>k.data||'').sort().pop(); return d ? daysBetween(d, todayISO()) : null; }
 function mapPopupHtml(pt){
+  if(pt.kind==='portale'){ const r = pt.r, p = r.p;
+    return `<div class="map-pop"><div class="fc-note">${pt.st==='seguito' ? 'Cantiere seguito' : 'Cantiere da valutare'} · NII Progetti</div><strong>${esc(p.titolo||'Cantiere')}</strong>
+      <div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}
+      <div class="fc-note">${esc([p.fase && 'Fase '+p.fase, p.unita ? p.unita+' unità' : '', r.vol!=null ? 'volume '+fmtEuro(r.vol).replace(',00','') : ''].filter(Boolean).join(' · '))}</div>
+      ${r.noti.length ? `<div class="fc-note">Già in rubrica: ${r.noti.map(x=>esc(fullName(x.m.c))).join(', ')}</div>` : ''}
+      ${pt.st==='seguito' && r.saved.nota ? `<div style="margin-top:4px;">${esc(r.saved.nota)}</div>` : ''}
+      <div class="map-pop-actions"><button class="btn small" data-portal-goto="${pt.st==='seguito' ? 'seguiti' : 'esamina'}|${esc(p.id)}">Apri scheda</button><a class="btn secondary small" href="${mapsUrl({ via: pt.addr })}" target="_blank" rel="noopener">Indicazioni</a></div></div>`; }
   if(pt.kind==='cantiere'){ const p = pt.p, ph = projectPhase(p);
     return `<div class="map-pop"><div class="proj-code">${esc(p.codice||'')}</div><strong>${esc(p.nome||'Progetto')}</strong>
       <div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}<div class="fc-note">${isLost(p) ? 'Persa' : ph ? esc(ph.label) : 'Da avviare'}${p.importoOfferta!=null ? ' · '+fmtEuro(projectAmount(p)) : ''}</div>
@@ -2541,7 +2569,9 @@ function mapNearHtml(){
   if(!mapNear) return '';
   const near = mapPoints().map(pt=>({ pt, d: distKm(mapNear, pt) })).filter(x=>x.d <= 20).sort((a,b)=>a.d - b.d);
   return `<div class="card"><h3>Vicino a ${esc(mapNear.label)} (entro 20 km): ${near.length}</h3>
-    ${near.length ? near.map(({pt, d})=>`<div class="todo-row"><div class="todo-main">${pt.kind==='cantiere'
+    ${near.length ? near.map(({pt, d})=>`<div class="todo-row"><div class="todo-main">${pt.kind==='portale'
+        ? `<span class="map-sw dm ${pt.st}"></span><span class="name-link" data-portal-goto="${pt.st==='seguito' ? 'seguiti' : 'esamina'}|${esc(pt.r.p.id)}">${esc(pt.r.p.titolo||'Cantiere')}</span> <span class="fc-note">(${pt.st==='seguito' ? 'seguito' : 'da valutare'})</span>`
+        : pt.kind==='cantiere'
         ? `<span class="map-sw sq ${pt.st}"></span><span class="proj-code">${esc(pt.p.codice||'')}</span> <span class="name-link" data-map-project="${pt.p.id}">${esc(pt.p.nome||'Progetto')}</span>`
         : `<span class="map-sw cl"></span>${pt.contacts.map(c=>`<span class="name-link" data-map-contact="${c.id}">${esc(fullName(c))}</span>`).join(', ')}`}
       <div class="todo-sub">${esc(pt.addr)} · ${d<1 ? 'meno di 1 km' : Math.round(d)+' km'}${pt.kind==='cliente' ? (()=>{ const ds = pt.contacts.map(lastContactDays).filter(x=>x!=null); return ds.length ? ` · ultimo contatto ${Math.min(...ds)} giorni fa` : ' · mai sentito'; })() : ''}</div></div></div>`).join('')
@@ -2554,7 +2584,7 @@ function mapView(){
     <div class="card" style="padding:12px 14px;">
       <div class="map-tools">
         <div class="map-search"><input id="mapPlace" placeholder="Vicino a… (es. Cuneo, Via Roma 10 Alba)" autocomplete="off"><button class="btn small" id="mapPlaceBtn">Cerca</button><button class="btn secondary small" id="mapMeBtn">Vicino a me</button></div>
-        <div class="map-filters">${f('clienti','Clienti','cl')}${f('aperti','Cantieri in corso','sq aperti')}${f('confermati','Cantieri confermati','sq confermati')}${f('persi','Cantieri persi','sq persi')}</div>
+        <div class="map-filters">${f('clienti','Clienti','cl')}${f('aperti','Cantieri in corso','sq aperti')}${f('confermati','Cantieri confermati','sq confermati')}${f('persi','Cantieri persi','sq persi')}${f('portaleSeguiti','Portale: seguiti','dm seguito')}${f('portaleEsame','Portale: da valutare','dm esame')}</div>
       </div>
       <div class="fc-note" id="mapGeoMsg">${esc(mapGeoMsg)}</div>
     </div>
@@ -2568,10 +2598,10 @@ function drawMapPoints(fit){
   mapLayer.clearLayers();
   const pts = mapPoints();
   pts.forEach(pt=>{
-    const cls = (pt.kind==='cantiere' ? `map-mk sq ${pt.st}` : 'map-mk cl') + (pt.approx ? ' approx' : '');
+    const cls = (pt.kind==='portale' ? `map-mk dm ${pt.st}` : pt.kind==='cantiere' ? `map-mk sq ${pt.st}` : 'map-mk cl') + (pt.approx ? ' approx' : '');
     const n = pt.kind==='cliente' && pt.contacts.length>1 ? `<span>${pt.contacts.length}</span>` : '';
     L.marker([pt.lat, pt.lng], { icon: L.divIcon({ className:'', html:`<div class="${cls}">${n}</div>`, iconSize:[18,18], iconAnchor:[9,9] }),
-      title: pt.kind==='cantiere' ? `${pt.p.codice} ${pt.p.nome||''}` : pt.contacts.map(fullName).join(', ') })
+      title: pt.kind==='portale' ? pt.r.p.titolo||'' : pt.kind==='cantiere' ? `${pt.p.codice} ${pt.p.nome||''}` : pt.contacts.map(fullName).join(', ') })
       .bindPopup(mapPopupHtml(pt)).addTo(mapLayer);
   });
   if(fit && pts.length) mapObj.fitBounds(L.latLngBounds(pts.map(p=>[p.lat, p.lng])), { padding:[30,30], maxZoom:13 });
@@ -2588,13 +2618,16 @@ async function runMapGeocoding(){
   try{
     for(const it of todo){
       if(view!=='map') break;
-      msg(`Posiziono gli indirizzi sulla mappa: ${done} di ${todo.length}…`);
+      msg(`Posiziono gli indirizzi sulla mappa: ${done} di ${todo.length}… (una volta sola: le posizioni restano salvate)`);
+      geoTried.add(`${it.col}/${it.id || it.x.id}/${geoKey(it.a)}`);
       const g = await geocodeSmart(it.a, it.citta, pause);
       const geo = g ? { lat:g.lat, lng:g.lng, a:it.a, v:GEO_V, ...(g.approx ? { approx:true } : {}) } : { a:it.a, nf:true, v:GEO_V };
       it.x.geo = geo; done++;
-      db.collection(it.col).doc(it.x.id).update({ geo }).catch(()=>{});
+      db.collection(it.col).doc(it.id || it.x.id).update({ geo }).catch(()=>{});
       if(g && done % 5 === 0) drawMapPoints(false);
     }
+    // filtri attivati nel frattempo: si continua con i nuovi
+    if(view==='map' && mapToGeocode().length){ mapGeoRunning = false; return runMapGeocoding(); }
     msg(todo.length ? 'Indirizzi posizionati. I punti con il bordo tratteggiato sono approssimativi (solo comune).' : '');
   }catch(e){ msg('Posizionamento interrotto: '+(e.message||e)); }
   mapGeoRunning = false;
@@ -2602,7 +2635,11 @@ async function runMapGeocoding(){
 }
 async function bindMap(){
   const main = document.getElementById('main');
-  main.querySelectorAll('[data-map-filter]').forEach(cb=>cb.addEventListener('change', ()=>{ mapFilters[cb.dataset.mapFilter] = cb.checked; drawMapPoints(false); }));
+  main.querySelectorAll('[data-map-filter]').forEach(cb=>cb.addEventListener('change', ()=>{
+    mapFilters[cb.dataset.mapFilter] = cb.checked; drawMapPoints(false);
+    if(cb.checked && cb.dataset.mapFilter==='portaleEsame') startPortalImport();
+    if(cb.checked && /^portale/.test(cb.dataset.mapFilter)) runMapGeocoding();
+  }));
   // pulsanti nei fumetti e nell'elenco "vicino a" (creati dopo): un solo ascoltatore, registrato una volta
   if(!window.__mapClickBound){ window.__mapClickBound = true; main.addEventListener('click', e=>{
     if(view!=='map') return;
@@ -2632,7 +2669,7 @@ async function bindMap(){
   drawMapPoints(true);
   if(mapNear) mapObj.setView([mapNear.lat, mapNear.lng], 11);
   // progetti senza indirizzo ma collegati al portale: serve l'importazione per leggere l'indirizzo del cantiere
-  if(!portalImportStarted && projects.some(p=>!projectAddress(p) && projectPortalIds(p).length)) startPortalImport();
+  if(!portalImportStarted && (mapFilters.portaleEsame || projects.some(p=>!projectAddress(p) && projectPortalIds(p).length))) startPortalImport();
   runMapGeocoding();
 }
 
@@ -2891,11 +2928,12 @@ let portalFilters = { ristrutturazioni:false, noti:false, nuovi:false, fase:'', 
 function onPortalSnapshot(snap){
   portalSaved = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
   if((view==='portal') && canAutoRender()) renderMain();
+  if(view==='map' && mapObj && !mapGeoRunning) drawMapPoints(false);
 }
 function onPortalImportSnapshot(snap){
   portalImport = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
   if((view==='portal' || view==='detail' || view==='projectDetail') && canAutoRender() && !portalBusy) renderMain();
-  if(view==='map' && mapObj) runMapGeocoding();   // indirizzi dei progetti presi dal portale
+  if(view==='map' && mapObj){ if(!mapGeoRunning) drawMapPoints(false); runMapGeocoding(); }   // indirizzi dei progetti presi dal portale, cantieri da valutare
 }
 function startPortalImport(){
   if(portalImportStarted) return;
@@ -3060,9 +3098,11 @@ async function loadPortalPdf(file){
 function portalFindProject(pid){ return ((portalImport && portalImport.get(pid))||{}).dati || (portalSaved.get(pid)||{}).dati; }
 async function portalFollow(pid){
   const p = portalFindProject(pid), ex = portalSaved.get(pid), now = Date.now();
+  // la posizione gia' trovata sulla mappa passa al cantiere seguito
+  const imp = portalImport && portalImport.get(pid), geo = imp && imp.geo && !(ex && ex.geo) ? { geo: imp.geo } : {};
   try{
-    if(ex) await db.collection('portale').doc(ex.docId).update({ stato:'seguito', dati: portalCompact(p), seguitoIl: ex.seguitoIl || now, aggiornatoIl: now });
-    else await db.collection('portale').add({ pid, stato:'seguito', dati: portalCompact(p), nota:'', seguitoIl: now, aggiornatoIl: now });
+    if(ex) await db.collection('portale').doc(ex.docId).update({ stato:'seguito', dati: portalCompact(p), seguitoIl: ex.seguitoIl || now, aggiornatoIl: now, ...geo });
+    else await db.collection('portale').add({ pid, stato:'seguito', dati: portalCompact(p), nota:'', seguitoIl: now, aggiornatoIl: now, ...geo });
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
 }
 function bindPortal(){

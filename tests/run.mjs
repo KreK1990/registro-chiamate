@@ -48,7 +48,9 @@ function seedData() {
         ordini: [{ id: 'o1', data: `${year}-${month}-02`, numero: '2000001', importo: 20000, consegna: '' }], createdAt: 2, updatedAt: 2 },
     ],
     settings: [{ id: 's1', budget: { [year]: 200000 } }],
-    portale: [], forecastStorico: [],
+    portale: [{ id: 'ps1', pid: '9000002', stato: 'seguito', nota: 'richiamare a novembre', seguitoIl: 1, aggiornatoIl: 1, dati: {
+      id: '9000002', titolo: 'Palazzina di 8 alloggi', comune: 'Alba', indirizzo: 'Corso Italia 5 12051 Alba ( CN )', nuovaCostruzione: true, fase: 'Esecuzione', unita: 8, soggetti: [] } }],
+    forecastStorico: [],
     portaleImport: [{ id: '9000001', pid: '9000001', scartato: false, nuovo: true, importatoIl: 1, dati: {
       id: '9000001', titolo: 'Nuovo complesso residenziale di 24 alloggi', comune: 'Torino', indirizzo: 'Via Nizza 100', nuovaCostruzione: true,
       fase: 'Progettazione', intervento: 'Nuova costruzione', unita: 24,
@@ -105,7 +107,7 @@ async function openApp({ width = 1280, height = 900 } = {}) {
   await page.route('https://www.gstatic.com/firebasejs/**', r => r.fulfill({ contentType: 'text/javascript', body: r.request().url().includes('firebase-app-compat') ? fake : '' }));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ contentType: 'text/css', body: '' }));
   await page.route(/tile\.openstreetmap\.org/, r => r.fulfill({ status: 204, body: '' }));
-  await page.route(/nominatim\.openstreetmap\.org/, r => r.fulfill({ contentType: 'application/json', body: '[]' }));
+  await page.route(/nominatim\.openstreetmap\.org/, r => r.fulfill({ contentType: 'application/json', body: '[{"lat":"44.70","lon":"8.03"}]' }));
   await page.route(/google\.com\/maps|maps\.google/, r => r.fulfill({ contentType: 'text/html', body: '' }));
   await page.route(/cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\/3\.11\.174\/(pdf(\.worker)?)\.min\.js/, r => {
     const name = /pdf\.worker/.test(r.request().url()) ? 'pdf.worker.min.js' : 'pdf.min.js';
@@ -300,7 +302,7 @@ await ctx.close();
 ({ ctx, page } = await openApp({ width: 390, height: 844 }));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup']];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['map']];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
@@ -322,6 +324,24 @@ await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   }
   expect(!bad.length, bad.join('\n'));
   if (shotsDir) console.log('       schermate in ' + shotsDir);
+});
+
+await test('mappa: cantieri del portale seguiti e da valutare', async () => {
+  await page.evaluate(() => { mapFilters.portaleEsame = false; mapFilters.portaleSeguiti = true; });
+  await show_(page, 'map');
+  await page.waitForSelector('.map-mk.dm.seguito', { timeout: 15000 });
+  expect(!(await page.$('.map-mk.dm.esame')), 'i cantieri da valutare non devono comparire con il filtro spento');
+  await page.check('[data-map-filter="portaleEsame"]');
+  await page.waitForSelector('.map-mk.dm.esame', { timeout: 15000 });
+  const g = await page.evaluate(() => ({ imp: (window.__fake.docs('portaleImport').find(d => d.id === '9000001') || {}).geo, seg: (window.__fake.docs('portale').find(d => d.id === 'ps1') || {}).geo }));
+  expect(g.imp && g.imp.lat && g.seg && g.seg.a === 'Corso Italia 5, Alba', 'posizioni non salvate: ' + JSON.stringify(g));
+  // nel test tutti gli indirizzi hanno la stessa posizione: segnaposto sovrapposti, clic diretto
+  await page.$eval('.map-mk.dm.seguito', el => el.parentElement.click());
+  await page.waitForSelector('.map-pop [data-portal-goto]');
+  expect((await page.textContent('.map-pop')).includes('richiamare a novembre'), 'manca la nota nel fumetto');
+  await page.click('.map-pop [data-portal-goto]');
+  await page.waitForFunction(() => view === 'portal' && portalTab === 'seguiti');
+  await page.evaluate(() => { mapFilters.portaleEsame = false; });
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {

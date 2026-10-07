@@ -222,6 +222,15 @@ Campi principali:
   `mapEmbedUrl`; per i clienti anche ai colleghi con lo stesso indirizzo; si azzera se l'indirizzo
   cambia o con "Torna alla posizione dell'indirizzo"). "Vicino a…" (località o
   posizione del telefono) elenca cosa c'è entro 20 km. `canAutoRender` esclude la mappa.
+  Cantieri del portale (filtri "Portale: seguiti", acceso di default, e "Portale: da valutare", spento:
+  sono centinaia): rombi rosa `#d1495b` (pieno = seguito, vuoto = da valutare; colore validato per
+  daltonismo contro blu/ambra/viola). Da valutare = stessi criteri di "Da esaminare" (non scartati,
+  non collegati a progetti, solo nuove costruzioni salvo `portalFilters.ristrutturazioni`), cercati in
+  ordine di priorita'. Indirizzo `portalGeoAddr` (via + comune, o solo comune), coordinate in `geo` sul
+  documento di `portale` / `portaleImport` (conservate dai nuovi PDF perche' l'importazione fa update;
+  "Da seguire" copia il geo nel cantiere seguito). Fumetto con fase, unita', volume, clienti in
+  rubrica, nota e "Apri scheda" (`data-portal-goto`). `geoTried` evita ricerche ripetute nella
+  sessione; `runMapGeocoding` riparte da solo se nel frattempo si accende un filtro.
 - **Suggeriti da Claude** (in Oggi, blocco "Suggeriti da Claude", solo versione online):
   function `netlify/functions/suggest.mjs` (GET = analisi di oggi gia' salvata, gratis; POST =
   nuova analisi, max 5 al giorno) con `@anthropic-ai/sdk`, modello `claude-sonnet-5-5` (scelto
