@@ -235,6 +235,26 @@ body.foto-open{overflow:hidden;}
 .foto-info{background:var(--panel);color:var(--text);padding:10px 14px 12px;}
 .foto-fields{display:flex;gap:8px 12px;flex-wrap:wrap;}
 .foto-fields label{margin-top:0;}
+.del-sect h3{margin-bottom:6px;}
+.del-sect.late{border-left:3px solid var(--danger);}
+.del-sect.today{border-left:3px solid var(--brand-yellow);}
+.del-sect.done summary{cursor:pointer;}
+.del-row{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:4px 12px;align-items:start;padding:9px 0;border-bottom:1px solid var(--border);}
+.del-row:last-child{border-bottom:none;}
+.del-date{text-align:center;line-height:1.15;}
+.del-date strong{display:block;font-family:var(--serif);font-size:19px;color:var(--accent);}
+.del-date span{font-size:11.5px;color:var(--muted);}
+.del-row.late .del-date strong{color:var(--danger);}
+.del-row.done{opacity:.8;}
+.del-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:2px;font-size:11.5px;font-weight:600;}
+.del-tag.late{background:color-mix(in srgb, var(--danger) 14%, transparent);color:var(--danger);}
+.del-tag.done{background:var(--accent-soft);color:var(--accent);}
+.del-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
+.del-form{margin-top:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:2px;}
+.del-form label{margin-top:0;}
+.del-form-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;}
+.del-form-row input{width:auto;max-width:180px;}
+.map-return{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:1500;box-shadow:0 3px 12px rgba(0,0,0,.3);}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -587,6 +607,9 @@ h2{color:var(--accent);font-weight:800;}
   input::-webkit-date-and-time-value{text-align:left;}
   .field-row > *{min-width:0;}
   .foto-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;}
+  .del-row{grid-template-columns:52px minmax(0,1fr);}
+  .del-actions{grid-column:2;justify-content:flex-start;}
+  .map-return{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));}
 }
 </style>
 </head>
@@ -619,6 +642,7 @@ h2{color:var(--accent);font-weight:800;}
         <button id="navFollowup">Follow-up<span id="fuBadge" class="nav-badge hidden"></span></button>
         <button id="navAppt">Appuntamenti</button>
         <button id="navProjects">Progetti</button>
+        <button id="navDeliveries">Consegne<span id="delBadge" class="nav-badge hidden"></span></button>
         <button id="navMap">Mappa</button>
         <button id="navForecast">Forecast</button>
         <button id="navTable">Tabella chiamate</button>
@@ -952,7 +976,9 @@ function contactsListView(){
 
 function renderMain(){
   const main = document.getElementById('main');
+  updateMapReturnBtn();
   if(tableDetailCallId){ main.innerHTML = tableDetailView(); bindTableDetail(); return; }
+  if(view==='deliveries'){ main.innerHTML = deliveriesView(); bindDeliveries(); return; }
   if(view==='call'){ renderCallFlow(); return; }
   if(view==='agenda'){
     main.innerHTML = agendaView();
@@ -2403,6 +2429,143 @@ function bindPhotoSettings(){
 }
 
 // ---------------------------------------------------------------------------
+// Consegne (voce di menu): tutti gli ordini dei progetti (non persi) per data di consegna, in una
+// sola pagina: in ritardo, oggi, prossimi 7 giorni, piu' avanti (per mese), senza data, consegnate.
+// Campi sull'ordine (projects.ordini[]): consegna (data prevista), consegnatoIl (avvenuta
+// consegna), consegnaIniziale e rinvii (scritti al primo "Posticipa"). Segnare consegnato il
+// primo ordine compila anche la fase "Merce arrivata in cantiere" se era vuota. Badge nel menu:
+// consegne in ritardo e di oggi non ancora segnate.
+// ---------------------------------------------------------------------------
+let delEdit = null;   // { key:'projectId|orderId', mode:'post'|'done' }
+function deliveryRows(){
+  const out = [];
+  projects.filter(p=>!isLost(p)).forEach(p=>(p.ordini||[]).forEach(o=>out.push({ p, o, key:`${p.id}|${o.id}` })));
+  return out;
+}
+function deliveriesDue(){ const t = todayISO(); return deliveryRows().filter(r=>!r.o.consegnatoIl && r.o.consegna && r.o.consegna <= t).length; }
+function weekdayShort(iso){ return ['dom','lun','mar','mer','gio','ven','sab'][new Date(iso+'T12:00:00').getDay()]; }
+function deliveryRowHtml(r, kind){
+  const { p, o, key } = r, ed = delEdit && delEdit.key===key ? delEdit.mode : '';
+  const d = kind==='done' ? o.consegnatoIl : o.consegna;
+  const addr = projectAddress(p);
+  const late = kind==='late' ? daysBetween(o.consegna, todayISO()) : 0;
+  return `<div class="del-row ${kind}" data-del-key="${key}">
+    <div class="del-date">${d ? `<strong>${d.slice(8,10)}/${d.slice(5,7)}</strong><span>${weekdayShort(d)} ${d.slice(0,4)}</span>` : '<span>da definire</span>'}</div>
+    <div class="del-main">
+      <div><span class="proj-code">${esc(p.codice||'')}</span> <span class="name-link" data-open-project="${p.id}" style="font-weight:600;">${esc(p.nome||'Progetto')}</span>
+        ${kind==='late' ? `<span class="del-tag late">in ritardo di ${late} ${late===1 ? 'giorno' : 'giorni'}</span>` : ''}${kind==='done' ? '<span class="del-tag done">consegnato</span>' : ''}</div>
+      ${addr ? `<div class="todo-sub"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc(addr)} · Indicazioni</a></div>` : ''}
+      <div class="todo-sub">Ordine${o.numero ? ` n° ${esc(o.numero)}` : ''} del ${fmtDate(o.data)} · ${fmtEuro(o.importo)}${kind==='done' && o.consegna && o.consegna!==o.consegnatoIl ? ` · prevista per il ${fmtDate(o.consegna)}` : ''}</div>
+      ${o.rinvii ? `<div class="todo-sub">Rinviata ${o.rinvii===1 ? 'una volta' : o.rinvii+' volte'}${o.consegnaIniziale ? ` (prevista all'inizio per il ${fmtDate(o.consegnaIniziale)})` : ''}</div>` : ''}
+      ${o.note ? `<div class="todo-sub">${esc(o.note)}</div>` : ''}
+      ${ed==='post' ? `<div class="del-form"><label>Nuova data di consegna</label>
+          <div class="del-form-row"><input type="date" id="delNewDate" value="${esc(o.consegna || todayISO())}">
+            <button class="btn secondary small" data-del-plus="1">+1 giorno</button><button class="btn secondary small" data-del-plus="7">+1 settimana</button></div>
+          <div class="todo-actions"><button class="btn small" data-del-save="post">Salva</button><button class="btn secondary small" data-del-cancel>Annulla</button></div></div>`
+      : ed==='done' ? `<div class="del-form"><label>Merce consegnata il</label>
+          <div class="del-form-row"><input type="date" id="delDoneDate" value="${todayISO()}"></div>
+          <div class="todo-actions"><button class="btn small" data-del-save="done">Conferma consegna</button><button class="btn secondary small" data-del-cancel>Annulla</button></div></div>` : ''}
+      <div class="fc-note del-err" id="delErr-${key.replace('|','-')}"></div>
+    </div>
+    ${ed ? '' : `<div class="del-actions">${kind==='done' ? '<button class="btn secondary small" data-del-undo>Annulla consegna</button>'
+      : '<button class="btn small" data-del-mode="done">Consegnato</button><button class="btn secondary small" data-del-mode="post">Posticipa</button>'}</div>`}
+  </div>`;
+}
+function deliveriesView(){
+  const t = todayISO(), in7 = addDaysISO(t, 7), rows = deliveryRows();
+  const open = rows.filter(r=>!r.o.consegnatoIl), byDate = (a,b)=>(a.o.consegna||'').localeCompare(b.o.consegna||'') || (a.p.codice||'').localeCompare(b.p.codice||'');
+  const late = open.filter(r=>r.o.consegna && r.o.consegna < t).sort(byDate);
+  const today = open.filter(r=>r.o.consegna===t).sort(byDate);
+  const week = open.filter(r=>r.o.consegna > t && r.o.consegna <= in7).sort(byDate);
+  const later = open.filter(r=>r.o.consegna > in7).sort(byDate);
+  const nodate = open.filter(r=>!r.o.consegna).sort((a,b)=>(a.o.data||'').localeCompare(b.o.data||''));
+  const done = rows.filter(r=>r.o.consegnatoIl).sort((a,b)=>b.o.consegnatoIl.localeCompare(a.o.consegnatoIl));
+  const months = new Map(); later.forEach(r=>{ const m = r.o.consegna.slice(0,7); (months.get(m) || months.set(m, []).get(m)).push(r); });
+  const sum = list=>fmtEuro(list.reduce((s,r)=>s+(Number(r.o.importo)||0), 0));
+  const sect = (title, list, kind, extra)=>list.length ? `<div class="card del-sect ${kind}"><h3>${title} <span class="fc-note">(${list.length} · ${sum(list)})</span></h3>${extra||''}${list.map(r=>deliveryRowHtml(r, kind)).join('')}</div>` : '';
+  return `<h2 style="margin-bottom:4px;">Consegne</h2>
+    <div class="fc-note" style="margin-bottom:12px;">Tutti gli ordini dei progetti con la data di consegna prevista. "Posticipa" sposta la data (resta traccia dei rinvii), "Consegnato" registra l'arrivo della merce. Gli ordini si aggiungono dalla scheda del progetto.</div>
+    ${!rows.length ? '<div class="empty">Nessun ordine registrato: aggiungili dalla scheda del progetto (anche da PDF della conferma d\'ordine).</div>' : ''}
+    ${sect('In ritardo', late, 'late')}
+    ${sect('Oggi', today, 'today')}
+    ${sect('Prossimi 7 giorni', week, 'week')}
+    ${[...months.entries()].map(([m, list])=>sect(monthLabel(m).replace(/^./, c=>c.toUpperCase()), list, 'later')).join('')}
+    ${sect('Senza data di consegna', nodate, 'nodate')}
+    ${done.length ? `<details class="card del-sect done"><summary><strong>Consegnate</strong> <span class="fc-note">(${done.length} · ${sum(done)})</span></summary>${done.slice(0, 60).map(r=>deliveryRowHtml(r, 'done')).join('')}${done.length > 60 ? `<div class="fc-note">Mostrate le ultime 60.</div>` : ''}</details>` : ''}`;
+}
+async function saveDelivery(key, change){
+  const [pid, oid] = key.split('|'), p = projects.find(x=>x.id===pid); if(!p) return;
+  let fasi = p.fasi || {};
+  const ordini = (p.ordini||[]).map(o=>{
+    if(o.id!==oid) return o;
+    if(change.consegna){
+      const n = { ...o, consegna: change.consegna };
+      if(o.consegna && change.consegna!==o.consegna){ n.rinvii = (o.rinvii||0) + 1; if(!o.consegnaIniziale) n.consegnaIniziale = o.consegna; }
+      return n;
+    }
+    if(change.consegnatoIl){
+      if(!fasi.merceCantiere) fasi = { ...fasi, merceCantiere: change.consegnatoIl };
+      return { ...o, consegnatoIl: change.consegnatoIl };
+    }
+    if(change.undo){
+      const others = (p.ordini||[]).filter(x=>x.id!==oid && x.consegnatoIl===o.consegnatoIl);
+      if(fasi.merceCantiere && fasi.merceCantiere===o.consegnatoIl && !others.length){ fasi = { ...fasi }; delete fasi.merceCantiere; }
+      const { consegnatoIl, ...rest } = o; return rest;
+    }
+    return o;
+  });
+  await db.collection('projects').doc(pid).update({ ordini, fasi, updatedAt: Date.now() });
+}
+function bindDeliveries(){
+  const main = document.getElementById('main');
+  const okDate = v=>/^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0,4)>=2000 && +v.slice(0,4)<=2100;
+  const keyOf = el=>el.closest('[data-del-key]').dataset.delKey;
+  const err = (key, t)=>{ const e = document.getElementById('delErr-'+key.replace('|','-')); if(e) e.textContent = t; };
+  main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
+  main.querySelectorAll('[data-del-mode]').forEach(b=>b.addEventListener('click', ()=>{ delEdit = { key: keyOf(b), mode: b.dataset.delMode }; renderMain(); }));
+  main.querySelectorAll('[data-del-cancel]').forEach(b=>b.addEventListener('click', ()=>{ delEdit = null; renderMain(); }));
+  main.querySelectorAll('[data-del-plus]').forEach(b=>b.addEventListener('click', ()=>{
+    const inp = document.getElementById('delNewDate'); inp.value = addDaysISO(okDate(inp.value) ? inp.value : todayISO(), +b.dataset.delPlus);
+  }));
+  main.querySelectorAll('[data-del-save]').forEach(b=>b.addEventListener('click', async ()=>{
+    const key = keyOf(b), post = b.dataset.delSave==='post';
+    const v = document.getElementById(post ? 'delNewDate' : 'delDoneDate').value;
+    if(!okDate(v)){ err(key, 'Indica una data valida.'); return; }
+    if(!post && v > todayISO()){ err(key, 'La data di consegna non può essere nel futuro: per spostarla usa "Posticipa".'); return; }
+    b.disabled = true;
+    try{ await saveDelivery(key, post ? { consegna: v } : { consegnatoIl: v }); delEdit = null; renderMain(); }
+    catch(e){ b.disabled = false; err(key, 'Non salvato: '+(e.message||e.code||'')); }
+  }));
+  main.querySelectorAll('[data-del-undo]').forEach(b=>b.addEventListener('click', async ()=>{
+    b.disabled = true;
+    try{ await saveDelivery(keyOf(b), { undo:true }); renderMain(); }catch(e){ b.disabled = false; err(keyOf(b), 'Non salvato: '+(e.message||e.code||'')); }
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Ritorno alla mappa: aprendo dalla mappa un progetto, un contatto o un cantiere del portale
+// compare un pulsante fisso "Torna alla mappa" (in basso a destra, sempre visibile senza
+// scorrere) che riporta la mappa allo stesso punto e ingrandimento. Sparisce scegliendo
+// un'altra sezione dal menu.
+// ---------------------------------------------------------------------------
+let mapReturn = null;   // { center, zoom } della mappa da cui si e' partiti
+const MAP_RETURN_VIEWS = ['detail', 'projectDetail', 'portal', 'projectForm', 'new', 'call'];
+function noteMapReturn(){ if(view==='map' && mapObj) mapReturn = { center: mapObj.getCenter(), zoom: mapObj.getZoom() }; }
+function updateMapReturnBtn(){
+  let b = document.getElementById('mapReturnBtn');
+  if(view==='map' || !mapReturn || !(tableDetailCallId || MAP_RETURN_VIEWS.includes(view))){
+    if(view!=='map') mapReturn = null;
+    if(b) b.remove();
+    return;
+  }
+  if(b) return;
+  b = document.createElement('button');
+  b.id = 'mapReturnBtn'; b.className = 'btn map-return'; b.type = 'button'; b.textContent = '← Torna alla mappa';
+  b.addEventListener('click', ()=>{ view = 'map'; tableDetailCallId = null; setActiveTab('navMap'); renderMain(); });
+  document.body.appendChild(b);
+}
+
+// ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
 // stesso studio stanno in un solo punto) e cantieri (quadrati: in corso / confermati /
 // persi). Leaflet + OpenStreetMap da cdnjs. Coordinate da Nominatim (OpenStreetMap),
@@ -2643,8 +2806,8 @@ async function bindMap(){
   // pulsanti nei fumetti e nell'elenco "vicino a" (creati dopo): un solo ascoltatore, registrato una volta
   if(!window.__mapClickBound){ window.__mapClickBound = true; main.addEventListener('click', e=>{
     if(view!=='map') return;
-    const pr = e.target.closest('[data-map-project]'); if(pr){ openProject(pr.dataset.mapProject); return; }
-    const ct = e.target.closest('[data-map-contact]'); if(ct){ selectedId = ct.dataset.mapContact; view='detail'; confirmDeleteId=null; setActiveTab('navContacts'); renderMain(); }
+    const pr = e.target.closest('[data-map-project]'); if(pr){ noteMapReturn(); openProject(pr.dataset.mapProject); return; }
+    const ct = e.target.closest('[data-map-contact]'); if(ct){ noteMapReturn(); selectedId = ct.dataset.mapContact; view='detail'; confirmDeleteId=null; setActiveTab('navContacts'); renderMain(); }
   }); }
   const place = document.getElementById('mapPlace');
   const goPlace = async ()=>{
@@ -2666,8 +2829,9 @@ async function bindMap(){
   mapObj = L.map('mapBox', { zoomControl:true }).setView([45.07, 7.68], 8);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(mapObj);
   mapLayer = L.layerGroup().addTo(mapObj);
-  drawMapPoints(true);
-  if(mapNear) mapObj.setView([mapNear.lat, mapNear.lng], 11);
+  drawMapPoints(!mapReturn);
+  if(mapReturn){ mapObj.setView(mapReturn.center, mapReturn.zoom); mapReturn = null; }
+  else if(mapNear) mapObj.setView([mapNear.lat, mapNear.lng], 11);
   // progetti senza indirizzo ma collegati al portale: serve l'importazione per leggere l'indirizzo del cantiere
   if(!portalImportStarted && (mapFilters.portaleEsame || projects.some(p=>!projectAddress(p) && projectPortalIds(p).length))) startPortalImport();
   runMapGeocoding();
@@ -3250,6 +3414,7 @@ function onPortalGotoClick(e){
   const el = e.target.closest && e.target.closest('[data-portal-goto]');
   if(!el) return;
   e.preventDefault();
+  noteMapReturn();   // dalla mappa: resta il pulsante per tornarci
   const [tab, pid] = el.dataset.portalGoto.split('|');
   portalTab = tab;
   const target = portalFindProject(pid);
@@ -3947,12 +4112,13 @@ const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale
 function canAutoRender(){
   const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main input, #main textarea');
   return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && !(geoEdit && document.getElementById('geoEditMap')) && !(view==='call' && callStep==='entry') && !((view==='forecast' || view==='portal') && typing)
-    && !(view==='projectDetail' && (orderEdit || loseFormProjectId));
+    && !(view==='projectDetail' && (orderEdit || loseFormProjectId)) && !(view==='deliveries' && delEdit);
 }
 function onProjectsSnapshot(snap){
   projects = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   projectsSeen = true; scheduleForecastSnapshot();
   if(canAutoRender()) renderMain();
+  updateNavBadges();
 }
 // Una fase conta come raggiunta solo se la sua data e' oggi o passata (le date future sono "previste").
 function phaseDone(p, key){ const d = p.fasi && p.fasi[key]; return !!d && d <= todayISO(); }
@@ -4399,13 +4565,13 @@ function ordersCardHtml(p){
       ${editing!=='new' && !isLost(p) ? '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn secondary small" id="ordPdfBtn">Leggi da PDF</button><button class="btn secondary small" id="ordAddBtn">+ Aggiungi ordine</button></div>' : ''}
     </div>
     ${summary}
-    ${list.length ? `<div class="order-note" style="margin:-2px 0 6px;">Le date di consegna degli ordini sono indicative: l'arrivo della merce che fa fede è quello indicato nella timeline (Merce arrivata in cantiere)${f_merce(p) ? `, ${fmtDate(f_merce(p))}` : ''}.</div>` : ''}
+    ${list.length ? `<div class="order-note" style="margin:-2px 0 6px;">Consegne da seguire, posticipare e segnare come arrivate nella pagina <span class="name-link" id="ordToDeliveries">Consegne</span>. Il primo ordine consegnato compila anche "Merce arrivata in cantiere" nella timeline${f_merce(p) ? ` (ora ${fmtDate(f_merce(p))})` : ''}.</div>` : ''}
     ${list.map(o=>editing===o.id ? orderFormHtml({ ...o, ...(orderEdit.prefill||{}) }, orderEdit.info) : `<div class="order-item">
       <div class="order-main">
         <span class="order-amount">${fmtEuro(o.importo)}</span>
         <span class="order-meta">ordine del ${fmtDate(o.data)}${o.numero ? ` · n° ${esc(o.numero)}` : ''}</span>
       </div>
-      <div class="order-sub">${o.consegna ? `Consegna indicativa: ${fmtDate(o.consegna)}` : 'Consegna da definire'}${o.note ? ` · ${esc(o.note)}` : ''}</div>
+      <div class="order-sub">${o.consegnatoIl ? `<strong>Consegnato il ${fmtDate(o.consegnatoIl)}</strong>` : o.consegna ? `Consegna ${o.consegna < today ? '<strong style="color:var(--danger);">in ritardo</strong>, prevista' : 'prevista'}: ${fmtDate(o.consegna)}` : 'Consegna da definire'}${o.rinvii ? ` · rinviata ${o.rinvii===1 ? 'una volta' : o.rinvii+' volte'}` : ''}${o.note ? ` · ${esc(o.note)}` : ''}</div>
       <div class="order-actions">${confirmDeleteOrderId===o.id ? `
         <span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare questo ordine?</span>
         <button class="btn small" data-order-del-yes="${o.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button>
@@ -4431,6 +4597,7 @@ function bindOrders(p, fail){
   const okDate = v=>/^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0,4)>=2000 && +v.slice(0,4)<=2100;
   document.getElementById('ordAddBtn')?.addEventListener('click', ()=>{ orderEdit = { projectId:p.id, id:'new' }; confirmDeleteOrderId = null; renderMain(); });
   document.getElementById('ordPdfBtn')?.addEventListener('click', ()=>pickOrderPdf(p));
+  document.getElementById('ordToDeliveries')?.addEventListener('click', ()=>{ view='deliveries'; delEdit=null; setActiveTab('navDeliveries'); renderMain(); });
   // Spedito oltre il deliberato: si adegua l'importo deliberato al totale spedito.
   document.getElementById('ordAdjustBtn')?.addEventListener('click', async ()=>{
     try{ await db.collection('projects').doc(p.id).update({ importoDeliberato: orderedTotal(p), updatedAt: Date.now() }); }catch(err){ fail(err); }
@@ -4452,7 +4619,8 @@ function bindOrders(p, fail){
     if(importo===null || Number.isNaN(importo) || importo<=0){ errEl.textContent = 'Indica l\'importo dell\'ordine (es. 18.500,00).'; return; }
     const rec = { id: orderEdit.id==='new' ? 'o'+Date.now().toString(36)+Math.random().toString(36).slice(2,6) : orderEdit.id,
       data, numero: document.getElementById('ordNumero').value.trim(), importo, consegna, note: document.getElementById('ordNote').value.trim() };
-    const ordini = (p.ordini||[]).filter(o=>o.id!==rec.id).concat(rec);
+    const prev = (p.ordini||[]).find(o=>o.id===rec.id);
+    const ordini = (p.ordini||[]).filter(o=>o.id!==rec.id).concat(prev ? { ...prev, ...rec } : rec);
     const pdfFile = orderEdit.file && document.getElementById('ordAttachPdf')?.checked ? orderEdit.file : null;
     try{
       orderEdit = null; await saveProjectOrders(p, ordini); renderMain();
@@ -6392,7 +6560,9 @@ function updateNavBadges(){
   };
   setBadge(badge, overdue);
   setBadge(document.getElementById('mailBadge'), nMail);
-  setBadge(document.getElementById('menuBadge'), overdue + nMail);
+  const nDel = deliveriesDue();
+  setBadge(document.getElementById('delBadge'), nDel);
+  setBadge(document.getElementById('menuBadge'), overdue + nMail + nDel);
 }
 function followUpBadge(dateStr, big){
   if(!dateStr) return '';
@@ -6401,7 +6571,7 @@ function followUpBadge(dateStr, big){
   return `<span class="followup ${due?'due':'ok'}" style="${big?'display:inline-block;':''}">${label}</span>`;
 }
 
-const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navMap','navForecast','navTable','navDashboard','navSettings'];
+const NAV_TABS = ['navAgenda','navContacts','navCall','navFollowup','navAppt','navProjects','navDeliveries','navMap','navForecast','navTable','navDashboard','navSettings'];
 function setActiveTab(id){
   NAV_TABS.forEach(t=>document.getElementById(t).classList.toggle('active', t===id));
   const title = document.getElementById('topbarTitle');
@@ -6476,7 +6646,8 @@ document.getElementById('navAppt').addEventListener('click', ()=>{
   renderMain();
 });
 document.getElementById('navSettings').addEventListener('click', goSettings);
-document.getElementById('navMap').addEventListener('click', ()=>{ view='map'; tableDetailCallId=null; setActiveTab('navMap'); renderMain(); });
+document.getElementById('navMap').addEventListener('click', ()=>{ view='map'; tableDetailCallId=null; mapReturn=null; setActiveTab('navMap'); renderMain(); });
+document.getElementById('navDeliveries').addEventListener('click', ()=>{ view='deliveries'; tableDetailCallId=null; delEdit=null; setActiveTab('navDeliveries'); renderMain(); });
 document.getElementById('main').addEventListener('click', onInviteClick, true);
 document.getElementById('main').addEventListener('click', onPortalFillClick);
 document.getElementById('main').addEventListener('click', onPortalGotoClick);

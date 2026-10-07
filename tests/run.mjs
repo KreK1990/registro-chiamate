@@ -46,7 +46,12 @@ function seedData() {
         partecipanti: [{ contactId: 'c3', ruolo: 'Progettazione strutturale' }],
         fasi: { richiesta: daysAgo(200), offertaPresentata: daysAgo(150), confermaOrdine: `${year}-${month}-01` },
         ordini: [{ id: 'o1', data: `${year}-${month}-02`, numero: '2000001', importo: 20000, consegna: '' }], createdAt: 2, updatedAt: 2 },
+      { id: 'p3', codice: '4800003', nome: 'Villa Gamma', via: 'Via Asti 3', citta: 'Alba', importoOfferta: 30000, importoDeliberato: 30000,
+        partecipanti: [], fasi: { richiesta: `${year - 1}-01-10`, offertaPresentata: `${year - 1}-02-10`, confermaOrdine: `${year - 1}-03-01` },
+        ordini: [{ id: 'o2', data: `${year - 1}-11-01`, numero: '2000002', importo: 10000, consegna: daysAgo(3) },
+                 { id: 'o3', data: `${year - 1}-11-02`, numero: '2000003', importo: 20000, consegna: daysAgo(-10) }], createdAt: 3, updatedAt: 3 },
     ],
+    // confermata l'anno scorso, tutta ordinata: non cambia le cifre del forecast di quest'anno
     settings: [{ id: 's1', budget: { [year]: 200000 } }],
     portale: [{ id: 'ps1', pid: '9000002', stato: 'seguito', nota: 'richiamare a novembre', seguitoIl: 1, aggiornatoIl: 1, dati: {
       id: '9000002', titolo: 'Palazzina di 8 alloggi', comune: 'Alba', indirizzo: 'Corso Italia 5 12051 Alba ( CN )', nuovaCostruzione: true, fase: 'Esecuzione', unita: 8, soggetti: [] } }],
@@ -302,7 +307,7 @@ await ctx.close();
 ({ ctx, page } = await openApp({ width: 390, height: 844 }));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['map']];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['map'], ['deliveries']];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
@@ -341,7 +346,43 @@ await test('mappa: cantieri del portale seguiti e da valutare', async () => {
   expect((await page.textContent('.map-pop')).includes('richiamare a novembre'), 'manca la nota nel fumetto');
   await page.click('.map-pop [data-portal-goto]');
   await page.waitForFunction(() => view === 'portal' && portalTab === 'seguiti');
+  // pulsante fisso per tornare alla mappa
+  await page.waitForSelector('#mapReturnBtn');
+  await page.click('#mapReturnBtn');
+  await page.waitForFunction(() => view === 'map' && !document.getElementById('mapReturnBtn'));
+  await page.$eval('#navAgenda', b => b.click());
+  expect(!(await page.$('#mapReturnBtn')), 'il pulsante resta anche cambiando sezione');
   await page.evaluate(() => { mapFilters.portaleEsame = false; });
+});
+
+await test('consegne: elenco, posticipa, consegnato, annulla', async () => {
+  await page.$eval('#navDeliveries', b => b.click());
+  const txt = await page.evaluate(() => document.getElementById('main').innerText);
+  expect(txt.includes('In ritardo') && txt.includes('Villa Gamma') && txt.includes('Senza data di consegna'), 'sezioni mancanti:\n' + txt.slice(0, 500));
+  expect((await page.textContent('#delBadge')).trim() === '1', 'badge del menu: ' + (await page.textContent('#delBadge')));
+  const o = id => page.evaluate(id => window.__fake.docs('projects').find(p => p.id === 'p3').ordini.find(x => x.id === id), id);
+  const p3 = () => page.evaluate(() => window.__fake.docs('projects').find(p => p.id === 'p3'));
+  await page.click('[data-del-key="p3|o2"] [data-del-mode="post"]');
+  await page.click('[data-del-plus="7"]');
+  await page.click('[data-del-save="post"]');
+  await page.waitForFunction(() => window.__fake.docs('projects').find(p => p.id === 'p3').ordini.find(x => x.id === 'o2').rinvii === 1);
+  let r = await o('o2');
+  expect(r.consegna === daysAgo(-4) && r.consegnaIniziale === daysAgo(3), 'posticipo: ' + JSON.stringify(r));
+  await page.click('[data-del-key="p3|o3"] [data-del-mode="done"]');
+  await page.click('[data-del-save="done"]');
+  await page.waitForFunction(() => !!window.__fake.docs('projects').find(p => p.id === 'p3').ordini.find(x => x.id === 'o3').consegnatoIl);
+  expect((await p3()).fasi.merceCantiere === iso(new Date()), 'la fase "Merce arrivata in cantiere" non e\' stata compilata');
+  await page.waitForSelector('[data-del-key="p3|o3"] [data-del-undo]', { state: 'attached' });
+  await page.$eval('[data-del-key="p3|o3"] [data-del-undo]', b => b.click());
+  await page.waitForFunction(() => !window.__fake.docs('projects').find(p => p.id === 'p3').ordini.find(x => x.id === 'o3').consegnatoIl);
+  expect(!(await p3()).fasi.merceCantiere, 'annullando la consegna la fase doveva tornare vuota');
+  // la modifica dalla scheda progetto conserva i rinvii
+  await show_(page, 'projectDetail', "selectedProjectId='p3'");
+  await page.click('[data-order-edit="o2"]');
+  await page.click('#ordSaveBtn');
+  await page.waitForFunction(() => !orderEdit);
+  r = await o('o2');
+  expect(r.rinvii === 1 && r.consegnaIniziale, 'la modifica dell\'ordine ha perso i rinvii');
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {

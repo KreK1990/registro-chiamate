@@ -96,9 +96,10 @@ Campi principali:
 - **projects** (sezione tecnica, voce di menu "Progetti"): codice (ID progetto, 7 cifre,
   unico), nome, via, citta, partecipanti [{contactId, ruolo}] (ruoli in `PROJECT_ROLES`, compreso Termotecnico),
   importoOfferta, importoDeliberato (chiesto alla conferma d'ordine, precompilato con
-  l'offerta), offertaUrl (link al PDF; i file veri vanno in "Documenti", vedi sotto), ordini [{id, data, numero, importo, consegna, note}] (consegne
-  parziali; dati del DDT, consegna = data indicativa: il primo ordine segna confermaOrdine se
-  vuota, mentre merceCantiere si indica solo a mano nella timeline con la data confermata dal cliente; `projectAmount` per le confermate = max(deliberato o offerta, totale ordinato)); `supplyInfo` = % merce spedita (ordinato su deliberato, o offerta se manca) mostrata nella riga dell'elenco e nella scheda ordini delle confermate: oltre il 100% diventa rossa e propone "Adegua il deliberato" (importoDeliberato = totale ordinato),
+  l'offerta), offertaUrl (link al PDF; i file veri vanno in "Documenti", vedi sotto), ordini [{id, data, numero, importo, consegna, note, consegnatoIl?, consegnaIniziale?, rinvii?}] (consegne
+  parziali; dati del DDT, consegna = data prevista: il primo ordine segna confermaOrdine se
+  vuota; merceCantiere si compila segnando "Consegnato" il primo ordine nella pagina Consegne, o a
+  mano nella timeline; la modifica dell'ordine dalla scheda conserva consegnatoIl/rinvii; `projectAmount` per le confermate = max(deliberato o offerta, totale ordinato)); `supplyInfo` = % merce spedita (ordinato su deliberato, o offerta se manca) mostrata nella riga dell'elenco e nella scheda ordini delle confermate: oltre il 100% diventa rossa e propone "Adegua il deliberato" (importoDeliberato = totale ordinato),
   note, fasi {chiave: 'YYYY-MM-DD'} secondo `PROJECT_PHASES`
   (propostaTecnica a cura di Michael, offertaEconomica di Claudia), createdAt, updatedAt.
   Fase attuale = ultima fase con data <= oggi (`phaseDone`); le date future sono
@@ -161,6 +162,19 @@ Campi principali:
   Impostazioni (`settings.promemoria`, default `TODO_DEFAULTS`). Sotto, "Dati da completare"
   (commesse aperte senza importo/chiusura prevista, confermate senza deliberato ne' offerta,
   contatti dei progetti senza email/telefono).
+- **Consegne** (voce di menu dopo Progetti, blocco "Consegne", `view='deliveries'`): tutti gli ordini
+  dei progetti non persi per data di consegna: In ritardo, Oggi, Prossimi 7 giorni, poi per mese,
+  Senza data, Consegnate (chiuse in un `<details>`, ultime 60). "Posticipa" (data, +1 giorno, +1
+  settimana) aggiorna `consegna`, conta `rinvii` e al primo rinvio salva `consegnaIniziale`;
+  "Consegnato" scrive `consegnatoIl` (non nel futuro) e compila `fasi.merceCantiere` se vuota;
+  "Annulla consegna" la toglie (e svuota merceCantiere se era quella data e nessun altro ordine).
+  Badge `delBadge` (e nel menu) = consegne di oggi o in ritardo non segnate (`deliveriesDue`).
+  `delEdit` = modulo aperto (blocca i ridisegni automatici in `canAutoRender`).
+- **Ritorno alla mappa** (blocco "Ritorno alla mappa"): aprendo dalla mappa un progetto, un contatto
+  o un cantiere del portale (`noteMapReturn` salva centro e zoom in `mapReturn`) compare il pulsante
+  fisso `#mapReturnBtn` "Torna alla mappa" (in basso a destra, appeso a body, gestito da
+  `updateMapReturnBtn` all'inizio di `renderMain`); resta nelle viste `MAP_RETURN_VIEWS` e nel
+  dettaglio chiamata, sparisce scegliendo un'altra sezione; `bindMap` ripristina centro e zoom.
 - **Offline** (solo versione online): `enablePersistence` all'avvio; `firestoreAdapter` avvolge
   le scritture con `settleWrite` (non si aspetta il server oltre 2,5 s, `add` crea l'ID sul
   dispositivo) cosi' l'app non resta bloccata senza rete. Il service worker tiene in cache anche
