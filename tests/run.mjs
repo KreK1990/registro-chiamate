@@ -348,6 +348,7 @@ await test('mappa: cantieri del portale seguiti e da valutare', async () => {
   await page.waitForFunction(() => view === 'portal' && portalTab === 'seguiti');
   // pulsante fisso per tornare alla mappa
   await page.waitForSelector('#mapReturnBtn');
+  if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'torna-alla-mappa.png') });
   await page.click('#mapReturnBtn');
   await page.waitForFunction(() => view === 'map' && !document.getElementById('mapReturnBtn'));
   await page.$eval('#navAgenda', b => b.click());
