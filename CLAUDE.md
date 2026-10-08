@@ -205,6 +205,18 @@ Campi principali:
   il nuovo impegno appare tratteggiato. Segue la settimana della data scelta e scorre da solo fino
   al giorno scelto/oggi (sul telefono si vedono circa 4 giorni, colonna delle ore fissa). Montata da
   `mountPlanners` (queueMicrotask all'inizio di `renderMain` e `renderCallFlow`).
+- **Suggerisci quando** (blocco omonimo, `.trip-box data-trip="idData|idOra|esclusa|origine"`, sopra
+  l'agenda nei moduli di sopralluogo e appuntamento): per i prossimi `TRIP_DAYS` (10) giorni
+  lavorativi costruisce il giro casa -> impegni fissati -> casa e cerca dove ci stanno viaggio +
+  durata + viaggio verso il successivo + margine; prima dell'impegno successivo propone l'ora piu'
+  tardi, altrimenti la prima utile; ordina per minuti di strada in piu'. Impostazioni ->
+  "Spostamenti": `settings.viaggi` {casa, inizio, fine, margine, geo} (default `VIAGGI_DEFAULT`:
+  Collegno, 08:30-18:30, 10 min). L'indirizzo preciso di casa va SOLO in Impostazioni (dati
+  dell'utente in Firestore), mai nel codice: il repository e' pubblico. Tempi in auto da OSRM
+  (`router.project-osrm.org/table`, gratuito, solo coordinate, senza traffico), altrimenti linea
+  d'aria x1,3 a 60 km/h. Coordinate gia' salvate o cercate e salvate (`docPoint`). Sopralluogo
+  nuovo: durata predefinita 10 min (opzioni da 10 a 240). `timeOptions` accetta orari fuori dalla
+  mezz'ora (es. 14:35 suggerito).
 - **Offline** (solo versione online): `enablePersistence` all'avvio; `firestoreAdapter` avvolge
   le scritture con `settleWrite` (non si aspetta il server oltre 2,5 s, `add` crea l'ID sul
   dispositivo) cosi' l'app non resta bloccata senza rete. Il service worker tiene in cache anche

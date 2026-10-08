@@ -284,6 +284,14 @@ body.foto-open{overflow:hidden;}
 .plan-ev{position:absolute;left:2px;right:2px;z-index:2;overflow:hidden;font-size:10.5px;line-height:1.25;padding:2px 4px;border-radius:2px;background:var(--accent);color:#fff;cursor:default;}
 .plan-ev.sop{background:#3d4650;border-left:3px solid var(--brand-yellow);}
 .plan-ev.new{background:var(--panel);color:var(--accent);border:2px dashed var(--accent);pointer-events:none;font-weight:600;}
+.trip-box{margin:6px 0 4px;}
+.trip-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+.trip-opt{display:block;width:100%;text-align:left;padding:8px 10px;border:1px solid var(--border);border-radius:2px;background:var(--panel);color:var(--text);font:inherit;font-size:13.5px;cursor:pointer;}
+.trip-opt:hover{border-color:var(--accent);}
+.trip-opt.on{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent);}
+.trip-opt .todo-sub{display:block;margin-top:2px;}
+.trip-extra{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:2px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;}
+.trip-extra.low{background:var(--accent);color:#fff;}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -1007,7 +1015,7 @@ function contactsListView(){
 function renderMain(){
   const main = document.getElementById('main');
   updateMapReturnBtn();
-  queueMicrotask(mountPlanners);   // agende per pianificare nei moduli appena disegnati
+  queueMicrotask(()=>{ mountPlanners(); mountTrips(); });   // agende per pianificare nei moduli appena disegnati
   if(tableDetailCallId){ main.innerHTML = tableDetailView(); bindTableDetail(); return; }
   if(view==='deliveries'){ main.innerHTML = deliveriesView(); bindDeliveries(); return; }
   if(view==='sop'){ main.innerHTML = sopFormView(); bindSopForm(); return; }
@@ -1224,6 +1232,7 @@ function renderMain(){
             <div><label>Data</label><input type="date" id="callApptDate"></div>
             <div><label>Ora</label><select id="callApptTime">${timeOptions('')}</select></div>
           </div>
+          ${tripBoxHtml('callApptDate|callApptTime||c:'+c.id)}
           <div class="planner" data-planner="callApptDate|callApptTime"></div>
         </div>
         <label style="margin-top:10px;">Prossimo follow-up (opzionale)</label>
@@ -1658,6 +1667,7 @@ function settingsView(){
   return `<h2 style="margin-bottom:16px;">Impostazioni</h2>
   ${promemoriaSettingsHtml()}
   ${photoSettingsHtml()}
+  ${tripSettingsHtml()}
   <div class="card">
     <h3>Backup</h3>
     <div class="fc-note" style="margin-bottom:10px;">Excel con contatti, chiamate, progetti e ordini: utile da conservare o da girare al responsabile.</div>
@@ -1677,6 +1687,7 @@ function settingsView(){
 function bindSettings(){
   bindPromemoriaSettings();
   bindPhotoSettings();
+  bindTripSettings();
   document.getElementById('excelAllBtn').addEventListener('click', exportAllExcel);
   document.getElementById('backupNowBtn')?.addEventListener('click', e=>backupNow(e.target));
   document.querySelectorAll('[data-backup-date]').forEach(b=>b.addEventListener('click', ()=>downloadBackup(b.dataset.backupDate, b)));
@@ -2743,11 +2754,11 @@ function sopGoBack(){
 }
 function sopFormView(){
   const isNew = sopEdit.id==='new';
-  const s = isNew ? { durata:60, ...sopEdit.prefill } : { ...(sops.find(x=>x.id===sopEdit.id) || {}) };
+  const s = isNew ? { durata:10, ...sopEdit.prefill } : { ...(sops.find(x=>x.id===sopEdit.id) || {}) };
   if(!isNew && !s.quando) return '<div class="empty">Sopralluogo non trovato (forse eliminato).</div><button class="btn secondary" id="sopBackBtn">← Indietro</button>';
   const { date, time } = splitDT(s.quando || '');
   const projs = projects.filter(p=>!isLost(p) || p.id===s.projectId).sort(byProjectId);
-  const durs = [30, 60, 90, 120, 180, 240];
+  const durs = [10, 15, 20, 30, 45, 60, 90, 120, 180, 240];
   const durLbl = m=>m < 60 ? m+' minuti' : (m/60).toLocaleString('it-IT')+(m===60 ? ' ora' : ' ore');
   return `<div class="top-actions"><button class="btn secondary small" id="sopBackBtn">← Indietro</button></div>
   <div class="card">
@@ -2756,6 +2767,7 @@ function sopFormView(){
       <div><label>Data</label><input type="date" id="sopDate" value="${esc(date)}"></div>
       <div><label>Ora</label><select id="sopTime">${timeOptions(time || '09:00')}</select></div>
     </div>
+    ${tripBoxHtml('sopDate|sopTime|sop:'+(isNew ? '' : sopEdit.id)+'|sop')}
     <div class="planner" data-planner="sopDate|sopTime|sop:${isNew ? '' : sopEdit.id}"></div>
     <label>Durata</label>
     <select id="sopDur">${durs.map(m=>`<option value="${m}" ${(+s.durata || 60)===m ? 'selected' : ''}>${durLbl(m)}</option>`).join('')}</select>
@@ -2899,6 +2911,185 @@ function mountPlanners(){
     dIn.addEventListener('change', follow); tIn.addEventListener('change', follow);
     renderPlanner(box);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Suggerisci quando (sopralluoghi e appuntamenti): per i prossimi TRIP_DAYS giorni lavorativi
+// costruisce il giro della giornata (casa -> impegni gia' fissati -> casa; settings.viaggi =
+// {casa, inizio, fine, margine, geo}) e cerca dove l'impegno nuovo ci sta (viaggio + durata +
+// viaggio verso il successivo + margine), proponendo i giorni con meno strada in piu'. Prima
+// dell'impegno successivo propone l'ora piu' tardi possibile (si parte dopo), altrimenti la
+// prima utile. Tempi in auto da OSRM (router.project-osrm.org: gratuito, solo coordinate,
+// senza traffico); se non risponde, stima dalla distanza in linea d'aria (x1,3 a 60 km/h).
+// Coordinate: quelle gia' salvate per la mappa o cercate al momento con Nominatim (e salvate).
+// Contenitore <div class="trip-box" data-trip="idData|idOra|chiaveDaEscludere|origine">,
+// origine = 'sop' (luogo e durata dal modulo del sopralluogo) o 'c:<contactId>' (1 ora).
+// ---------------------------------------------------------------------------
+const VIAGGI_DEFAULT = { casa:'Collegno (TO)', inizio:'08:30', fine:'18:30', margine:10 };
+const TRIP_DAYS = 10;
+function viaggi(){ return { ...VIAGGI_DEFAULT, ...(appSettings.viaggi || {}) }; }
+const tripMin = s=>+s.slice(0,2)*60 + +s.slice(3,5);
+const tripHM = m=>{ m = Math.round(m); return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`; };
+const tripPause = ()=>new Promise(r=>setTimeout(r, 1100));   // Nominatim: max 1 richiesta al secondo
+function geoRecord(r, a){ return r ? { lat:r.lat, lng:r.lng, a, v:GEO_V, ...(r.approx ? { approx:true } : {}) } : { a, nf:true, v:GEO_V }; }
+// Coordinate di un documento (contatto, progetto, sopralluogo): salvate o cercate e salvate.
+async function docPoint(col, x, a, citta){
+  if(!x || !a) return null;
+  const man = manualGeo(x); if(man) return man;
+  const g = docGeo(x, a);
+  if(g) return g.nf ? null : g;
+  const r = await geocodeSmart(a, citta, tripPause);
+  x.geo = geoRecord(r, a);
+  if(x.id) db.collection(col).doc(x.id).update({ geo: x.geo }).catch(()=>{});
+  return r;
+}
+const contactPoint = c=>{ const { a, citta } = contactGeoAddr(c); return docPoint('contacts', c, a, citta); };
+const projectPoint = p=>{ const { a, citta } = projectGeoAddr(p); return docPoint('projects', p, a, citta); };
+function sopPoint(s){ const p = sopProject(s); return p ? projectPoint(p) : docPoint('sopralluoghi', s, [s.via, s.citta].filter(Boolean).join(', '), s.citta || ''); }
+async function homePoint(){
+  const v = viaggi();
+  if(v.geo && geoKey(v.geo.a)===geoKey(v.casa)) return v.geo.nf ? null : v.geo;
+  const r = await geocodeSmart(v.casa, '', tripPause);
+  saveSettings({ viaggi: { ...(appSettings.viaggi || {}), geo: geoRecord(r, v.casa) } });
+  return r;
+}
+// Matrice dei tempi in minuti tra i punti (OSRM; altrimenti linea d'aria).
+async function travelMatrix(pts){
+  const air = (a, b)=>{ const km = distKm(a, b); return km < 0.3 ? 0 : Math.round(km*1.3 + 4); };
+  try{
+    if(pts.length < 2) throw new Error('pochi punti');
+    const coords = pts.map(p=>`${(+p.lng).toFixed(5)},${(+p.lat).toFixed(5)}`).join(';');
+    const res = await fetch(`https://router.project-osrm.org/table/v1/driving/${coords}?annotations=duration`);
+    const j = await res.json();
+    if(j.code!=='Ok' || !j.durations) throw new Error(j.code || 'risposta non valida');
+    return { m: j.durations.map((row, i)=>row.map((s, k)=>s==null ? air(pts[i], pts[k]) : Math.round(s/60))), approx:false };
+  }catch(e){ return { m: pts.map(a=>pts.map(b=>air(a, b))), approx:true }; }
+}
+async function suggestTimes(target, dur, exclude){
+  const v = viaggi(), home = await homePoint();
+  if(!home) throw new Error('non trovo l\'indirizzo di casa ('+v.casa+'): correggilo in Impostazioni → Spostamenti');
+  const today = todayISO(), now = new Date(), nowMin = now.getHours()*60 + now.getMinutes();
+  const days = [];
+  for(let i=0; days.length < TRIP_DAYS && i < 30; i++){ const d = addDaysISO(today, i), wd = new Date(d+'T12:00:00').getDay(); if(wd!==0 && wd!==6) days.push(d); }
+  const byId = Object.fromEntries(contacts.map(c=>[c.id, c])), missing = new Set(), plan = [];
+  for(const d of days){
+    const evs = [];
+    for(const k of calls) if(k.appuntamento && k.appuntamento.slice(0,10)===d && 'call:'+k.id!==exclude){
+      const c = byId[k.contactId] || {}; const p = await contactPoint(c); if(!p) missing.add(fullName(c));
+      evs.push({ start: tripMin(k.appuntamento.slice(11,16)), dur:60, label: fullName(c), p });
+    }
+    for(const s of sops) if(s.quando.slice(0,10)===d && 'sop:'+s.id!==exclude){
+      const p = await sopPoint(s); if(!p) missing.add('sopralluogo '+sopTitle(s));
+      evs.push({ start: tripMin(s.quando.slice(11,16)), dur: +s.durata || 60, label: 'sopralluogo '+sopTitle(s), p });
+    }
+    plan.push({ d, evs: evs.sort((a,b)=>a.start - b.start) });
+  }
+  const pts = [home, target], key = p=>(+p.lat).toFixed(4)+','+(+p.lng).toFixed(4);
+  const idx = p=>{ let i = pts.findIndex(q=>key(q)===key(p)); if(i<0){ pts.push(p); i = pts.length - 1; } return i; };
+  plan.forEach(x=>x.evs.forEach(e=>{ e.i = e.p ? idx(e.p) : null; }));
+  const { m, approx } = await travelMatrix(pts);
+  const T = (a, b)=>a==null || b==null ? 0 : m[a][b];
+  const M = +v.margine || 0, d0 = tripMin(v.inizio), d1 = tripMin(v.fine);
+  const up5 = x=>Math.ceil(x/5)*5, down5 = x=>Math.floor(x/5)*5;
+  const opts = [];
+  plan.forEach(({ d, evs })=>{
+    const nodes = [{ end:d0, i:0, home:true }, ...evs.map(e=>({ start:e.start, end:e.start + e.dur, i:e.i, label:e.label })), { start:d1, i:0, home:true }];
+    let best = null;
+    for(let g=0; g < nodes.length - 1; g++){
+      const A = nodes[g], B = nodes[g+1];
+      if(A.i==null || B.i==null) continue;   // impegno senza indirizzo: non si sa da dove si arriva
+      const t1 = T(A.i, 1), t2 = T(1, B.i), direct = A.home && B.home ? 0 : T(A.i, B.i);
+      let earliest = A.end + (A.home ? 0 : M) + t1;
+      if(d===today) earliest = Math.max(earliest, nowMin + 15 + t1);
+      const latest = B.start - (B.home ? 0 : M) - t2 - dur;
+      if(up5(earliest) > down5(latest)) continue;
+      const start = A.home && !B.home ? down5(latest) : up5(earliest);
+      const o = { d, start, extra: Math.max(0, t1 + t2 - direct), t1, t2, A, B, dur, empty: !evs.length };
+      if(!best || o.extra < best.extra) best = o;
+    }
+    if(best) opts.push(best);
+  });
+  opts.sort((a,b)=>a.extra - b.extra || a.d.localeCompare(b.d));
+  return { opts: opts.slice(0, 5), approx, missing: [...missing] };
+}
+function tripWhy(o){
+  const when = `${tripHM(o.start)}–${tripHM(o.start + o.dur)}`;
+  if(o.A.home && o.B.home) return `Giornata senza impegni: ${when}, ${o.t1} min da casa e ${o.t2} min per tornare.`;
+  if(o.A.home) return `${when}: parti da casa alle ${tripHM(o.start - o.t1)} (${o.t1} min), poi ${o.t2} min per ${o.B.label} alle ${tripHM(o.B.start)}.`;
+  if(o.B.home) return `${when}: dopo ${o.A.label} (fino alle ${tripHM(o.A.end)}) ${o.t1} min di strada, poi ${o.t2} min per tornare a casa.`;
+  return `${when}: tra ${o.A.label} (fino alle ${tripHM(o.A.end)}) e ${o.B.label} (alle ${tripHM(o.B.start)}), ${o.t1} + ${o.t2} min di strada.`;
+}
+function setTimeValue(sel, v){
+  if(![...sel.options].some(o=>o.value===v)) sel.add(new Option(v, v), sel.options[1] || null);
+  sel.value = v;
+}
+async function runTripSuggest(box){
+  const [dateId, timeId, exclude, src] = box.dataset.trip.split('|');
+  const out = box.querySelector('.trip-out'), btn = box.querySelector('[data-trip-run]');
+  const say = h=>{ out.innerHTML = h; };
+  btn.disabled = true; say('<div class="fc-note">Calcolo i giri dei prossimi giorni…</div>');
+  try{
+    let target, dur = 60;
+    if(src==='sop'){
+      const pid = document.getElementById('sopProj').value, p = pid && projects.find(x=>x.id===pid);
+      dur = +document.getElementById('sopDur').value || 60;
+      if(p) target = await projectPoint(p);
+      else {
+        const via = document.getElementById('sopVia').value.trim(), citta = document.getElementById('sopCitta').value.trim();
+        if(!via && !citta) throw new Error('indica prima il progetto o l\'indirizzo del cantiere');
+        target = await geocodeSmart([via, citta].filter(Boolean).join(', '), citta, tripPause);
+      }
+    } else {
+      const c = contacts.find(x=>x.id===src.slice(2));
+      if(!c || !fullAddress(c)) throw new Error('il cliente non ha l\'indirizzo: aggiungilo nella scheda');
+      target = await contactPoint(c);
+    }
+    if(!target) throw new Error('indirizzo non trovato sulla mappa');
+    const r = await suggestTimes(target, dur, exclude);
+    const dl = d=>fmtLongDate(d+'T12:00:00');
+    say(r.opts.length ? `<div class="trip-list">${r.opts.map(o=>`<button type="button" class="trip-opt" data-trip-pick="${o.d}|${tripHM(o.start)}">
+        <strong>${dl(o.d)}, ore ${tripHM(o.start)}</strong> <span class="trip-extra ${o.extra<=15 ? 'low' : ''}">${o.extra ? '+'+o.extra+' min di strada' : 'nessuna strada in più'}</span>
+        <span class="todo-sub">${esc(tripWhy(o))}</span></button>`).join('')}</div>
+      <div class="fc-note" style="margin-top:6px;">${r.approx ? 'Tempi stimati in linea d\'aria (servizio dei percorsi non raggiungibile). ' : 'Tempi in auto senza traffico. '}Margine tra un impegno e l'altro: ${viaggi().margine} min; partenza da ${esc(viaggi().casa)}. Tocca un suggerimento per sceglierlo.${r.missing.length ? ` Senza indirizzo, non considerati per gli spostamenti: ${esc(r.missing.join(', '))}.` : ''}</div>`
+      : '<div class="fc-note">Nei prossimi giorni lavorativi non trovo spazi abbastanza lunghi: scegli tu data e ora.</div>');
+  }catch(e){ say(`<div class="fc-note" style="color:var(--danger);">Non riesco a suggerire: ${esc(e.message || String(e))}.</div>`); }
+  btn.disabled = false;
+}
+function mountTrips(){
+  document.querySelectorAll('#main .trip-box[data-trip]:not([data-mounted])').forEach(box=>{
+    box.dataset.mounted = '1';
+    const [dateId, timeId] = box.dataset.trip.split('|');
+    box.addEventListener('click', e=>{
+      if(e.target.closest('[data-trip-run]')){ runTripSuggest(box); return; }
+      const pick = e.target.closest('[data-trip-pick]'); if(!pick) return;
+      const [d, t] = pick.dataset.tripPick.split('|'), dIn = document.getElementById(dateId), tIn = document.getElementById(timeId);
+      dIn.value = d; setTimeValue(tIn, t);
+      dIn.dispatchEvent(new Event('change', { bubbles:true })); tIn.dispatchEvent(new Event('change', { bubbles:true }));
+      box.querySelectorAll('.trip-opt.on').forEach(x=>x.classList.remove('on')); pick.classList.add('on');
+    });
+  });
+}
+function tripBoxHtml(spec){ return `<div class="trip-box" data-trip="${spec}"><button type="button" class="btn secondary small" data-trip-run>Suggerisci quando, in base agli spostamenti</button><div class="trip-out"></div></div>`; }
+// Impostazioni -> Spostamenti
+function tripSettingsHtml(){
+  const v = viaggi();
+  return `<div class="card">
+    <h3>Spostamenti</h3>
+    <div class="fc-note" style="margin-bottom:8px;">Usati da "Suggerisci quando" per incastrare sopralluoghi e appuntamenti nel giro della giornata.</div>
+    <label>Partenza e rientro (casa)</label><input id="tripCasa" value="${esc(v.casa)}" placeholder="Es. Via Roma 1, Collegno">
+    <div class="field-row" style="margin-top:8px;">
+      <div><label>Inizio giornata</label><select id="tripInizio">${timeOptions(v.inizio)}</select></div>
+      <div><label>Fine giornata (rientro a casa)</label><select id="tripFine">${timeOptions(v.fine)}</select></div>
+    </div>
+    <label class="todo-set">Margine tra un impegno e l'altro<span><input type="number" id="tripMargine" min="0" max="120" inputmode="numeric" value="${+v.margine}"> minuti</span></label>
+  </div>`;
+}
+function bindTripSettings(){
+  const save = patch=>saveSettings({ viaggi: { ...(appSettings.viaggi || {}), ...patch } });
+  document.getElementById('tripCasa')?.addEventListener('change', e=>{ const v = e.target.value.trim(); if(v) save({ casa: v, geo: null }); else e.target.value = viaggi().casa; });
+  document.getElementById('tripInizio')?.addEventListener('change', e=>{ if(e.target.value) save({ inizio: e.target.value }); });
+  document.getElementById('tripFine')?.addEventListener('change', e=>{ if(e.target.value) save({ fine: e.target.value }); });
+  document.getElementById('tripMargine')?.addEventListener('change', e=>{ const n = Math.round(+e.target.value); if(isFinite(n) && n>=0 && n<=120) save({ margine: n }); else e.target.value = viaggi().margine; });
 }
 
 // ---------------------------------------------------------------------------
@@ -6278,7 +6469,7 @@ function followupView(){
 
 function renderCallFlow(){
   const main = document.getElementById('main');
-  queueMicrotask(mountPlanners);
+  queueMicrotask(()=>{ mountPlanners(); mountTrips(); });
   if(!selectedId || callStep==='pick'){
     const q = (document.getElementById('callPickSearch')?.value || '').trim().toLowerCase();
     const list = contacts.filter(c=>!q || fullName(c).toLowerCase().includes(q) || (c.azienda||'').toLowerCase().includes(q))
@@ -6339,6 +6530,7 @@ function renderCallFlow(){
           <div><label>Data</label><input type="date" id="qcApptDate"></div>
           <div><label>Ora</label><select id="qcApptTime">${timeOptions('')}</select></div>
         </div>
+        ${tripBoxHtml('qcApptDate|qcApptTime||c:'+c.id)}
         <div class="planner" data-planner="qcApptDate|qcApptTime"></div>
       </div>
       <div style="margin-top:10px;"></div>
@@ -6519,6 +6711,7 @@ function callEditView(k,c){
           <div><label>Data</label><input type="date" id="ecApptDate" value="${splitDT(k.appuntamento).date}"></div>
           <div><label>Ora</label><select id="ecApptTime">${timeOptions(splitDT(k.appuntamento).time)}</select></div>
         </div>
+        ${tripBoxHtml('ecApptDate|ecApptTime|call:'+k.id+'|c:'+c.id)}
         <div class="planner" data-planner="ecApptDate|ecApptTime|call:${k.id}"></div>
         <label style="margin-top:10px;">Note dell'incontro</label>
         <textarea id="ecNoteIncontro" placeholder="Come è andato l'incontro...">${esc(k.noteIncontro||'')}</textarea>
@@ -7179,7 +7372,8 @@ function fmtLongDate(dateStr){
 function combineDT(dateVal, timeVal){ if(!dateVal || !timeVal) return ''; return `${dateVal}T${timeVal}`; }
 function splitDT(v){ if(!v) return {date:'', time:''}; const parts=String(v).split('T'); return {date:parts[0]||'', time:(parts[1]||'').slice(0,5)}; }
 function timeOptions(selected){
-  let opts = '<option value="">--:--</option>';
+  // un orario fuori dalla mezz'ora (es. suggerito: 14:35) resta selezionabile
+  let opts = '<option value="">--:--</option>' + (selected && !/:(00|30)$/.test(selected) ? `<option value="${selected}" selected>${selected}</option>` : '');
   const primary = [], rest = [];
   for(let h=0; h<24; h++){
     for(const m of [0,30]){

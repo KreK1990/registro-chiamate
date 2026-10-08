@@ -112,7 +112,18 @@ async function openApp({ width = 1280, height = 900 } = {}) {
   await page.route('https://www.gstatic.com/firebasejs/**', r => r.fulfill({ contentType: 'text/javascript', body: r.request().url().includes('firebase-app-compat') ? fake : '' }));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ contentType: 'text/css', body: '' }));
   await page.route(/tile\.openstreetmap\.org/, r => r.fulfill({ status: 204, body: '' }));
-  await page.route(/nominatim\.openstreetmap\.org/, r => r.fulfill({ contentType: 'application/json', body: '[{"lat":"44.70","lon":"8.03"}]' }));
+  // posizioni finte: qualche comune riconoscibile, tutto il resto ad Alba
+  await page.route(/nominatim\.openstreetmap\.org/, r => {
+    const q = (new URL(r.request().url()).searchParams.get('q') || '').toLowerCase();
+    const at = /collegno/.test(q) ? [45.08, 7.57] : /casale/.test(q) ? [45.13, 8.45] : /torino/.test(q) ? [45.07, 7.68] : [44.70, 8.03];
+    r.fulfill({ contentType: 'application/json', body: JSON.stringify([{ lat: String(at[0]), lon: String(at[1]) }]) });
+  });
+  // percorsi finti: tempo = distanza in linea d'aria x 1,3 a 60 km/h
+  await page.route(/router\.project-osrm\.org/, r => {
+    const pts = new URL(r.request().url()).pathname.split('/').pop().split(';').map(s => s.split(',').map(Number));
+    const km = (a, b) => { const R = 6371, t = x => x * Math.PI / 180, dLa = t(b[1] - a[1]), dLo = t(b[0] - a[0]); const h = Math.sin(dLa / 2) ** 2 + Math.cos(t(a[1])) * Math.cos(t(b[1])) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 'Ok', durations: pts.map(a => pts.map(b => Math.round(km(a, b) * 1.3 * 60))) }) });
+  });
   await page.route(/google\.com\/maps|maps\.google/, r => r.fulfill({ contentType: 'text/html', body: '' }));
   await page.route(/cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\/3\.11\.174\/(pdf(\.worker)?)\.min\.js/, r => {
     const name = /pdf\.worker/.test(r.request().url()) ? 'pdf.worker.min.js' : 'pdf.min.js';
@@ -430,7 +441,7 @@ await test('sopralluoghi: pianifica dal progetto, agenda, mappa, esito, elimina'
   await page.waitForFunction(() => window.__fake.docs('sopralluoghi').length === 1);
   await page.waitForFunction(() => view === 'projectDetail');
   const s = (await page.evaluate(() => window.__fake.docs('sopralluoghi')))[0];
-  expect(s.projectId === 'p1' && s.quando === daysAgo(-1) + 'T10:00' && s.durata === 60, 'sopralluogo salvato male: ' + JSON.stringify(s));
+  expect(s.projectId === 'p1' && s.quando === daysAgo(-1) + 'T10:00' && s.durata === 10, 'sopralluogo salvato male: ' + JSON.stringify(s));
   expect((await page.textContent('#main')).includes('verificare i balconi'), 'non compare nella scheda progetto');
   // agenda per pianificare: mostra gli impegni della settimana e un clic sceglie giorno e ora
   await show_(page, 'appt', "apptSubView='list'");
@@ -473,6 +484,36 @@ await test('sopralluoghi: pianifica dal progetto, agenda, mappa, esito, elimina'
   await page.click('#sopDelYes');
   await page.waitForFunction(() => !window.__fake.docs('sopralluoghi').some(s => s.id === 'sx'));
   await page.evaluate(() => { mapFilters.portaleSeguiti = true; });
+});
+
+await test('suggerisci quando: incastra il sopralluogo prima dell\'appuntamento a Casale', async () => {
+  // primo giorno lavorativo da domani in poi, appuntamento alle 16 a Casale
+  const D = await page.evaluate(() => { for (let i = 2; i < 9; i++) { const d = addDaysISO(todayISO(), i), w = new Date(d + 'T12:00:00').getDay(); if (w && w !== 6) return d; } });
+  await page.evaluate(D => {
+    window.__fake.put('contacts', 'c5', { nome: 'Test', cognome: 'Casale', via: 'Via Roma 5', citta: 'Casale Monferrato' });
+    window.__fake.put('calls', 'k5', { contactId: 'c5', data: todayISO(), esito: 'Appuntamento fissato', appuntamento: D + 'T16:00', note: '' });
+  }, D);
+  await page.waitForFunction(() => calls.some(k => k.id === 'k5'));
+  await show_(page, 'appt', "apptSubView='list'");
+  await page.click('#main [data-sop-new]');
+  await page.waitForSelector('#sopVia');
+  await page.fill('#sopTitolo', 'Prova Corso Lione');
+  await page.fill('#sopVia', 'Corso Lione 10');
+  await page.fill('#sopCitta', 'Torino');
+  expect(await page.inputValue('#sopDur') === '10', 'durata predefinita del sopralluogo: ' + await page.inputValue('#sopDur'));
+  await page.click('[data-trip-run]');
+  await page.waitForSelector('.trip-opt', { timeout: 30000 });
+  const txt = await page.textContent('.trip-list');
+  expect(txt.includes('Casale Test alle 16:00'), 'nessun suggerimento prima dell\'appuntamento a Casale:\n' + txt);
+  const picks = await page.$$eval('.trip-opt', b => b.map(x => x.dataset.tripPick));
+  const mine = picks.find(p => p.startsWith(D + '|'));
+  expect(mine, 'manca il giorno dell\'appuntamento a Casale (' + D + ') tra i suggerimenti: ' + picks.join(', '));
+  const t = mine.split('|')[1];
+  expect(t < '16:00' && t > '13:00', 'orario suggerito poco sensato: ' + t);
+  await page.click(`.trip-opt[data-trip-pick="${mine}"]`);
+  expect(await page.inputValue('#sopDate') === D && await page.inputValue('#sopTime') === t, 'il suggerimento non ha compilato data e ora');
+  if (shotsDir) await (await page.$('.trip-box')).screenshot({ path: path.join(shotsDir, 'suggerisci-quando.png') });
+  await page.click('#sopBackBtn');
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
