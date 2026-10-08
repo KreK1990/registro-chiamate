@@ -458,6 +458,24 @@ await test('sopralluoghi: pianifica dal progetto, agenda, mappa, esito, elimina'
   const info = await page.textContent('.planner .plan-info');
   expect(await page.isVisible('.planner .plan-info') && info.includes('Via Po 10, Torino · Indicazioni') && info.includes('verificare i balconi'), 'scheda dell\'impegno: ' + info);
   expect(await page.evaluate(() => view) === 'sop', 'toccare un impegno non deve uscire dal modulo');
+  // trascinamento: impegno gia' fissato (con conferma) e blocco "questo"
+  const drag = async (fromSel, toSel) => {
+    await page.$eval(fromSel, el => el.scrollIntoView({ block: 'center' }));
+    const a = await page.locator(fromSel).boundingBox();
+    await page.mouse.move(a.x + 10, a.y + 5); await page.mouse.down();
+    await page.mouse.move(a.x + 14, a.y + 12, { steps: 3 });
+    await page.$eval(toSel, el => el.scrollIntoView({ block: 'nearest' }));
+    const b = await page.locator(toSel).boundingBox();
+    await page.mouse.move(b.x + 10, b.y + 5, { steps: 8 }); await page.mouse.up();
+  };
+  await drag('.planner .plan-ev.sop', `.planner [data-plan-day="${daysAgo(-1)}"][data-plan-time="12:00"]`);
+  expect((await page.textContent('.planner .plan-info')).includes('Spostare'), 'manca la conferma dello spostamento');
+  await page.click('.planner [data-plan-move]');
+  await page.waitForFunction(d => window.__fake.docs('sopralluoghi').some(s => s.quando === d + 'T12:00'), daysAgo(-1));
+  await drag('.planner .plan-ev.new', `.planner [data-plan-day="${daysAgo(-1)}"][data-plan-time="16:00"]`);
+  expect(await page.inputValue('#sopTime') === '16:00', 'trascinare "questo" doveva cambiare l\'ora del modulo: ' + await page.inputValue('#sopTime'));
+  await page.selectOption('#sopTime', '14:00');
+  await page.$eval('#sopTime', i => i.dispatchEvent(new Event('change', { bubbles: true })));
   if (shotsDir) await (await page.$('.planner')).screenshot({ path: path.join(shotsDir, 'agenda-pianifica.png') });
   await page.click('#sopBackBtn');
   // anche negli appuntamenti delle chiamate

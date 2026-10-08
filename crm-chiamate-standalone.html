@@ -282,14 +282,17 @@ body.foto-open{overflow:hidden;}
 .plan-slot.hour{border-top:1px solid var(--border);}
 .plan-slot:hover{background:color-mix(in srgb, var(--accent) 14%, transparent);}
 .plan-ev{position:absolute;left:2px;right:2px;z-index:2;overflow:hidden;font-size:10.5px;line-height:1.25;padding:2px 4px;border-radius:2px;background:var(--accent);color:#fff;cursor:default;}
-.plan-ev{cursor:pointer;}
 .plan-ev.on{outline:2px solid var(--brand-yellow);outline-offset:1px;}
 .plan-addr{display:block;opacity:.85;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .plan-info{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--accent-soft);font-size:13px;}
 .plan-info.hidden{display:none;}
 .plan-info-main{min-width:0;}
 .plan-ev.sop{background:#3d4650;border-left:3px solid var(--brand-yellow);}
-.plan-ev.new{background:var(--panel);color:var(--accent);border:2px dashed var(--accent);pointer-events:none;font-weight:600;}
+.plan-ev.new{background:var(--panel);color:var(--accent);border:2px dashed var(--accent);font-weight:600;}
+.plan-ev{cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+.plan-ev.dragging{opacity:.35;}
+.plan-ghost{position:fixed;z-index:3000;pointer-events:none;cursor:grabbing;opacity:.9;box-shadow:0 6px 16px rgba(0,0,0,.35);}
+.plan-drop{position:absolute;left:2px;right:2px;z-index:1;border:2px dashed var(--brand-yellow);border-radius:2px;background:color-mix(in srgb, var(--brand-yellow) 18%, transparent);font-size:10.5px;padding:1px 4px;pointer-events:none;}
 .trip-box{margin:6px 0 4px;}
 .trip-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
 .trip-opt{display:block;width:100%;text-align:left;padding:8px 10px;border:1px solid var(--border);border-radius:2px;background:var(--panel);color:var(--text);font:inherit;font-size:13.5px;cursor:pointer;}
@@ -2860,12 +2863,12 @@ function plannerEvents(exclude){
   calls.forEach(k=>{
     if(!k.appuntamento || 'call:'+k.id===exclude) return;
     const c = byId[k.contactId] || {};
-    out.push({ t:k.appuntamento, min:60, label:fullName(c), kind:'appt', addr:fullAddress(c), maps: fullAddress(c) ? mapsUrl(c) : '',
+    out.push({ ref:'call:'+k.id, t:k.appuntamento, min:60, label:fullName(c), kind:'appt', addr:fullAddress(c), maps: fullAddress(c) ? mapsUrl(c) : '',
       sub:[c.professione, c.azienda].filter(Boolean).join(' · '), tel:c.cellulare || c.telefono || '', note:[k.progetto, k.note].filter(Boolean).join(' · ') });
   });
   sops.forEach(s=>{
     if('sop:'+s.id===exclude) return;
-    out.push({ t:s.quando, min:+s.durata || 60, label:'Sopralluogo · '+sopTitle(s), kind:'sop', addr:sopAddr(s), maps: sopAddr(s) ? sopMapsUrl(s) : '', sub:'', tel:'', note:s.note || '' });
+    out.push({ ref:'sop:'+s.id, t:s.quando, min:+s.durata || 60, label:'Sopralluogo · '+sopTitle(s), kind:'sop', addr:sopAddr(s), maps: sopAddr(s) ? sopMapsUrl(s) : '', sub:'', tel:'', note:s.note || '' });
   });
   return out;
 }
@@ -2883,11 +2886,11 @@ function renderPlanner(box){
     const dayEv = evs.filter(e=>e.t.slice(0,10)===d).sort((a,b)=>a.t.localeCompare(b.t));
     const blocks = dayEv.map(e=>{ box._evs.push(e);
       return `<div class="plan-ev ${e.kind}" data-plan-ev="${box._evs.length - 1}" style="top:${planTop(e.t.slice(11,16))}px;height:${Math.max(PLAN_ROW, e.min/30*PLAN_ROW) - 2}px;" title="${esc(e.t.slice(11,16)+' '+e.label+(e.addr ? ' · '+e.addr : ''))}"><b>${e.t.slice(11,16)}</b> ${esc(e.label)}${e.addr ? `<span class="plan-addr">${esc(e.addr)}</span>` : ''}</div>`; }).join('');
-    const mine = sel===d && selT ? `<div class="plan-ev new" style="top:${planTop(selT)}px;height:${2*PLAN_ROW - 2}px;"><b>${selT}</b> questo</div>` : '';
+    const mine = sel===d && selT ? `<div class="plan-ev new" data-plan-ev="new" style="top:${planTop(selT)}px;height:${2*PLAN_ROW - 2}px;"><b>${selT}</b> questo</div>` : '';
     const slots = [...Array(rows)].map((_, r)=>`<div class="plan-slot ${r%2 ? '' : 'hour'}" data-plan-day="${d}" data-plan-time="${String(PLAN_H0 + Math.floor(r/2)).padStart(2,'0')}:${r%2 ? '30' : '00'}"></div>`).join('');
     return `<div class="plan-col ${d===today ? 'today' : ''} ${d===sel ? 'sel' : ''}">
       <div class="plan-head">${dn[i]} ${d.slice(8,10)}/${d.slice(5,7)}${dayEv.length ? ` <span class="plan-n">${dayEv.length}</span>` : ''}</div>
-      <div class="plan-body" style="height:${rows*PLAN_ROW}px;">${slots}${blocks}${mine}</div></div>`;
+      <div class="plan-body" data-plan-body="${d}" style="height:${rows*PLAN_ROW}px;">${slots}${blocks}${mine}</div></div>`;
   }).join('');
   const hours = [...Array(PLAN_H1 - PLAN_H0)].map((_, i)=>`<div class="plan-h" style="height:${2*PLAN_ROW}px;">${String(PLAN_H0 + i).padStart(2,'0')}</div>`).join('');
   const keep = box.dataset.fresh ? null : box.querySelector('.plan-scroll'), scroll = keep ? [keep.scrollTop, keep.scrollLeft] : null;
@@ -2906,17 +2909,109 @@ function renderPlanner(box){
     if(col) sc.scrollLeft = Math.max(0, col.offsetLeft - 30);
   }
 }
+// Trascinamento degli impegni nell'agenda (mouse, o dito dopo una pressione di 350 ms: un
+// trascinamento veloce resta uno scorrimento). Il blocco "questo" cambia data e ora del modulo;
+// un impegno gia' fissato si sposta solo dopo conferma ("Sposta"), aggancio alla mezz'ora.
+// plannerHold evita per qualche secondo i ridisegni automatici, che svuoterebbero il modulo aperto.
+let plannerHold = 0;
+function planDropAt(box, x, y){
+  for(const body of box.querySelectorAll('[data-plan-body]')){
+    const r = body.getBoundingClientRect();
+    if(x < r.left || x >= r.right) continue;
+    const slot = Math.max(0, Math.min((PLAN_H1 - PLAN_H0)*2 - 1, Math.floor((y - r.top) / PLAN_ROW)));
+    return { body, day: body.dataset.planBody, slot, time: `${String(PLAN_H0 + Math.floor(slot/2)).padStart(2,'0')}:${slot%2 ? '30' : '00'}` };
+  }
+  return null;
+}
+function planDragStart(box, d, x, y){
+  d.active = true;
+  try{ d.el.setPointerCapture(d.pid); }catch(e){}
+  const r = d.el.getBoundingClientRect();
+  d.dx = d.x - r.left; d.dy = d.y - r.top; d.h = r.height;   // dal punto in cui si e' premuto
+  d.ghost = d.el.cloneNode(true); d.ghost.className += ' plan-ghost'; d.ghost.style.width = r.width+'px'; d.ghost.style.height = r.height+'px';
+  document.body.appendChild(d.ghost); d.el.classList.add('dragging');
+  d.mark = document.createElement('div'); d.mark.className = 'plan-drop';
+  planDragMove(box, d, x, y);
+}
+function planDragMove(box, d, x, y){
+  d.ghost.style.left = (x - d.dx)+'px'; d.ghost.style.top = (y - d.dy)+'px';
+  const sc = box.querySelector('.plan-scroll'), sr = sc.getBoundingClientRect();   // vicino ai bordi l'agenda scorre
+  if(y < sr.top + 40) sc.scrollTop -= 12; else if(y > sr.bottom - 30) sc.scrollTop += 12;
+  if(x < sr.left + 50) sc.scrollLeft -= 12; else if(x > sr.right - 30) sc.scrollLeft += 12;
+  const t = planDropAt(box, x - d.dx + 6, y - d.dy + 4);
+  d.target = t;
+  if(t){ d.mark.style.top = (t.slot*PLAN_ROW)+'px'; d.mark.style.height = d.h+'px'; d.mark.innerHTML = `<b>${t.time}</b>`; t.body.appendChild(d.mark); }
+  else d.mark.remove();
+}
+function planDragEnd(box, d, ok){
+  d.ghost.remove(); d.mark.remove(); d.el.classList.remove('dragging');
+  const t = d.target;
+  if(!ok || !t) return;
+  const [dateId, timeId] = box.dataset.planner.split('|');
+  if(d.id==='new'){
+    const dIn = document.getElementById(dateId), tIn = document.getElementById(timeId);
+    dIn.value = t.day; setTimeValue(tIn, t.time);
+    dIn.dispatchEvent(new Event('change', { bubbles:true })); tIn.dispatchEvent(new Event('change', { bubbles:true }));
+    return;
+  }
+  const ev = box._evs[+d.id], to = `${t.day}T${t.time}`;
+  if(!ev || ev.t===to) return;
+  box._move = { ev, to };
+  const info = box.querySelector('.plan-info');
+  info.innerHTML = `<div class="plan-info-main"><strong>Spostare ${esc(ev.label)}?</strong>
+      <div class="todo-sub">Da ${fmtLongDate(ev.t.slice(0,10)+'T12:00:00')} alle ${ev.t.slice(11,16)} a <strong>${fmtLongDate(t.day+'T12:00:00')} alle ${t.time}</strong>.</div>
+      ${ev.kind==='appt' ? '<div class="todo-sub">Se avevi già mandato l\'invito Outlook al cliente, ricordati di aggiornarlo.</div>' : ''}</div>
+    <div class="todo-actions"><button type="button" class="btn small" data-plan-move>Sposta</button><button type="button" class="btn secondary small" data-plan-close>Annulla</button></div>`;
+  info.classList.remove('hidden');
+}
+async function planMoveSave(box){
+  const mv = box._move; if(!mv) return;
+  box._move = null; plannerHold = Date.now() + 4000;
+  const [kind, id] = mv.ev.ref.split(':'), info = box.querySelector('.plan-info');
+  try{
+    if(kind==='call'){ await db.collection('calls').doc(id).update({ appuntamento: mv.to }); const k = calls.find(x=>x.id===id); if(k) k.appuntamento = mv.to; }
+    else { await db.collection('sopralluoghi').doc(id).update({ quando: mv.to }); const s = sops.find(x=>x.id===id); if(s) s.quando = mv.to; }
+    renderPlanner(box); renderSidebarToday(); renderFooter();
+    const i2 = box.querySelector('.plan-info');
+    i2.innerHTML = `<div class="plan-info-main">Spostato: ${esc(mv.ev.label)}, ${fmtLongDate(mv.to.slice(0,10)+'T12:00:00')} alle ${mv.to.slice(11,16)}.</div><button type="button" class="btn secondary small" data-plan-close>Chiudi</button>`;
+    i2.classList.remove('hidden');
+  }catch(e){ info.innerHTML = `<div class="plan-info-main" style="color:var(--danger);">Spostamento non riuscito: ${esc(e.message || e.code || '')}</div><button type="button" class="btn secondary small" data-plan-close>Chiudi</button>`; }
+}
 function mountPlanners(){
   document.querySelectorAll('#main .planner[data-planner]:not([data-mounted])').forEach(box=>{
     box.dataset.mounted = '1';
     const [dateId, timeId] = box.dataset.planner.split('|');
     const dIn = document.getElementById(dateId), tIn = document.getElementById(timeId);
     if(!dIn || !tIn) return;
+    box.addEventListener('pointerdown', e=>{
+      box._suppressClick = false;
+      const el = e.target.closest('[data-plan-ev]');
+      if(!el || e.button > 0) return;
+      const d = box._drag = { el, id: el.dataset.planEv, x: e.clientX, y: e.clientY, pid: e.pointerId, touch: e.pointerType!=='mouse', active:false };
+      if(d.touch) d.timer = setTimeout(()=>{ if(box._drag===d) planDragStart(box, d, d.x, d.y); }, 350);
+    });
+    box.addEventListener('pointermove', e=>{
+      const d = box._drag; if(!d) return;
+      if(!d.active){
+        if(Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+        if(d.touch){ clearTimeout(d.timer); box._drag = null; return; }   // dito veloce: scorrimento
+        planDragStart(box, d, e.clientX, e.clientY);
+      }
+      e.preventDefault();
+      planDragMove(box, d, e.clientX, e.clientY);
+    });
+    const end = ok=>{ const d = box._drag; if(!d) return; clearTimeout(d.timer); box._drag = null; if(d.active){ box._suppressClick = true; planDragEnd(box, d, ok); } };
+    box.addEventListener('pointerup', ()=>end(true));
+    box.addEventListener('pointercancel', ()=>end(false));
+    box.addEventListener('touchmove', e=>{ if(box._drag && box._drag.active) e.preventDefault(); }, { passive:false });
+    box.addEventListener('contextmenu', e=>{ if(e.target.closest('[data-plan-ev]')) e.preventDefault(); });
     box.addEventListener('click', e=>{
+      if(box._suppressClick){ box._suppressClick = false; return; }   // il clic che segue il rilascio
+      if(e.target.closest('[data-plan-move]')){ planMoveSave(box); return; }
       const nav = e.target.closest('[data-plan-nav]');
       if(nav){ box.dataset.week = addDaysISO(box.dataset.week, +nav.dataset.planNav); box.dataset.fresh = '1'; renderPlanner(box); return; }
       if(e.target.closest('[data-plan-close]')){ box.querySelector('.plan-info').classList.add('hidden'); return; }
-      const evEl = e.target.closest('[data-plan-ev]');
+      const evEl = e.target.closest('[data-plan-ev]:not([data-plan-ev="new"])');
       if(evEl){
         const ev = box._evs[+evEl.dataset.planEv], info = box.querySelector('.plan-info'); if(!ev) return;
         const end = tripHM(tripMin(ev.t.slice(11,16)) + ev.min);
@@ -4684,7 +4779,7 @@ const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale
 function canAutoRender(){
   const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main input, #main textarea');
   return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && view!=='sop' && !spegniFormId && !(geoEdit && document.getElementById('geoEditMap')) && !(view==='call' && callStep==='entry') && !((view==='forecast' || view==='portal') && typing)
-    && !(view==='projectDetail' && (orderEdit || loseFormProjectId)) && !(view==='deliveries' && delEdit);
+    && !(view==='projectDetail' && (orderEdit || loseFormProjectId)) && !(view==='deliveries' && delEdit) && Date.now() > plannerHold;
 }
 function onProjectsSnapshot(snap){
   projects = snap.docs.map(d=>({ id:d.id, ...d.data() }));

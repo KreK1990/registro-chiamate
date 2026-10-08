@@ -206,7 +206,11 @@ Campi principali:
   al giorno scelto/oggi (sul telefono si vedono circa 4 giorni, colonna delle ore fissa). Montata da
   `mountPlanners` (queueMicrotask all'inizio di `renderMain` e `renderCallFlow`). Ogni impegno mostra
   l'indirizzo sotto il nome; toccandolo si apre `.plan-info` in cima all'agenda (data, orario, studio,
-  indirizzo con Indicazioni, telefono, progetto e note) senza uscire dal modulo.
+  indirizzo con Indicazioni, telefono, progetto e note) senza uscire dal modulo. Trascinamento (pointer
+  events; sul telefono dopo una pressione di 350 ms, un trascinamento veloce resta scorrimento):
+  "questo" cambia data/ora del modulo, un impegno fissato si sposta solo dopo "Sposta" nella
+  `.plan-info` (aggiorna `calls.appuntamento` o `sopralluoghi.quando`, aggancio alla mezz'ora);
+  `plannerHold` blocca per 4 s i ridisegni automatici in `canAutoRender` per non svuotare il modulo.
 - **Suggerisci quando** (blocco omonimo, `.trip-box data-trip="idData|idOra|esclusa|origine"`, sopra
   l'agenda nei moduli di sopralluogo e appuntamento): per i prossimi `TRIP_DAYS` (10) giorni
   lavorativi costruisce il giro casa -> impegni fissati -> casa e cerca dove ci stanno viaggio +
