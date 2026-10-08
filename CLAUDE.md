@@ -204,7 +204,9 @@ Campi principali:
   l'impegno che si sta modificando); clic su uno spazio = compila data e ora (+ evento change),
   il nuovo impegno appare tratteggiato. Segue la settimana della data scelta e scorre da solo fino
   al giorno scelto/oggi (sul telefono si vedono circa 4 giorni, colonna delle ore fissa). Montata da
-  `mountPlanners` (queueMicrotask all'inizio di `renderMain` e `renderCallFlow`).
+  `mountPlanners` (queueMicrotask all'inizio di `renderMain` e `renderCallFlow`). Ogni impegno mostra
+  l'indirizzo sotto il nome; toccandolo si apre `.plan-info` in cima all'agenda (data, orario, studio,
+  indirizzo con Indicazioni, telefono, progetto e note) senza uscire dal modulo.
 - **Suggerisci quando** (blocco omonimo, `.trip-box data-trip="idData|idOra|esclusa|origine"`, sopra
   l'agenda nei moduli di sopralluogo e appuntamento): per i prossimi `TRIP_DAYS` (10) giorni
   lavorativi costruisce il giro casa -> impegni fissati -> casa e cerca dove ci stanno viaggio +

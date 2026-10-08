@@ -453,6 +453,11 @@ await test('sopralluoghi: pianifica dal progetto, agenda, mappa, esito, elimina'
   await page.$eval(`.planner [data-plan-day="${daysAgo(-1)}"][data-plan-time="14:00"]`, s => s.click());
   expect(await page.inputValue('#sopTime') === '14:00' && await page.inputValue('#sopDate') === daysAgo(-1), 'il clic sull\'agenda non ha scelto giorno e ora');
   expect(await page.$('.planner .plan-ev.new'), 'manca il nuovo impegno tratteggiato');
+  expect((await page.textContent('.planner .plan-ev.sop')).includes('Via Po 10, Torino'), 'manca l\'indirizzo sotto il nome');
+  await page.$eval('.planner .plan-ev.sop', el => el.click());
+  const info = await page.textContent('.planner .plan-info');
+  expect(await page.isVisible('.planner .plan-info') && info.includes('Via Po 10, Torino · Indicazioni') && info.includes('verificare i balconi'), 'scheda dell\'impegno: ' + info);
+  expect(await page.evaluate(() => view) === 'sop', 'toccare un impegno non deve uscire dal modulo');
   if (shotsDir) await (await page.$('.planner')).screenshot({ path: path.join(shotsDir, 'agenda-pianifica.png') });
   await page.click('#sopBackBtn');
   // anche negli appuntamenti delle chiamate

@@ -282,6 +282,12 @@ body.foto-open{overflow:hidden;}
 .plan-slot.hour{border-top:1px solid var(--border);}
 .plan-slot:hover{background:color-mix(in srgb, var(--accent) 14%, transparent);}
 .plan-ev{position:absolute;left:2px;right:2px;z-index:2;overflow:hidden;font-size:10.5px;line-height:1.25;padding:2px 4px;border-radius:2px;background:var(--accent);color:#fff;cursor:default;}
+.plan-ev{cursor:pointer;}
+.plan-ev.on{outline:2px solid var(--brand-yellow);outline-offset:1px;}
+.plan-addr{display:block;opacity:.85;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.plan-info{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--accent-soft);font-size:13px;}
+.plan-info.hidden{display:none;}
+.plan-info-main{min-width:0;}
 .plan-ev.sop{background:#3d4650;border-left:3px solid var(--brand-yellow);}
 .plan-ev.new{background:var(--panel);color:var(--accent);border:2px dashed var(--accent);pointer-events:none;font-weight:600;}
 .trip-box{margin:6px 0 4px;}
@@ -2851,8 +2857,16 @@ document.addEventListener('click', e=>{
 const PLAN_H0 = 7, PLAN_H1 = 21, PLAN_ROW = 22;   // ore visibili, altezza di mezz'ora in px
 function plannerEvents(exclude){
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c])), out = [];
-  calls.forEach(k=>{ if(k.appuntamento && 'call:'+k.id!==exclude) out.push({ t:k.appuntamento, min:60, label:fullName(byId[k.contactId]||{}), kind:'appt' }); });
-  sops.forEach(s=>{ if('sop:'+s.id!==exclude) out.push({ t:s.quando, min:+s.durata || 60, label:'Sopralluogo · '+sopTitle(s), kind:'sop' }); });
+  calls.forEach(k=>{
+    if(!k.appuntamento || 'call:'+k.id===exclude) return;
+    const c = byId[k.contactId] || {};
+    out.push({ t:k.appuntamento, min:60, label:fullName(c), kind:'appt', addr:fullAddress(c), maps: fullAddress(c) ? mapsUrl(c) : '',
+      sub:[c.professione, c.azienda].filter(Boolean).join(' · '), tel:c.cellulare || c.telefono || '', note:[k.progetto, k.note].filter(Boolean).join(' · ') });
+  });
+  sops.forEach(s=>{
+    if('sop:'+s.id===exclude) return;
+    out.push({ t:s.quando, min:+s.durata || 60, label:'Sopralluogo · '+sopTitle(s), kind:'sop', addr:sopAddr(s), maps: sopAddr(s) ? sopMapsUrl(s) : '', sub:'', tel:'', note:s.note || '' });
+  });
   return out;
 }
 function planTop(hhmm){ const m = +hhmm.slice(0,2)*60 + +hhmm.slice(3,5); return Math.max(0, (m - PLAN_H0*60) / 30 * PLAN_ROW); }
@@ -2864,9 +2878,11 @@ function renderPlanner(box){
   const days = [...Array(7)].map((_, i)=>addDaysISO(box.dataset.week, i)), today = todayISO();
   const evs = plannerEvents(exclude), rows = (PLAN_H1 - PLAN_H0) * 2;
   const dn = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+  box._evs = [];   // impegni disegnati, per la scheda che si apre al tocco
   const cols = days.map((d, i)=>{
     const dayEv = evs.filter(e=>e.t.slice(0,10)===d).sort((a,b)=>a.t.localeCompare(b.t));
-    const blocks = dayEv.map(e=>`<div class="plan-ev ${e.kind}" style="top:${planTop(e.t.slice(11,16))}px;height:${Math.max(PLAN_ROW, e.min/30*PLAN_ROW) - 2}px;" title="${esc(e.t.slice(11,16)+' '+e.label)}"><b>${e.t.slice(11,16)}</b> ${esc(e.label)}</div>`).join('');
+    const blocks = dayEv.map(e=>{ box._evs.push(e);
+      return `<div class="plan-ev ${e.kind}" data-plan-ev="${box._evs.length - 1}" style="top:${planTop(e.t.slice(11,16))}px;height:${Math.max(PLAN_ROW, e.min/30*PLAN_ROW) - 2}px;" title="${esc(e.t.slice(11,16)+' '+e.label+(e.addr ? ' · '+e.addr : ''))}"><b>${e.t.slice(11,16)}</b> ${esc(e.label)}${e.addr ? `<span class="plan-addr">${esc(e.addr)}</span>` : ''}</div>`; }).join('');
     const mine = sel===d && selT ? `<div class="plan-ev new" style="top:${planTop(selT)}px;height:${2*PLAN_ROW - 2}px;"><b>${selT}</b> questo</div>` : '';
     const slots = [...Array(rows)].map((_, r)=>`<div class="plan-slot ${r%2 ? '' : 'hour'}" data-plan-day="${d}" data-plan-time="${String(PLAN_H0 + Math.floor(r/2)).padStart(2,'0')}:${r%2 ? '30' : '00'}"></div>`).join('');
     return `<div class="plan-col ${d===today ? 'today' : ''} ${d===sel ? 'sel' : ''}">
@@ -2879,7 +2895,8 @@ function renderPlanner(box){
   box.innerHTML = `<div class="plan-nav"><button type="button" class="btn secondary small" data-plan-nav="-7" aria-label="Settimana precedente">←</button>
       <span>${fmtDate(days[0]).slice(0,5)} – ${fmtDate(days[6])}</span>
       <button type="button" class="btn secondary small" data-plan-nav="7" aria-label="Settimana successiva">→</button>
-      <span class="fc-note">Tocca uno spazio libero per scegliere giorno e ora</span></div>
+      <span class="fc-note">Tocca uno spazio libero per scegliere giorno e ora, un impegno per i dettagli</span></div>
+    <div class="plan-info hidden"></div>
     <div class="plan-scroll"><div class="plan-grid"><div class="plan-hours"><div class="plan-head"></div>${hours}</div>${cols}</div></div>`;
   const sc = box.querySelector('.plan-scroll');
   if(scroll){ sc.scrollTop = scroll[0]; sc.scrollLeft = scroll[1]; }
@@ -2898,6 +2915,20 @@ function mountPlanners(){
     box.addEventListener('click', e=>{
       const nav = e.target.closest('[data-plan-nav]');
       if(nav){ box.dataset.week = addDaysISO(box.dataset.week, +nav.dataset.planNav); box.dataset.fresh = '1'; renderPlanner(box); return; }
+      if(e.target.closest('[data-plan-close]')){ box.querySelector('.plan-info').classList.add('hidden'); return; }
+      const evEl = e.target.closest('[data-plan-ev]');
+      if(evEl){
+        const ev = box._evs[+evEl.dataset.planEv], info = box.querySelector('.plan-info'); if(!ev) return;
+        const end = tripHM(tripMin(ev.t.slice(11,16)) + ev.min);
+        info.innerHTML = `<div class="plan-info-main"><strong>${fmtLongDate(ev.t.slice(0,10)+'T12:00:00')}, ${ev.t.slice(11,16)}–${end}</strong> · ${esc(ev.label)}
+            ${ev.sub ? `<div class="todo-sub">${esc(ev.sub)}</div>` : ''}
+            <div class="todo-sub">${ev.addr ? `<a href="${ev.maps}" target="_blank" rel="noopener" class="addr-link">${esc(ev.addr)} · Indicazioni</a>` : 'Indirizzo non indicato'}${ev.tel ? ` · <a href="tel:${esc(ev.tel)}" class="tel-link">${esc(ev.tel)}</a>` : ''}</div>
+            ${ev.note ? `<div class="todo-sub">${esc(ev.note)}</div>` : ''}</div>
+          <button type="button" class="btn secondary small" data-plan-close aria-label="Chiudi">Chiudi</button>`;
+        info.classList.remove('hidden');
+        box.querySelectorAll('.plan-ev.on').forEach(x=>x.classList.remove('on')); evEl.classList.add('on');
+        return;
+      }
       const slot = e.target.closest('[data-plan-day]');
       if(!slot) return;
       dIn.value = slot.dataset.planDay; tIn.value = slot.dataset.planTime;
