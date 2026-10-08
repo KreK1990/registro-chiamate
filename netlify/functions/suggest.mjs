@@ -32,6 +32,7 @@ function buildCandidates(contacts, calls, projects, today) {
   contacts.forEach((c) => {
     const list = byContact.get(c.id);
     if (!list || !list.length) return;
+    if (c.spento) return; // contatto spento: da non ricontattare
     if (c.rimandaAl && c.rimandaAl > today) return;
     if (c.followUp && new Date(c.followUp) > now) return;
     if (list.some((k) => k.appuntamento && new Date(k.appuntamento) > now)) return;

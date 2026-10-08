@@ -22,7 +22,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
   download, "Fai una copia adesso"): backup JSON di
-  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico}` (version 2; restano fuori
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi}` (version 2; restano fuori
   `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
   chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
   manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
@@ -68,7 +68,17 @@ Campi principali:
 - **contacts**: nome, cognome, professione, cellulare, azienda (studio/attività), via,
   citta, telefono (= telefono dello studio/attività; nei contatti salvati prima del campo
   cellulare può essere anche un cellulare, per questo da solo è etichettato "Tel"),
-  email, followUp (datetime ISO "YYYY-MM-DDTHH:MM"), tag, note.
+  email, followUp (datetime ISO "YYYY-MM-DDTHH:MM"), tag, note, spento ({motivo, il, nota} o null).
+  **Contatto spento** (blocco "Contatti spenti e nuovo tentativo con chi non ha risposto"):
+  "Spegni contatto" nella scheda (motivi `SPENTO_MOTIVI`: attivita' cessata, pensione, deceduto,
+  si occupa d'altro, altro) toglie anche il follow-up; resta in rubrica in grigio (`isOff`,
+  `offTag`, `.contact-off`) ma esce da follow-up (Oggi, riepilogo, pagina Follow-up, badge,
+  notifiche), Da ricontattare, Suggeriti da Claude (anche in `suggest.mjs`), mail da inviare e
+  mappa. "Riattiva" = spento null. **Chi non ha risposto**: nei moduli chiamata (scheda contatto e
+  Chiamata) un esito di `ESITI_NON_RAGGIUNTO` propone il follow-up dopo `promemoria.richiamo`
+  giorni (7) alle 09:00 se vuoto (`bindAutoFollowUp`, segnato `data-auto`, tolto se l'esito
+  cambia e la data non e' stata toccata). `TODO_DEFAULTS.nonRaggiunto` portato da 30 a 7 (richiesta
+  dell'utente 2026-10-08: chi non risponde va riprovato dopo circa una settimana).
   Lo studio/attività è un'entità "derivata", senza collection propria: contatti con lo
   stesso `azienda` normalizzato (`normStudio`: minuscole, spazi e punteggiatura) sono
   lo stesso studio; via/citta/telefono dello studio si ricavano dai membri
@@ -175,6 +185,18 @@ Campi principali:
   fisso `#mapReturnBtn` "Torna alla mappa" (in basso a destra, appeso a body, gestito da
   `updateMapReturnBtn` all'inizio di `renderMain`); resta nelle viste `MAP_RETURN_VIEWS` e nel
   dettaglio chiamata, sparisce scegliendo un'altra sezione; `bindMap` ripristina centro e zoom.
+- **Sopralluoghi** (blocco "Sopralluoghi", `view='sop'`): collection `sopralluoghi` {quando
+  'YYYY-MM-DDTHH:MM', durata (min), projectId o vuoto, pid (cantiere del portale d'origine),
+  titolo/via/citta (cantieri non a sistema), note, noteDopo (esito), geo, createdAt}. Si
+  pianificano da Appuntamenti ("+ Sopralluogo", `data-sop-new`), dalla scheda progetto
+  (`projectSopsHtml`, `data-sop-project`) o da un cantiere del portale (`data-sop-portal`: se
+  collegato a un progetto usa quello, altrimenti titolo e indirizzo del portale). Un ascoltatore
+  globale su document apre il modulo da ogni `[data-sop-id]`; `sopEdit.back` riporta alla vista di
+  partenza. Compaiono negli Appuntamenti (elenco/svolti mescolati per data con `mergeTimed`,
+  calendario settimanale `.appt-chip.sop`, ricerca `sopMatches`), in Oggi e nel riepilogo
+  laterale, nel calendario del mese, nelle notifiche (15 min prima), nel file .ics e nel feed
+  `calendar.js` (con VALARM e durata), sulla mappa (filtro "Sopralluoghi in programma", cerchi
+  grigio scuro con "S"; posizione del progetto o geocodifica di via/citta' salvata in `geo`).
 - **Offline** (solo versione online): `enablePersistence` all'avvio; `firestoreAdapter` avvolge
   le scritture con `settleWrite` (non si aspetta il server oltre 2,5 s, `add` crea l'ID sul
   dispositivo) cosi' l'app non resta bloccata senza rete. Il service worker tiene in cache anche

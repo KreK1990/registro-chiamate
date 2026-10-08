@@ -108,9 +108,11 @@ exports.handler = async function (event) {
         body: '',
       };
     }
-    const [contactsSnap, callsSnap] = await Promise.all([
+    const [contactsSnap, callsSnap, sopSnap, projectsSnap] = await Promise.all([
       archive.collection('contacts').get(),
       archive.collection('calls').get(),
+      archive.collection('sopralluoghi').get(),
+      archive.collection('projects').get(),
     ]);
 
     const contactsById = {};
@@ -147,6 +149,32 @@ exports.handler = async function (event) {
       if (loc) ics += foldLine(`LOCATION:${loc}`) + '\r\n';
       // Avviso un'ora prima. Su iPhone suona solo se nel calendario in abbonamento
       // l'opzione "Rimuovi avvisi" e' disattivata.
+      ics += 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT1H\r\n';
+      ics += foldLine(`DESCRIPTION:${summary}`) + '\r\n';
+      ics += 'END:VALARM\r\n';
+      ics += 'END:VEVENT\r\n';
+    });
+
+    // Sopralluoghi: indirizzo del progetto collegato o quello indicato, durata scelta.
+    const projectsById = {};
+    projectsSnap.forEach((doc) => { projectsById[doc.id] = doc.data(); });
+    sopSnap.forEach((doc) => {
+      const s = doc.data();
+      const start = parseLocal(s.quando);
+      if (!start) return;
+      const p = s.projectId ? projectsById[s.projectId] : null;
+      const title = p ? [p.codice, p.nome].filter(Boolean).join(' ') : (s.titolo || fullAddress(s) || 'Cantiere');
+      const end = new Date(start.getTime() + (Number(s.durata) || 60) * 60 * 1000);
+      const summary = icsEsc('Sopralluogo - ' + title);
+      const loc = icsEsc(p && fullAddress(p) ? fullAddress(p) : fullAddress(s));
+      ics += 'BEGIN:VEVENT\r\n';
+      ics += foldLine(`UID:sop-${doc.id}@registro-chiamate`) + '\r\n';
+      ics += foldLine(`DTSTAMP:${dtstamp}`) + '\r\n';
+      ics += foldLine(`DTSTART;TZID=${TZID}:${toICS(start)}`) + '\r\n';
+      ics += foldLine(`DTEND;TZID=${TZID}:${toICS(end)}`) + '\r\n';
+      ics += foldLine(`SUMMARY:${summary}`) + '\r\n';
+      if (s.note) ics += foldLine(`DESCRIPTION:${icsEsc(s.note)}`) + '\r\n';
+      if (loc) ics += foldLine(`LOCATION:${loc}`) + '\r\n';
       ics += 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT1H\r\n';
       ics += foldLine(`DESCRIPTION:${summary}`) + '\r\n';
       ics += 'END:VALARM\r\n';

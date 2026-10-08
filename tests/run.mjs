@@ -307,7 +307,7 @@ await ctx.close();
 ({ ctx, page } = await openApp({ width: 390, height: 844 }));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['map'], ['deliveries']];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"]];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
@@ -384,6 +384,80 @@ await test('consegne: elenco, posticipa, consegnato, annulla', async () => {
   await page.waitForFunction(() => !orderEdit);
   r = await o('o2');
   expect(r.rinvii === 1 && r.consegnaIniziale, 'la modifica dell\'ordine ha perso i rinvii');
+});
+
+await test('chiamata senza risposta: follow-up proposto dopo 7 giorni', async () => {
+  await show_(page, 'detail', "selectedId='c4'");
+  await page.selectOption('#callEsito', 'Nessuna risposta');
+  expect(await page.inputValue('#callFollowUpDate') === daysAgo(-7) && await page.inputValue('#callFollowUpTime') === '09:00', 'follow-up non proposto: ' + await page.inputValue('#callFollowUpDate'));
+  await page.selectOption('#callEsito', 'Interessato');
+  expect(await page.inputValue('#callFollowUpDate') === '', 'cambiando esito il follow-up proposto doveva sparire');
+  await page.selectOption('#callEsito', 'Filtrato dalla segreteria');
+  await page.fill('#callNote', 'segreteria');
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => window.__fake.docs('calls').some(k => k.note === 'segreteria'));
+  await page.waitForFunction(d => (window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).followUp === d + 'T09:00', daysAgo(-7));
+});
+
+await test('contatto spento: in grigio, fuori dai follow-up, riattivabile', async () => {
+  await show_(page, 'detail', "selectedId='c4'");
+  await page.click('#offBtn');
+  await page.selectOption('#offMotivo', 'In pensione');
+  await page.click('#offConfirmBtn');
+  await page.waitForFunction(() => !!(window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).spento);
+  const c = await page.evaluate(() => window.__fake.docs('contacts').find(c => c.id === 'c4'));
+  expect(c.spento.motivo === 'In pensione' && !c.followUp, 'dati del contatto spento: ' + JSON.stringify(c));
+  await page.waitForSelector('#offReactivateBtn');
+  const list = await show_(page, 'contactsList');
+  expect(await page.$('.card.contact-off[data-contact-id="c4"]'), 'nell\'elenco contatti non e\' in grigio');
+  await page.evaluate(() => window.__fake.put('contacts', 'c4', { ...window.__fake.docs('contacts').find(c => c.id === 'c4'), followUp: '2020-01-01T09:00' }));
+  await page.waitForFunction(() => contacts.find(c => c.id === 'c4').followUp === '2020-01-01T09:00');
+  const agenda = await show_(page, 'agenda');
+  expect(!/Verdi Paolo/.test(agenda.split('Follow-up da fare')[1].split('Da fare')[0]), 'il contatto spento compare tra i follow-up');
+  await show_(page, 'detail', "selectedId='c4'");
+  await page.click('#offReactivateBtn');
+  await page.waitForFunction(() => !(window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).spento);
+});
+
+await test('sopralluoghi: pianifica dal progetto, agenda, mappa, esito, elimina', async () => {
+  await show_(page, 'projectDetail', "selectedProjectId='p1'");
+  await page.click('[data-sop-project="p1"]');
+  await page.waitForSelector('#sopDate');
+  await page.fill('#sopDate', daysAgo(-1));
+  await page.selectOption('#sopTime', '10:00');
+  await page.fill('#sopNote', 'verificare i balconi');
+  await page.click('#sopSaveBtn');
+  await page.waitForFunction(() => window.__fake.docs('sopralluoghi').length === 1);
+  await page.waitForFunction(() => view === 'projectDetail');
+  const s = (await page.evaluate(() => window.__fake.docs('sopralluoghi')))[0];
+  expect(s.projectId === 'p1' && s.quando === daysAgo(-1) + 'T10:00' && s.durata === 60, 'sopralluogo salvato male: ' + JSON.stringify(s));
+  expect((await page.textContent('#main')).includes('verificare i balconi'), 'non compare nella scheda progetto');
+  // cantiere non presente tra i progetti, oggi piu' tardi
+  await page.evaluate(d => window.__fake.put('sopralluoghi', 'sx', { quando: d + 'T23:30', durata: 60, projectId: '', titolo: 'Cantiere di prova', via: 'Via Milano 3', citta: 'Bra', note: '' }), daysAgo(0));
+  await page.waitForFunction(() => sops.length === 2);
+  const agenda = await show_(page, 'agenda');
+  expect(agenda.includes('Cantiere di prova'), 'il sopralluogo di oggi non compare in Oggi');
+  expect((await page.textContent('#sidebarToday')).includes('Cantiere di prova'), 'non compare nel riepilogo laterale');
+  const appt = await show_(page, 'appt', "apptSubView='list'");
+  expect(appt.includes('Residenza Aurora') && appt.includes('Cantiere di prova'), 'non compaiono negli Appuntamenti');
+  await show_(page, 'appt', "apptSubView='calendar'; apptWeekOffset=0");
+  expect(await page.$('.appt-chip.sop'), 'non compare nel calendario settimanale');
+  await page.evaluate(() => { mapFilters.portaleSeguiti = false; });
+  await show_(page, 'map');
+  await page.waitForSelector('.map-mk.sop', { timeout: 15000 });
+  // apertura dal calendario, esito ed eliminazione
+  await show_(page, 'appt', "apptSubView='list'");
+  await page.click('#main [data-sop-id="sx"]');
+  await page.waitForSelector('#sopNoteDopo');
+  await page.fill('#sopNoteDopo', 'getto previsto a novembre');
+  await page.click('#sopSaveBtn');
+  await page.waitForFunction(() => (window.__fake.docs('sopralluoghi').find(s => s.id === 'sx') || {}).noteDopo === 'getto previsto a novembre');
+  await page.waitForFunction(() => view === 'appt');
+  await page.click('#main [data-sop-id="sx"]');
+  await page.click('#sopDelBtn');
+  await page.click('#sopDelYes');
+  await page.waitForFunction(() => !window.__fake.docs('sopralluoghi').some(s => s.id === 'sx'));
+  await page.evaluate(() => { mapFilters.portaleSeguiti = true; });
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
