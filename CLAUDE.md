@@ -197,6 +197,14 @@ Campi principali:
   laterale, nel calendario del mese, nelle notifiche (15 min prima), nel file .ics e nel feed
   `calendar.js` (con VALARM e durata), sulla mappa (filtro "Sopralluoghi in programma", cerchi
   grigio scuro con "S"; posizione del progetto o geocodifica di via/citta' salvata in `geo`).
+- **Agenda per pianificare** (blocco omonimo): sotto data/ora di appuntamenti (scheda contatto,
+  Chiamata, modifica chiamata) e sopralluoghi, `<div class="planner" data-planner="idData|idOra|
+  chiave">` mostra la settimana lun-dom, ore 7-21 (`PLAN_H0/H1`, mezz'ora = `PLAN_ROW` px) con
+  appuntamenti e sopralluoghi gia' fissati (con durata; `chiave` 'call:id'/'sop:id' esclude
+  l'impegno che si sta modificando); clic su uno spazio = compila data e ora (+ evento change),
+  il nuovo impegno appare tratteggiato. Segue la settimana della data scelta e scorre da solo fino
+  al giorno scelto/oggi (sul telefono si vedono circa 4 giorni, colonna delle ore fissa). Montata da
+  `mountPlanners` (queueMicrotask all'inizio di `renderMain` e `renderCallFlow`).
 - **Offline** (solo versione online): `enablePersistence` all'avvio; `firestoreAdapter` avvolge
   le scritture con `settleWrite` (non si aspetta il server oltre 2,5 s, `add` crea l'ID sul
   dispositivo) cosi' l'app non resta bloccata senza rete. Il service worker tiene in cache anche

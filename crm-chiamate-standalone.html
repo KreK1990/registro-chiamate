@@ -265,6 +265,25 @@ body.foto-open{overflow:hidden;}
 .off-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:2px;background:#8a96a3;color:#fff;font-size:11px;font-weight:600;vertical-align:2px;}
 .off-banner{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-left:3px solid #8a96a3;}
 .auto-fu-hint{margin:-4px 0 8px;color:var(--accent);}
+.planner{margin:8px 0 12px;border:1px solid var(--border);border-radius:2px;background:var(--panel);}
+.plan-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;}
+.plan-nav .fc-note{font-weight:400;margin-left:auto;}
+.plan-scroll{max-height:330px;overflow:auto;}
+.plan-grid{display:grid;grid-template-columns:30px repeat(7,minmax(76px,1fr));min-width:570px;}
+.plan-hours{position:sticky;left:0;z-index:4;background:var(--panel);font-size:10.5px;color:var(--muted);text-align:right;border-right:1px solid var(--border);}
+.plan-h{padding:1px 4px 0 0;box-sizing:border-box;}
+.plan-head{position:sticky;top:0;z-index:3;height:26px;line-height:26px;background:var(--panel);border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;text-align:center;white-space:nowrap;}
+.plan-col{border-left:1px solid var(--border);min-width:0;}
+.plan-col.today .plan-head{color:var(--accent);box-shadow:inset 0 -2px 0 var(--brand-yellow);}
+.plan-col.sel .plan-body{background:var(--accent-soft);}
+.plan-n{display:inline-block;min-width:15px;padding:0 4px;border-radius:8px;background:var(--accent);color:#fff;font-size:10px;line-height:15px;}
+.plan-body{position:relative;}
+.plan-slot{height:22px;box-sizing:border-box;border-top:1px dotted var(--border);cursor:pointer;}
+.plan-slot.hour{border-top:1px solid var(--border);}
+.plan-slot:hover{background:color-mix(in srgb, var(--accent) 14%, transparent);}
+.plan-ev{position:absolute;left:2px;right:2px;z-index:2;overflow:hidden;font-size:10.5px;line-height:1.25;padding:2px 4px;border-radius:2px;background:var(--accent);color:#fff;cursor:default;}
+.plan-ev.sop{background:#3d4650;border-left:3px solid var(--brand-yellow);}
+.plan-ev.new{background:var(--panel);color:var(--accent);border:2px dashed var(--accent);pointer-events:none;font-weight:600;}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -988,6 +1007,7 @@ function contactsListView(){
 function renderMain(){
   const main = document.getElementById('main');
   updateMapReturnBtn();
+  queueMicrotask(mountPlanners);   // agende per pianificare nei moduli appena disegnati
   if(tableDetailCallId){ main.innerHTML = tableDetailView(); bindTableDetail(); return; }
   if(view==='deliveries'){ main.innerHTML = deliveriesView(); bindDeliveries(); return; }
   if(view==='sop'){ main.innerHTML = sopFormView(); bindSopForm(); return; }
@@ -1204,6 +1224,7 @@ function renderMain(){
             <div><label>Data</label><input type="date" id="callApptDate"></div>
             <div><label>Ora</label><select id="callApptTime">${timeOptions('')}</select></div>
           </div>
+          <div class="planner" data-planner="callApptDate|callApptTime"></div>
         </div>
         <label style="margin-top:10px;">Prossimo follow-up (opzionale)</label>
         <div class="field-row">
@@ -2735,6 +2756,7 @@ function sopFormView(){
       <div><label>Data</label><input type="date" id="sopDate" value="${esc(date)}"></div>
       <div><label>Ora</label><select id="sopTime">${timeOptions(time || '09:00')}</select></div>
     </div>
+    <div class="planner" data-planner="sopDate|sopTime|sop:${isNew ? '' : sopEdit.id}"></div>
     <label>Durata</label>
     <select id="sopDur">${durs.map(m=>`<option value="${m}" ${(+s.durata || 60)===m ? 'selected' : ''}>${durLbl(m)}</option>`).join('')}</select>
     <label>Progetto</label>
@@ -2804,6 +2826,80 @@ document.addEventListener('click', e=>{
   }
   openSop('new', {});
 });
+
+// ---------------------------------------------------------------------------
+// Agenda per pianificare: sotto i campi data/ora di appuntamenti e sopralluoghi una settimana
+// (lun-dom, ore PLAN_H0-PLAN_H1) con gli impegni gia' fissati (appuntamenti delle chiamate e
+// sopralluoghi, con la loro durata); un clic su uno spazio compila data e ora (mezz'ora) e il
+// nuovo impegno compare tratteggiato. Contenitore <div class="planner"
+// data-planner="idData|idOra|chiaveDaEscludere"> (chiave 'call:<id>' o 'sop:<id>' quando si
+// modifica un impegno esistente), montato da mountPlanners dopo ogni ridisegno. Si apre sulla
+// settimana della data scelta (o di oggi) e la segue se la data cambia.
+// ---------------------------------------------------------------------------
+const PLAN_H0 = 7, PLAN_H1 = 21, PLAN_ROW = 22;   // ore visibili, altezza di mezz'ora in px
+function plannerEvents(exclude){
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c])), out = [];
+  calls.forEach(k=>{ if(k.appuntamento && 'call:'+k.id!==exclude) out.push({ t:k.appuntamento, min:60, label:fullName(byId[k.contactId]||{}), kind:'appt' }); });
+  sops.forEach(s=>{ if('sop:'+s.id!==exclude) out.push({ t:s.quando, min:+s.durata || 60, label:'Sopralluogo · '+sopTitle(s), kind:'sop' }); });
+  return out;
+}
+function planTop(hhmm){ const m = +hhmm.slice(0,2)*60 + +hhmm.slice(3,5); return Math.max(0, (m - PLAN_H0*60) / 30 * PLAN_ROW); }
+function renderPlanner(box){
+  const [dateId, timeId, exclude] = box.dataset.planner.split('|');
+  const dIn = document.getElementById(dateId), tIn = document.getElementById(timeId);
+  const sel = dIn && /^\d{4}-\d{2}-\d{2}$/.test(dIn.value) ? dIn.value : '', selT = tIn ? tIn.value : '';
+  if(!box.dataset.week) box.dataset.week = isoDay(startOfWeek(sel ? new Date(sel+'T12:00:00') : new Date()));
+  const days = [...Array(7)].map((_, i)=>addDaysISO(box.dataset.week, i)), today = todayISO();
+  const evs = plannerEvents(exclude), rows = (PLAN_H1 - PLAN_H0) * 2;
+  const dn = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+  const cols = days.map((d, i)=>{
+    const dayEv = evs.filter(e=>e.t.slice(0,10)===d).sort((a,b)=>a.t.localeCompare(b.t));
+    const blocks = dayEv.map(e=>`<div class="plan-ev ${e.kind}" style="top:${planTop(e.t.slice(11,16))}px;height:${Math.max(PLAN_ROW, e.min/30*PLAN_ROW) - 2}px;" title="${esc(e.t.slice(11,16)+' '+e.label)}"><b>${e.t.slice(11,16)}</b> ${esc(e.label)}</div>`).join('');
+    const mine = sel===d && selT ? `<div class="plan-ev new" style="top:${planTop(selT)}px;height:${2*PLAN_ROW - 2}px;"><b>${selT}</b> questo</div>` : '';
+    const slots = [...Array(rows)].map((_, r)=>`<div class="plan-slot ${r%2 ? '' : 'hour'}" data-plan-day="${d}" data-plan-time="${String(PLAN_H0 + Math.floor(r/2)).padStart(2,'0')}:${r%2 ? '30' : '00'}"></div>`).join('');
+    return `<div class="plan-col ${d===today ? 'today' : ''} ${d===sel ? 'sel' : ''}">
+      <div class="plan-head">${dn[i]} ${d.slice(8,10)}/${d.slice(5,7)}${dayEv.length ? ` <span class="plan-n">${dayEv.length}</span>` : ''}</div>
+      <div class="plan-body" style="height:${rows*PLAN_ROW}px;">${slots}${blocks}${mine}</div></div>`;
+  }).join('');
+  const hours = [...Array(PLAN_H1 - PLAN_H0)].map((_, i)=>`<div class="plan-h" style="height:${2*PLAN_ROW}px;">${String(PLAN_H0 + i).padStart(2,'0')}</div>`).join('');
+  const keep = box.dataset.fresh ? null : box.querySelector('.plan-scroll'), scroll = keep ? [keep.scrollTop, keep.scrollLeft] : null;
+  delete box.dataset.fresh;
+  box.innerHTML = `<div class="plan-nav"><button type="button" class="btn secondary small" data-plan-nav="-7" aria-label="Settimana precedente">←</button>
+      <span>${fmtDate(days[0]).slice(0,5)} – ${fmtDate(days[6])}</span>
+      <button type="button" class="btn secondary small" data-plan-nav="7" aria-label="Settimana successiva">→</button>
+      <span class="fc-note">Tocca uno spazio libero per scegliere giorno e ora</span></div>
+    <div class="plan-scroll"><div class="plan-grid"><div class="plan-hours"><div class="plan-head"></div>${hours}</div>${cols}</div></div>`;
+  const sc = box.querySelector('.plan-scroll');
+  if(scroll){ sc.scrollTop = scroll[0]; sc.scrollLeft = scroll[1]; }
+  else {
+    sc.scrollTop = planTop(selT || '08:00') - PLAN_ROW;
+    const col = sc.querySelector('.plan-col.sel') || sc.querySelector('.plan-col.today');   // sul telefono si vedono 4 giorni
+    if(col) sc.scrollLeft = Math.max(0, col.offsetLeft - 30);
+  }
+}
+function mountPlanners(){
+  document.querySelectorAll('#main .planner[data-planner]:not([data-mounted])').forEach(box=>{
+    box.dataset.mounted = '1';
+    const [dateId, timeId] = box.dataset.planner.split('|');
+    const dIn = document.getElementById(dateId), tIn = document.getElementById(timeId);
+    if(!dIn || !tIn) return;
+    box.addEventListener('click', e=>{
+      const nav = e.target.closest('[data-plan-nav]');
+      if(nav){ box.dataset.week = addDaysISO(box.dataset.week, +nav.dataset.planNav); box.dataset.fresh = '1'; renderPlanner(box); return; }
+      const slot = e.target.closest('[data-plan-day]');
+      if(!slot) return;
+      dIn.value = slot.dataset.planDay; tIn.value = slot.dataset.planTime;
+      dIn.dispatchEvent(new Event('change', { bubbles:true })); tIn.dispatchEvent(new Event('change', { bubbles:true }));
+      renderPlanner(box);
+    });
+    const follow = ()=>{
+      if(/^\d{4}-\d{2}-\d{2}$/.test(dIn.value)){ const w = isoDay(startOfWeek(new Date(dIn.value+'T12:00:00'))); if(w!==box.dataset.week){ box.dataset.week = w; box.dataset.fresh = '1'; } }
+      renderPlanner(box);
+    };
+    dIn.addEventListener('change', follow); tIn.addEventListener('change', follow);
+    renderPlanner(box);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
@@ -6182,6 +6278,7 @@ function followupView(){
 
 function renderCallFlow(){
   const main = document.getElementById('main');
+  queueMicrotask(mountPlanners);
   if(!selectedId || callStep==='pick'){
     const q = (document.getElementById('callPickSearch')?.value || '').trim().toLowerCase();
     const list = contacts.filter(c=>!q || fullName(c).toLowerCase().includes(q) || (c.azienda||'').toLowerCase().includes(q))
@@ -6242,6 +6339,7 @@ function renderCallFlow(){
           <div><label>Data</label><input type="date" id="qcApptDate"></div>
           <div><label>Ora</label><select id="qcApptTime">${timeOptions('')}</select></div>
         </div>
+        <div class="planner" data-planner="qcApptDate|qcApptTime"></div>
       </div>
       <div style="margin-top:10px;"></div>
       <label>Follow up</label>
@@ -6421,6 +6519,7 @@ function callEditView(k,c){
           <div><label>Data</label><input type="date" id="ecApptDate" value="${splitDT(k.appuntamento).date}"></div>
           <div><label>Ora</label><select id="ecApptTime">${timeOptions(splitDT(k.appuntamento).time)}</select></div>
         </div>
+        <div class="planner" data-planner="ecApptDate|ecApptTime|call:${k.id}"></div>
         <label style="margin-top:10px;">Note dell'incontro</label>
         <textarea id="ecNoteIncontro" placeholder="Come è andato l'incontro...">${esc(k.noteIncontro||'')}</textarea>
       </div>

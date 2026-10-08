@@ -315,7 +315,7 @@ await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
       const vw = document.documentElement.clientWidth, out = [];
       document.querySelectorAll('#main *').forEach(el => {
         const r = el.getBoundingClientRect();
-        if (r.width && r.right > vw + 1 && !el.closest('.table-wrap, .map-embed, [style*="overflow"]')) out.push(`${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : ''} (destra ${Math.round(r.right)} > ${vw})`);
+        if (r.width && r.right > vw + 1 && !el.closest('.table-wrap, .map-embed, .plan-scroll, [style*="overflow"]')) out.push(`${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : ''} (destra ${Math.round(r.right)} > ${vw})`);
       });
       return out.slice(0, 3);
     });
@@ -432,6 +432,21 @@ await test('sopralluoghi: pianifica dal progetto, agenda, mappa, esito, elimina'
   const s = (await page.evaluate(() => window.__fake.docs('sopralluoghi')))[0];
   expect(s.projectId === 'p1' && s.quando === daysAgo(-1) + 'T10:00' && s.durata === 60, 'sopralluogo salvato male: ' + JSON.stringify(s));
   expect((await page.textContent('#main')).includes('verificare i balconi'), 'non compare nella scheda progetto');
+  // agenda per pianificare: mostra gli impegni della settimana e un clic sceglie giorno e ora
+  await show_(page, 'appt', "apptSubView='list'");
+  await page.click('#main [data-sop-new]');
+  await page.waitForSelector('.planner .plan-grid');
+  await page.fill('#sopDate', daysAgo(-1));
+  await page.$eval('#sopDate', i => i.dispatchEvent(new Event('change', { bubbles: true })));
+  await page.waitForSelector('.planner .plan-ev.sop');
+  await page.$eval(`.planner [data-plan-day="${daysAgo(-1)}"][data-plan-time="14:00"]`, s => s.click());
+  expect(await page.inputValue('#sopTime') === '14:00' && await page.inputValue('#sopDate') === daysAgo(-1), 'il clic sull\'agenda non ha scelto giorno e ora');
+  expect(await page.$('.planner .plan-ev.new'), 'manca il nuovo impegno tratteggiato');
+  if (shotsDir) await (await page.$('.planner')).screenshot({ path: path.join(shotsDir, 'agenda-pianifica.png') });
+  await page.click('#sopBackBtn');
+  // anche negli appuntamenti delle chiamate
+  await show_(page, 'detail', "selectedId='c1'");
+  expect(await page.$('#callApptWrap .planner .plan-grid'), 'manca l\'agenda nel modulo dell\'appuntamento');
   // cantiere non presente tra i progetti, oggi piu' tardi
   await page.evaluate(d => window.__fake.put('sopralluoghi', 'sx', { quando: d + 'T23:30', durata: 60, projectId: '', titolo: 'Cantiere di prova', via: 'Via Milano 3', citta: 'Bra', note: '' }), daysAgo(0));
   await page.waitForFunction(() => sops.length === 2);
