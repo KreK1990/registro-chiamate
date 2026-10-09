@@ -289,7 +289,7 @@ Campi principali:
   daltonismo contro blu/ambra/viola). Da valutare = stessi criteri di "Da esaminare" (non scartati,
   non collegati a progetti, solo nuove costruzioni salvo `portalFilters.ristrutturazioni`), cercati in
   ordine di priorita'. Indirizzo `portalGeoAddr` (via + comune, o solo comune), coordinate in `geo` sul
-  documento di `portale` / `portaleImport` (conservate dai nuovi PDF perche' l'importazione fa update;
+  documento di `portale` / `portaleImport` (conservate dai nuovi PDF perche' l'importazione scrive in merge;
   "Da seguire" copia il geo nel cantiere seguito). Fumetto con fase, unita', volume, clienti in
   rubrica, nota e "Apri scheda" (`data-portal-goto`). `geoTried` evita ricerche ripetute nella
   sessione; `runMapGeocoding` riparte da solo se nel frattempo si accende un filtro.
@@ -317,8 +317,13 @@ Campi principali:
   confrontati con la rubrica per email, telefono (ultime 9 cifre), cognome+nome, studio. Importazione salvata
   in collection `portaleImport` (un documento per cantiere, ID = ID portale: {pid, dati, scartato,
   nuovo, importatoIl}; scritta a batch da 400, letta solo aprendo la sezione) con i metadati in
-  `settings.portaleImport`; un nuovo PDF la sostituisce (mantiene gli scartati, segna "nuovo"
-  cio' che non c'era). Descrizione salvata fino a 4000 caratteri (600 nelle importazioni prima del
+  `settings.portaleImport` {file, caricatoIl, letti, totale, nuovi, files[ultimi 20]}. Dal 2026-10-09
+  un nuovo PDF si AGGIUNGE (l'utente carica piu' regioni: Piemonte, Liguria, Valle d'Aosta): i
+  cantieri gia' presenti (stesso ID portale) aggiornano solo `dati`, con scrittura in merge che
+  conserva scartato e `geo`; i nuovi entrano con `nuovo` e `primaImportazione`; nessuno viene tolto;
+  "nuovo" vale solo per l'ultimo PDF (agli altri si toglie). Prima di unire aspetta che
+  `portalImport` sia letto. Filtro "Regione" (`REGIONI_PROV`/`PROV_REGIONE`, `portalRegion`, dalla
+  sigla della provincia; `portalFilters.regione`), che restringe anche l'elenco delle province. Descrizione salvata fino a 4000 caratteri (600 nelle importazioni prima del
   2026-10-06: per il testo intero si ricarica il PDF). Le schede mostrano 3 righe di descrizione e il
   primo telefono/email dei soggetti; "Mostra tutto" (o il titolo) apre testo completo e tutti i
   recapiti (`portalOpen`, solo classe CSS `.open`, niente ridisegno). Pagine "Da esaminare" (si ripulisce con Da seguire / Scarta) e "Cantieri

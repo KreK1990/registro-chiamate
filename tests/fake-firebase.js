@@ -46,7 +46,7 @@
   const fsApi = {
     collection: name=>collRef(name),
     doc: path=>docRef(path),
-    batch: ()=>{ const ops = []; return { set: (r, d)=>ops.push(()=>r.set(d)), update: (r, d)=>ops.push(()=>r.update(d)), delete: r=>ops.push(()=>r.delete()), commit: async()=>{ for(const op of ops) await op(); } }; },
+    batch: ()=>{ const ops = []; return { set: (r, d, o)=>ops.push(()=>r.set(d, o)), update: (r, d)=>ops.push(()=>r.update(d)), delete: r=>ops.push(()=>r.delete()), commit: async()=>{ for(const op of ops) await op(); } }; },
     enablePersistence: ()=>Promise.resolve()
   };
   const files = new Map();

@@ -309,8 +309,24 @@ await test('PDF del portale: lettura e importazione', async () => {
     return { n: docs.length, nc: d.filter(x => /nuova costruzione/i.test(x.categoria || x.tipo || JSON.stringify(x))).length, via: d.filter(x => x.via || x.indirizzo).length, alerts: window.__alerts || [], txt: document.getElementById('main').innerText.slice(0, 300) };
   });
   expect(!st.alerts.length, 'avviso: ' + st.alerts.join(' | '));
-  expect(st.n === 894, `cantieri importati: ${st.n} (attesi 894)`);
+  expect(st.n === 895, `cantieri importati: ${st.n} (attesi 894 dal PDF + 1 gia' presente, che non va tolto)`);
   expect(st.via >= 700, `cantieri con indirizzo: ${st.via} (attesi ~740)`);
+  // filtro per regione (il PDF e' del Piemonte)
+  await show_(page, 'portal', "portalTab='esamina'");
+  const regs = await page.$$eval('#pfRegione option', o => o.map(x => x.textContent));
+  expect(regs.includes('Piemonte'), 'regioni proposte: ' + regs.join(', '));
+  const cnt = await page.evaluate(() => { portalFilters.regione = 'Piemonte'; const a = portalFiltered(portalExamRows()).length; portalFilters.regione = 'Liguria'; const b = portalFiltered(portalExamRows()).length; portalFilters.regione = ''; return [a, b]; });
+  expect(cnt[0] > 300 && cnt[1] === 0, 'conteggi per regione (Piemonte, Liguria): ' + cnt.join(', '));
+  // secondo PDF: si aggiunge, non toglie e non duplica; scartati e posizioni restano
+  const pid = await page.evaluate(() => { const d = window.__fake.docs('portaleImport').find(x => x.id !== '9000001'); window.__fake.put('portaleImport', d.id, { ...d, scartato: true, geo: { lat: 45, lng: 7, a: 'x' } }); return d.id; });
+  await page.evaluate(async () => {
+    const blob = await (await fetch('/__fixtures/portale.pdf')).blob();
+    await loadPortalPdf(new File([blob], 'portale-bis.pdf', { type: 'application/pdf' }));
+  });
+  const st2 = await page.evaluate(pid => { const docs = window.__fake.docs('portaleImport'); const d = docs.find(x => x.id === pid); return { n: docs.length, nuovi: docs.filter(x => x.nuovo).length, scartato: d.scartato, geo: !!d.geo, old: docs.some(x => x.id === '9000001'), meta: appSettings.portaleImport }; }, pid);
+  expect(st2.n === 895 && st2.old, 'il secondo PDF ha tolto o duplicato cantieri: ' + st2.n);
+  expect(st2.scartato && st2.geo, 'il secondo PDF ha perso scartato o posizione: ' + JSON.stringify({ s: st2.scartato, g: st2.geo }));
+  expect(st2.nuovi === 0 && st2.meta.nuovi === 0 && st2.meta.files.length === 2, 'nuovi/metadati dopo il secondo PDF: ' + JSON.stringify({ nuovi: st2.nuovi, meta: st2.meta }));
 });
 
 // telefono: niente deve uscire dalla larghezza dello schermo

@@ -3705,6 +3705,17 @@ function portalNormalize(p){
 function portalMl(){ return Number(appSettings.portaleMl) > 0 ? Number(appSettings.portaleMl) : 10; }
 function portalEuro(){ return Number(appSettings.portaleEuro) > 0 ? Number(appSettings.portaleEuro) : 80; }
 function portalProv(p){ return (/\(\s*([A-Z]{2})\s*\)/.exec(p.indirizzo||'') || [])[1] || ''; }
+// Regione dalla sigla della provincia (filtro "Regione" dei cantieri del portale).
+const REGIONI_PROV = {
+  'Piemonte':'TO VC NO CN AT AL BI VB', "Valle d'Aosta":'AO', 'Liguria':'IM SV GE SP',
+  'Lombardia':'VA CO SO MI BG BS PV CR MN LC LO MB', 'Trentino-Alto Adige':'TN BZ', 'Veneto':'VR VI BL TV VE PD RO',
+  'Friuli-Venezia Giulia':'UD GO TS PN', 'Emilia-Romagna':'PC PR RE MO BO FE RA FC RN', 'Toscana':'MS LU PT FI LI PI AR SI GR PO',
+  'Umbria':'PG TR', 'Marche':'PU AN MC AP FM', 'Lazio':'VT RI RM LT FR', 'Abruzzo':'AQ TE PE CH', 'Molise':'CB IS',
+  'Campania':'CE BN NA AV SA', 'Puglia':'FG BA TA BR LE BT', 'Basilicata':'PZ MT', 'Calabria':'CS CZ RC KR VV',
+  'Sicilia':'TP PA ME AG CL EN CT RG SR', 'Sardegna':'SS NU CA OR SU OT OG VS CI'
+};
+const PROV_REGIONE = Object.fromEntries(Object.entries(REGIONI_PROV).flatMap(([r, s])=>s.split(' ').map(p=>[p, r])));
+function portalRegion(prov){ return PROV_REGIONE[prov] || (prov ? 'Altre' : ''); }
 function portalViaCitta(p){
   const m = /^(.*?)\s*\d{5}\s+(.+?)\s*\(\s*[A-Z]{2}\s*\)/.exec(p.indirizzo||'');
   if(m) return { via: m[1].trim(), citta: m[2].trim() };
@@ -3755,7 +3766,7 @@ function portalRole(r){ const x = PORTAL_ROLE_MAP.find(([re])=>re.test(r||'')); 
 // seguitoIl, aggiornatoIl}: un nuovo PDF non li tocca mai.
 let portalImport = null, portalImportStarted = false, portalBusy = '', portalShow = 40, portalSaved = new Map(), portalTab = 'esamina';
 let portalOpen = new Set();   // cantieri aperti con "Mostra tutto"
-let portalFilters = { ristrutturazioni:false, noti:false, nuovi:false, fase:'', prov:'', minUnita:0, q:'', scartati:false, collegati:false };
+let portalFilters = { regione:'', ristrutturazioni:false, noti:false, nuovi:false, fase:'', prov:'', minUnita:0, q:'', scartati:false, collegati:false };
 function onPortalSnapshot(snap){
   portalSaved = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
   if((view==='portal') && canAutoRender()) renderMain();
@@ -3799,6 +3810,7 @@ function portalFiltered(rows){
     if(f.nuovi && !r.nuovo) return false;
     if(f.fase==='presto' && p.fase==='Esecuzione') return false;
     if(f.fase && f.fase!=='presto' && p.fase!==f.fase) return false;
+    if(f.regione && portalRegion(r.prov)!==f.regione) return false;
     if(f.prov && r.prov!==f.prov) return false;
     if(f.minUnita && !(p.unita >= f.minUnita)) return false;
     if(q && !normName([p.titolo, p.comune, p.indirizzo, p.descrizione, r.saved && r.saved.nota, ...(p.soggetti||[]).map(s=>s.nome+' '+(s.altro||[]).join(' '))].join(' ')).includes(q)) return false;
@@ -3848,6 +3860,7 @@ function portalView(){
   const list = portalFiltered(rows), shown = list.slice(0, portalShow);
   const daEsaminare = exam.filter(r=>!r.scartato && !r.proj && (f.ristrutturazioni || r.p.nuovaCostruzione)).length;
   const provs = [...new Set(rows.map(r=>r.prov).filter(Boolean))].sort();
+  const regions = [...new Set(provs.map(portalRegion))].sort((a,b)=>(a==='Altre')-(b==='Altre') || a.localeCompare(b));
   const tot = list.reduce((s,r)=>s+(r.vol||0), 0);
   const tabs = `<div class="subnav" style="margin-bottom:10px;">
       <button id="ptEsamina" class="${portalTab==='esamina' ? 'active' : ''}">Da esaminare${portalImport ? ` (${daEsaminare})` : ''}</button>
@@ -3856,7 +3869,8 @@ function portalView(){
   const filters = `<div class="card portal-filters">
       ${portalTab==='esamina' ? `<label class="map-filter"><input type="checkbox" id="pfScartati" ${f.scartati?'checked':''}> Mostra gli scartati</label><label class="map-filter"><input type="checkbox" id="pfCollegati" ${f.collegati?'checked':''}> Mostra quelli già nei miei progetti (${exam.filter(r=>r.proj).length})</label>` : ''}
       <select id="pfFase" style="width:auto;"><option value="">Tutte le fasi</option><option value="presto" ${f.fase==='presto'?'selected':''}>Prima dei lavori (programmazione e progettazione)</option>${['Programmazione','Progettazione','Esecuzione'].map(x=>`<option ${f.fase===x?'selected':''}>${x}</option>`).join('')}</select>
-      <select id="pfProv" style="width:auto;"><option value="">Tutte le province</option>${provs.map(x=>`<option ${f.prov===x?'selected':''}>${x}</option>`).join('')}</select>
+      <select id="pfRegione" style="width:auto;"><option value="">Tutte le regioni</option>${regions.map(x=>`<option ${f.regione===x?'selected':''}>${esc(x)}</option>`).join('')}</select>
+      <select id="pfProv" style="width:auto;"><option value="">Tutte le province</option>${provs.filter(x=>!f.regione || portalRegion(x)===f.regione).map(x=>`<option ${f.prov===x?'selected':''}>${x}</option>`).join('')}</select>
       <label class="map-filter">Unità minime <input id="pfMin" inputmode="numeric" value="${f.minUnita||''}" style="width:60px;"></label>
       <label class="map-filter"><input type="checkbox" id="pfNoti" ${f.noti?'checked':''}> Solo con clienti già in rubrica</label>
       ${portalTab==='esamina' ? `<label class="map-filter"><input type="checkbox" id="pfNuovi" ${f.nuovi?'checked':''}> Solo nuovi dall'ultimo PDF</label>
@@ -3873,7 +3887,7 @@ function portalView(){
       <button class="btn small" id="portalLoadBtn" ${portalBusy ? 'disabled' : ''}>${portalImport && portalImport.size ? 'Carica un nuovo PDF' : 'Carica il PDF del portale'}</button>
     </div>
     <h2 style="margin-bottom:4px;">Cantieri dal portale</h2>
-    <div class="fc-note" style="margin-bottom:10px;">${meta.file ? `Importazione salvata: <strong>${esc(meta.file)}</strong> del ${new Date(meta.caricatoIl).toLocaleDateString('it-IT')} (${meta.totale} cantieri${meta.nuovi!=null ? `, ${meta.nuovi} ${meta.nuovi===1 ? 'nuovo' : 'nuovi'}` : ''}). Un nuovo PDF sostituisce solo questa lista: i cantieri seguiti restano. ` : ''}Il PDF viene letto solo sul dispositivo. Volume = unità × <input id="portalMl" class="portal-param" inputmode="decimal" value="${portalMl()}"> m di balconi × <input id="portalEuro" class="portal-param" inputmode="decimal" value="${portalEuro()}"> €/m.</div>
+    <div class="fc-note" style="margin-bottom:10px;">${meta.file ? `Cantieri importati: <strong>${portalImport ? portalImport.size : meta.totale}</strong>. Ultimo PDF: <strong>${esc(meta.file)}</strong> del ${new Date(meta.caricatoIl).toLocaleDateString('it-IT')}${meta.letti!=null ? ` (${meta.letti} letti` : ` (${meta.totale}`}${meta.nuovi!=null ? `, ${meta.nuovi} ${meta.nuovi===1 ? 'nuovo' : 'nuovi'}` : ''}). Un nuovo PDF aggiunge i cantieri nuovi e aggiorna quelli già presenti: non toglie nulla, nemmeno gli scartati o i seguiti. ` : ''}Il PDF viene letto solo sul dispositivo. Volume = unità × <input id="portalMl" class="portal-param" inputmode="decimal" value="${portalMl()}"> m di balconi × <input id="portalEuro" class="portal-param" inputmode="decimal" value="${portalEuro()}"> €/m.</div>
     ${portalBusy ? `<div class="card"><strong id="portalBusyMsg">${esc(portalBusy)}</strong></div>` : ''}
     ${tabs}
     ${rows.length ? `<div class="fc-note" style="margin-bottom:8px;">${list.length} cantieri in elenco · volume stimato ${fmtEuro(tot).replace(',00','')}${portalTab==='esamina' ? ` · ${exam.filter(r=>r.noti.length && !r.scartato && r.p.nuovaCostruzione).length} nuove costruzioni con clienti già in rubrica` : ''}</div>` : ''}
@@ -3889,14 +3903,14 @@ async function portalWriteImport(sets, dels){
     const ops = [...dels.map(pid=>['del', pid]), ...sets.map(x=>['set', x])];
     for(let i=0; i<ops.length; i+=400){
       const b = fs.batch();
-      ops.slice(i, i+400).forEach(([t, x])=>{ if(t==='del') b.delete(db.doc('portaleImport/'+x)); else b.set(db.doc('portaleImport/'+x.pid), x); });
+      ops.slice(i, i+400).forEach(([t, x])=>{ if(t==='del') b.delete(db.doc('portaleImport/'+x)); else b.set(db.doc('portaleImport/'+x.pid), x, { merge:true }); });
       await (typeof settleWrite==='function' ? settleWrite(b.commit()) : b.commit());
       portalBusy = `Salvataggio dell'importazione: ${Math.min(ops.length, i+400)} di ${ops.length}…`; const el = document.getElementById('portalBusyMsg'); if(el) el.textContent = portalBusy;
     }
     return;
   }
   for(const pid of dels){ const ex = portalImport.get(pid); if(ex && ex.docId) await db.collection('portaleImport').doc(ex.docId).delete(); }
-  for(const x of sets){ const ex = portalImport && portalImport.get(x.pid); if(ex && ex.docId) await db.collection('portaleImport').doc(ex.docId).update(x); else await db.collection('portaleImport').add(x); }
+  for(const x of sets){ const ex = portalImport && portalImport.get(x.pid); if(ex && ex.docId) await db.collection('portaleImport').doc(ex.docId).update(x); else await db.collection('portaleImport').doc(x.pid).set(x); }
 }
 async function loadPortalPdf(file){
   portalBusy = 'Lettura del PDF…'; renderMain();
@@ -3912,16 +3926,24 @@ async function loadPortalPdf(file){
     }
     const list = parsePortalPages(pages).filter(p=>p.id);
     if(!list.length) throw new Error('nel PDF non ho trovato schede del portale (ID Progetto)');
-    // Sostituisce l'importazione: gli scartati restano scartati, "nuovo" = non c'era nella precedente.
+    // Si AGGIUNGE all'importazione (scelta dell'utente 2026-10-09, per caricare piu' regioni): i
+    // cantieri gia' presenti (stesso ID portale) aggiornano solo i dati e restano com'erano
+    // (scartati, posizione sulla mappa: scrittura in merge); quelli nuovi entrano con "nuovo";
+    // nessun cantiere viene tolto. "nuovo" = arrivato con l'ultimo PDF.
+    for(let w=0; portalImport===null && w<100; w++) await new Promise(r=>setTimeout(r, 100));   // importazione precedente letta
     const prev = portalImport || new Map(), hadPrev = prev.size > 0, now = Date.now();
-    const sets = list.map(p=>({ pid:p.id, dati:portalCompact(p), scartato: !!(prev.get(p.id)||{}).scartato, nuovo: hadPrev && !prev.has(p.id), importatoIl: now }));
+    const sets = list.map(p=>prev.has(p.id) ? { pid:p.id, dati:portalCompact(p), nuovo:false, importatoIl: now }
+      : { pid:p.id, dati:portalCompact(p), scartato:false, nuovo: hadPrev, importatoIl: now, primaImportazione: now });
     const ids = new Set(list.map(p=>p.id));
-    const dels = [...prev.keys()].filter(pid=>!ids.has(pid));
+    [...prev.values()].forEach(x=>{ if(x.nuovo && !ids.has(x.pid)) sets.push({ pid:x.pid, nuovo:false }); });   // "nuovo" vale solo per l'ultimo PDF
+    const added = list.filter(p=>!prev.has(p.id)).length;
     portalBusy = 'Salvataggio dell\'importazione…'; renderMain();
-    await portalWriteImport(sets, dels);
+    await portalWriteImport(sets, []);
     // aggiorna anche le schede dei cantieri seguiti con i dati piu' recenti del portale
     for(const p of list){ const s = portalSaved.get(p.id); if(s && s.stato==='seguito') db.collection('portale').doc(s.docId).update({ dati: portalCompact(p) }).catch(()=>{}); }
-    saveSettings({ portaleImport: { file:file.name, caricatoIl: now, totale: list.length, nuovi: hadPrev ? sets.filter(x=>x.nuovo).length : null } });
+    const oldMeta = appSettings.portaleImport || {};
+    const files = [...(oldMeta.files || (oldMeta.file ? [{ file: oldMeta.file, il: oldMeta.caricatoIl, n: oldMeta.totale }] : [])), { file:file.name, il: now, n: list.length, nuovi: added }];
+    saveSettings({ portaleImport: { file:file.name, caricatoIl: now, letti: list.length, totale: prev.size + added, nuovi: hadPrev ? added : null, files: files.slice(-20) } });
     portalTab = 'esamina'; portalShow = 40;
   }catch(e){ alert('Impossibile importare il PDF: '+(e.message||e)); }
   portalBusy = ''; renderMain();
@@ -3961,6 +3983,7 @@ function bindPortal(){
   document.getElementById('pfScartati')?.addEventListener('change', e=>set('scartati', e.target.checked));
   document.getElementById('pfCollegati')?.addEventListener('change', e=>set('collegati', e.target.checked));
   document.getElementById('pfFase')?.addEventListener('change', e=>set('fase', e.target.value));
+  document.getElementById('pfRegione')?.addEventListener('change', e=>{ if(portalFilters.prov && portalRegion(portalFilters.prov)!==e.target.value) portalFilters.prov = ''; set('regione', e.target.value); });
   document.getElementById('pfProv')?.addEventListener('change', e=>set('prov', e.target.value));
   document.getElementById('pfMin')?.addEventListener('change', e=>set('minUnita', Math.max(0, parseInt(e.target.value, 10) || 0)));
   document.getElementById('pfNoti')?.addEventListener('change', e=>set('noti', e.target.checked));
