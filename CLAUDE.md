@@ -168,7 +168,9 @@ Campi principali:
   (`data-mail-pres`) apre Outlook web (`outlook.office.com/mail/deeplink/compose`, to/subject/body),
   "con l'app di posta" usa mailto:. Testo `MAIL_PRES_DEFAULT` con `{firma}`; `settings.mailPres` {firma,
   oggetto, testo} in Impostazioni; la firma (nome dell'utente) MAI nel codice, il repo e' pubblico.
-  Senza firma chiede di impostarla. Aprendo la mail annota `contacts.mailPresentazioneIl`.
+  Senza firma chiede di impostarla. Aprendo la mail annota `contacts.mailPresentazioneIl`. Provata e tolta
+  (2026-10-12, non funzionava per l'utente) l'opzione "modello personale di Outlook" con mail aperta vuota;
+  un eventuale `mailPres.modello` rimasto in settings e' ignorato. Il deeplink accetta solo testo semplice.
 - **Oggi → "Da fare"** (blocco "Da fare (in Oggi)", prima del Forecast): calcolato dai dati.
   Offerte da sollecitare (offertaPresentata raggiunta, non confermata ne' persa, da
   `promemoria.sollecito` giorni contati dall'ultimo `projects.sollecitatoIl` o dall'ultima telefonata/incontro collegati al progetto in `calls.progetti` (`linkedActivityDate`); per ogni offerta l'ultima telefonata e l'ultimo incontro con i partecipanti (`projectContactActivity`), con pulsante "Riguardava questa commessa" che aggiunge il progetto a `calls.progetti`); commesse ferme
