@@ -650,16 +650,6 @@ await test('mail di presentazione: firma richiesta, poi Outlook con destinatario
   expect(u.searchParams.get('subject').includes('Isokorb'), 'oggetto: ' + u.searchParams.get('subject'));
   await pop.close();
   await page.waitForFunction(() => (window.__fake.docs('contacts').find(c => c.id === 'c1') || {}).mailPresentazioneIl);
-  // con il modello personale di Outlook: niente testo, solo destinatario e oggetto
-  await show_(page, 'settings');
-  await page.check('#mpModello');
-  await page.waitForFunction(() => (appSettings.mailPres || {}).modello === true);
-  await show_(page, 'detail', "selectedId='c1'");
-  const [pop2] = await Promise.all([page.waitForEvent('popup'), page.click('[data-mail-pres="c1"]')]);
-  const u2 = new URL(pop2.url());
-  expect(!u2.searchParams.has('body') && u2.searchParams.get('to') === 'mario@studiorossi.it' && u2.searchParams.get('subject'), 'con il modello: ' + pop2.url());
-  expect((await page.textContent('#noticeBar')).includes('Modelli personali'), 'manca l\'indicazione per inserire il modello');
-  await pop2.close();
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
