@@ -229,15 +229,20 @@ Campi principali:
   d'aria x1,3 a 60 km/h. Coordinate gia' salvate o cercate e salvate (`docPoint`). Sopralluogo
   nuovo: durata predefinita 10 min (opzioni da 10 a 240). `timeOptions` accetta orari fuori dalla
   mezz'ora (es. 14:35 suggerito).
-- **Cosa fare in zona** (riquadro in Oggi, blocco omonimo, stato `zone`): origine = "Dove sono ora"
-  (GPS, o `myPos` letta dalla Mappa negli ultimi 2 minuti), un impegno di oggi con posizione o una
-  localita' cercata; raggio 5/10/20 km in linea d'aria; elenca cantieri del portale seguiti e da
-  valutare (criteri di "Da esaminare") e progetti in corso gia' posizionati (`zoneCandidates`),
-  ordinati per tempo in auto (OSRM table `sources=0`, distanze stradali; altrimenti linea d'aria).
-  Per riga "Vedi itinerario" (Google Maps origine -> cantiere in auto) e "Sulla mappa" (`mapFocus`:
-  apre la Mappa centrata sul cantiere). Segnala quanti cantieri non sono ancora posizionati.
-  `zoneRefresh` toglie il fuoco dal campo di ricerca (in Oggi `canAutoRender` non ridisegna mentre
-  si scrive). **La mia posizione sulla Mappa** (blocco omonimo): `watchPosition` mentre la Mappa e'
+- **Cosa fare in zona** (riquadro in Oggi, blocco omonimo, stato `zone`): un GIRO ottimizzato (richiesta
+  dell'utente 2026-10-12: non un elenco ma partenza -> tappa 1 -> tappa 2 con i tempi tra una e
+  l'altra, su mappa). Origine = "Dove sono ora" (GPS, o `myPos` della Mappa negli ultimi 2 minuti), un
+  impegno di oggi con posizione o una localita' cercata; raggio 5/10/20 km (linea d'aria); tappe 5/8/12
+  (`zone.max`). Candidati (`zoneCandidates`): cantieri del portale seguiti e da valutare (criteri di
+  "Da esaminare") e progetti in corso gia' posizionati; si tengono i piu' vicini in auto (OSRM table
+  dalla partenza) piu' quelli aggiunti (`zone.included`) e meno i tolti (`zone.excluded`); ordine di
+  visita su matrice OSRM tra tutte le tappe (`zoneOrder`: vicino piu' prossimo + 2-opt, percorso
+  aperto); tracciato da OSRM route (geojson). Per tappa: minuti e km dalla precedente, "Vedi
+  itinerario" (Google Maps dalla tappa precedente), "Sulla mappa" (`mapFocus`), "Togli dal giro";
+  sotto "Altri cantieri nel raggio" con "Aggiungi al giro"; totale di guida e "Apri il giro in Google
+  Maps" (fino a 9 tappe intermedie). Mappa Leaflet `#zoneMap` (`mountZoneMap`, ricreata a ogni
+  ridisegno, linea blu e tappe numerate). Senza OSRM: linea d'aria. `zoneRefresh` toglie il fuoco dal
+  campo di ricerca (in Oggi `canAutoRender` non ridisegna mentre  si scrive). **La mia posizione sulla Mappa** (blocco omonimo): `watchPosition` mentre la Mappa e'
   aperta (`startMyPosition`/`stopMyPosition`), puntino blu pulsante con cerchio di precisione e
   freccia della direzione quando ci si muove; pulsante "La mia posizione".
 - **Offline** (solo versione online): `enablePersistence` all'avvio; `firestoreAdapter` avvolge

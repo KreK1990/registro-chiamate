@@ -317,7 +317,24 @@ body.foto-open{overflow:hidden;}
 .zone-origins{display:flex;flex-wrap:wrap;gap:6px;}
 .zone-search{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-top:8px;}
 .zone-search input{flex:1 1 200px;width:auto;}
-.zone-radius{display:inline-flex;gap:4px;align-items:center;font-size:13px;color:var(--muted);}
+.zone-opts{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:13px;color:var(--muted);}
+.zone-opts > span{display:inline-flex;gap:4px;align-items:center;}
+.zone-sum{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin-top:12px;font-size:14px;}
+.zone-map{height:300px;margin-top:10px;border:1px solid var(--border);border-radius:2px;background:var(--bg);}
+.zone-route{list-style:none;margin:10px 0 0;padding:0;}
+.zone-route li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;position:relative;padding:0 0 12px;}
+.zone-route li::before{content:'';position:absolute;left:13px;top:24px;bottom:0;border-left:2px dotted var(--border-strong);}
+.zone-route li:last-child::before{display:none;}
+.zone-n{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#00487E;color:#fff;font-weight:700;font-size:13px;position:relative;z-index:1;}
+.zone-n.s{background:#1a73e8;}
+.zone-leg{font-size:12.5px;font-weight:600;color:var(--accent);margin-bottom:2px;}
+.zone-others{margin-top:10px;font-size:13.5px;}
+.zone-others summary{cursor:pointer;color:var(--accent);font-weight:600;}
+.zone-pin{width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-sizing:border-box;background:#00487E;color:#fff;font:700 12px/20px var(--sans);text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.45);}
+.zone-pin.s{background:#1a73e8;}
+.zone-pin.seguito{background:#d1495b;}
+.zone-pin.esame{background:#fff;color:#b23a4b;border-color:#d1495b;}
+.zone-pin.progetto{background:#b97f00;}
 .zone-tag{display:inline-block;padding:1px 6px;border-radius:2px;font-size:11px;font-weight:600;color:#fff;vertical-align:1px;}
 .zone-tag.seg{background:#d1495b;}
 .zone-tag.esa{background:#fff;color:#b23a4b;box-shadow:inset 0 0 0 1.5px #d1495b;}
@@ -1051,7 +1068,7 @@ function renderMain(){
   const main = document.getElementById('main');
   updateMapReturnBtn();
   if(view!=='map') stopMyPosition();
-  queueMicrotask(()=>{ mountPlanners(); mountTrips(); });   // agende per pianificare nei moduli appena disegnati
+  queueMicrotask(()=>{ mountPlanners(); mountTrips(); mountZoneMap(); });   // agende per pianificare nei moduli appena disegnati
   if(tableDetailCallId){ main.innerHTML = tableDetailView(); bindTableDetail(); return; }
   if(view==='deliveries'){ main.innerHTML = deliveriesView(); bindDeliveries(); return; }
   if(view==='sop'){ main.innerHTML = sopFormView(); bindSopForm(); return; }
@@ -3339,19 +3356,24 @@ function waitingProjects(){
 }
 
 // ---------------------------------------------------------------------------
-// Cosa fare in zona (riquadro in Oggi): partendo da dove sei (GPS), da un impegno di oggi o da
-// una localita', elenca i cantieri potenziali entro zone.radius km in linea d'aria (5/10/20):
-// cantieri del portale seguiti e da valutare (stessi criteri di "Da esaminare") e i propri
-// progetti in corso, ordinati per tempo in auto (OSRM table con sources=0, altrimenti linea
-// d'aria). Contano solo i cantieri gia' posizionati sulla mappa: gli altri sono segnalati.
+// Cosa fare in zona (riquadro in Oggi): un giro ottimizzato. Partendo da dove sei (GPS), da un
+// impegno di oggi o da una localita', prende i cantieri potenziali entro zone.radius km (linea
+// d'aria): cantieri del portale seguiti e da valutare (criteri di "Da esaminare") e progetti in
+// corso gia' posizionati. Tiene i zone.max piu' vicini in auto (piu' quelli aggiunti a mano, meno
+// quelli tolti), ne calcola l'ordine di visita con i tempi in auto tra tutte le tappe (OSRM table:
+// vicino piu' prossimo + miglioramento 2-opt, percorso aperto) e chiede a OSRM route il tracciato
+// stradale da disegnare. Per tappa: minuti e km dalla precedente. Mappa Leaflet con linea e
+// tappe numerate; "Apri il giro in Google Maps" con le tappe intermedie. Senza OSRM: linea d'aria.
 // ---------------------------------------------------------------------------
-let zone = { origin:null, radius:10, busy:'', res:null, err:'' };
+let zone = { origin:null, radius:10, max:8, busy:'', res:null, err:'', excluded:new Set(), included:new Set() };
 let mapFocus = null;   // punto su cui aprire la Mappa ("Sulla mappa" in Cosa fare in zona)
+let zoneMapObj = null;
 function zoneRefresh(){
   if(view!=='agenda') return;
   const a = document.activeElement; if(a && a.id==='zonePlace') a.blur();   // la ricerca e' partita: il campo non blocca il ridisegno
   if(canAutoRender()) renderMain();
 }
+function zoneKey(x){ return x.kind==='progetto' ? 'p:'+x.p.id : 'c:'+x.r.p.id; }
 function zoneCandidates(){
   const out = [], ok = g=>g && !g.nf ? g : null;
   if(portalImport) portalExamRows().filter(r=>!r.scartato && !r.proj && (portalFilters.ristrutturazioni || r.p.nuovaCostruzione))
@@ -3360,28 +3382,64 @@ function zoneCandidates(){
   openProjects().forEach(p=>{ const { a } = projectGeoAddr(p); if(a) out.push({ kind:'progetto', p, a, g: manualGeo(p) || ok(docGeo(p, a)) }); });
   return out;
 }
+async function osrmTable(pts){
+  const coords = pts.map(p=>`${(+p.lng).toFixed(5)},${(+p.lat).toFixed(5)}`).join(';');
+  const j = await (await fetch(`https://router.project-osrm.org/table/v1/driving/${coords}?annotations=duration,distance`)).json();
+  if(j.code!=='Ok' || !j.durations) throw new Error(j.code || 'percorsi non disponibili');
+  return { dur: j.durations.map(r=>r.map(s=>s==null ? null : s/60)), dist: (j.distances || []).map(r=>r.map(m=>m==null ? null : m/1000)) };
+}
+// Ordine di visita (percorso aperto che parte da 0): vicino piu' prossimo, poi 2-opt.
+function zoneOrder(D){
+  const n = D.length, left = new Set([...Array(n).keys()].slice(1)), path = [0];
+  while(left.size){ const last = path[path.length-1]; let best = null; left.forEach(j=>{ if(best==null || D[last][j] < D[last][best]) best = j; }); path.push(best); left.delete(best); }
+  const cost = p=>p.slice(1).reduce((s, v, i)=>s + D[p[i]][v], 0);
+  for(let improved = true, guard = 0; improved && guard < 50; guard++){
+    improved = false;
+    for(let i=1; i < n-1; i++) for(let k=i+1; k < n; k++){
+      const cand = [...path.slice(0, i), ...path.slice(i, k+1).reverse(), ...path.slice(k+1)];
+      if(cost(cand) < cost(path) - 0.01){ path.splice(0, n, ...cand); improved = true; }
+    }
+  }
+  return path;
+}
 async function runZone(){
   if(!zone.origin) return;
-  zone.busy = 'Cerco i cantieri vicini e calcolo i tempi in auto…'; zone.err = ''; zoneRefresh();
+  zone.busy = 'Cerco i cantieri vicini e calcolo il giro…'; zone.err = ''; zoneRefresh();
   try{
     if(!portalImportStarted) startPortalImport();
     for(let w=0; portalImport===null && w<50; w++) await new Promise(r=>setTimeout(r, 100));
-    const all = zoneCandidates(), o = zone.origin;
-    const near = all.filter(x=>x.g).map(x=>({ ...x, air: distKm(o, x.g) })).filter(x=>x.air <= zone.radius).sort((a,b)=>a.air - b.air).slice(0, 90);
-    let approx = true;
-    if(near.length){
-      try{
-        const coords = [o, ...near.map(x=>x.g)].map(p=>`${(+p.lng).toFixed(5)},${(+p.lat).toFixed(5)}`).join(';');
-        const j = await (await fetch(`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=duration,distance`)).json();
-        if(j.code!=='Ok') throw new Error(j.code);
-        near.forEach((x, i)=>{ const s = j.durations[0][i+1], m = j.distances && j.distances[0][i+1]; if(s!=null){ x.min = Math.round(s/60); x.km = m!=null ? m/1000 : x.air*1.3; } });
-        approx = false;
-      }catch(e){ /* stima in linea d'aria sotto */ }
-      near.forEach(x=>{ if(x.min==null){ x.km = x.air*1.3; x.min = Math.round(x.air*1.3 + 4); } });
-      near.sort((a,b)=>a.min - b.min || a.km - b.km);
+    const o = zone.origin, all = zoneCandidates();
+    const near = all.filter(x=>x.g).map(x=>({ ...x, key: zoneKey(x), air: distKm(o, x.g) })).filter(x=>x.air <= zone.radius).sort((a,b)=>a.air - b.air);
+    const pool = near.filter(x=>!zone.excluded.has(x.key)).slice(0, 25);
+    let approx = false, T = null;
+    // tempi dal punto di partenza per scegliere le tappe piu' vicine in auto
+    const air = (a, b)=>({ min: distKm(a, b)*1.3 + (distKm(a, b) > 0.3 ? 4 : 0), km: distKm(a, b)*1.3 });
+    try{ T = await osrmTable([o, ...pool.map(x=>x.g)]); pool.forEach((x, i)=>{ x.fromStart = T.dur[0][i+1] ?? air(o, x.g).min; }); }
+    catch(e){ approx = true; pool.forEach(x=>{ x.fromStart = air(o, x.g).min; }); }
+    pool.sort((a,b)=>(zone.included.has(b.key) - zone.included.has(a.key)) || a.fromStart - b.fromStart);
+    const stops = pool.slice(0, Math.max(zone.max, pool.filter(x=>zone.included.has(x.key)).length));
+    const others = near.filter(x=>!stops.some(s=>s.key===x.key));
+    let order = [], legs = [], line = null;
+    if(stops.length){
+      const pts = [o, ...stops.map(x=>x.g)];
+      let D, K;
+      try{ if(approx) throw 0; const t = await osrmTable(pts); D = t.dur; K = t.dist; }
+      catch(e){ approx = true; D = pts.map(a=>pts.map(b=>air(a, b).min)); K = pts.map(a=>pts.map(b=>air(a, b).km)); }
+      D = D.map((r, i)=>r.map((v, k)=>v==null ? air(pts[i], pts[k]).min : v));
+      const path = zoneOrder(D);
+      order = path.slice(1).map(i=>stops[i-1]);
+      legs = path.slice(1).map((v, i)=>({ min: Math.round(D[path[i]][v]), km: (K[path[i]] && K[path[i]][v]!=null) ? K[path[i]][v] : air(pts[path[i]], pts[v]).km }));
+      const seq = path.map(i=>pts[i]);
+      if(!approx){
+        try{
+          const j = await (await fetch(`https://router.project-osrm.org/route/v1/driving/${seq.map(p=>`${(+p.lng).toFixed(5)},${(+p.lat).toFixed(5)}`).join(';')}?overview=full&geometries=geojson`)).json();
+          if(j.code==='Ok') line = j.routes[0].geometry.coordinates.map(c=>[c[1], c[0]]);
+        }catch(e){}
+      }
+      if(!line) line = seq.map(p=>[p.lat, p.lng]);
     }
-    const missing = all.filter(x=>!x.g && (x.kind!=='progetto' || x.a)).length;
-    zone.res = { items: near, approx, missing };
+    const missing = all.filter(x=>!x.g).length;
+    zone.res = { order, legs, line, others, approx, missing };
   }catch(e){ zone.err = e.message || String(e); }
   zone.busy = ''; zoneRefresh();
 }
@@ -3394,56 +3452,92 @@ function zoneOriginsHtml(){
   sops.filter(s=>s.quando.slice(0,10)===today).forEach(s=>{ const x = sopGeo(s); if(x) out.push({ t: sopTime(s), label: 'sopralluogo '+sopTitle(s), g: x.g }); });
   return out.sort((a,b)=>a.t.localeCompare(b.t)).map(e=>`<button type="button" class="btn secondary small" data-zone-at="${e.g.lat},${e.g.lng}|${esc(e.t+' '+e.label)}">${esc(e.t)} · ${esc(e.label)}</button>`).join('');
 }
-function zoneRowHtml(x){
-  const where = `${x.min} min · ${x.km.toLocaleString('it-IT', { maximumFractionDigits:1 })} km`;
-  // percorso in auto dal punto di partenza scelto (Google Maps) e il cantiere sulla Mappa dell'app
-  const o = zone.origin || {};
-  const nav = `<a class="btn small" href="https://www.google.com/maps/dir/?api=1&origin=${o.lat},${o.lng}&destination=${x.g.lat},${x.g.lng}&travelmode=driving" target="_blank" rel="noopener">Vedi itinerario</a><button type="button" class="btn secondary small" data-zone-map="${x.g.lat},${x.g.lng}">Sulla mappa</button>`;
-  if(x.kind==='progetto'){ const p = x.p, ph = projectPhase(p);
-    return `<div class="todo-row"><div class="todo-main"><span class="zone-tag prj">Progetto</span> <span class="proj-code">${esc(p.codice||'')}</span> <span class="name-link" data-open-project="${p.id}">${esc(p.nome||'Progetto')}</span>
-      <div class="todo-sub"><strong>${where}</strong> · ${esc(x.a)} · ${ph ? esc(ph.label) : 'da avviare'}</div></div><div class="todo-actions">${nav}</div></div>`; }
-  const r = x.r, p = r.p, seg = x.kind==='seguito';
-  return `<div class="todo-row"><div class="todo-main"><span class="zone-tag ${seg ? 'seg' : 'esa'}">${seg ? 'Seguito' : 'Da valutare'}</span> ${r.stelle ? `<span class="portal-stars">${'★★★'.slice(0, r.stelle)}</span>` : ''}<span class="name-link" data-portal-goto="${seg ? 'seguiti' : 'esamina'}|${esc(p.id)}">${esc(p.titolo||'Cantiere')}</span>
-      <div class="todo-sub"><strong>${where}</strong> · ${esc(x.a)}${p.fase ? ' · fase '+esc(p.fase) : ''}${r.vol!=null ? ' · '+fmtEuro(r.vol).replace(',00','') : ''}${r.noti.length ? ' · in rubrica: '+r.noti.map(n=>esc(fullName(n.m.c))).join(', ') : ''}</div>
-      ${seg && r.saved.nota ? `<div class="todo-sub">${esc(r.saved.nota)}</div>` : ''}</div>
-    <div class="todo-actions">${nav}</div></div>`;
+function zoneItemTitle(x){
+  if(x.kind==='progetto') return `<span class="zone-tag prj">Progetto</span> <span class="proj-code">${esc(x.p.codice||'')}</span> <span class="name-link" data-open-project="${x.p.id}">${esc(x.p.nome||'Progetto')}</span>`;
+  const seg = x.kind==='seguito', r = x.r;
+  return `<span class="zone-tag ${seg ? 'seg' : 'esa'}">${seg ? 'Seguito' : 'Da valutare'}</span> ${r.stelle ? `<span class="portal-stars">${'★★★'.slice(0, r.stelle)}</span>` : ''}<span class="name-link" data-portal-goto="${seg ? 'seguiti' : 'esamina'}|${esc(r.p.id)}">${esc(r.p.titolo||'Cantiere')}</span>`;
 }
+function zoneItemSub(x){
+  if(x.kind==='progetto'){ const ph = projectPhase(x.p); return `${esc(x.a)} · ${ph ? esc(ph.label) : 'da avviare'}`; }
+  const r = x.r, p = r.p;
+  return `${esc(x.a)}${p.fase ? ' · fase '+esc(p.fase) : ''}${r.vol!=null ? ' · '+fmtEuro(r.vol).replace(',00','') : ''}${r.noti.length ? ' · in rubrica: '+r.noti.map(n=>esc(fullName(n.m.c))).join(', ') : ''}${x.kind==='seguito' && r.saved.nota ? ' · '+esc(r.saved.nota) : ''}`;
+}
+const fmtKm = km=>km.toLocaleString('it-IT', { maximumFractionDigits:1 });
 function zoneCardHtml(){
-  const z = zone, res = z.res;
+  const z = zone, res = z.res, o = z.origin || {};
+  let body = '';
+  if(z.origin && res && !z.busy){
+    const totMin = res.legs.reduce((s, l)=>s + l.min, 0), totKm = res.legs.reduce((s, l)=>s + l.km, 0);
+    const prevPt = i=>i ? res.order[i-1].g : o;
+    const gm = res.order.length ? `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${o.lat},${o.lng}&destination=${res.order[res.order.length-1].g.lat},${res.order[res.order.length-1].g.lng}${res.order.length > 1 ? '&waypoints='+res.order.slice(0, -1).slice(0, 9).map(x=>`${x.g.lat},${x.g.lng}`).join('%7C') : ''}` : '';
+    body = res.order.length ? `
+      <div class="zone-sum"><strong>Giro di ${res.order.length} ${res.order.length===1 ? 'tappa' : 'tappe'}</strong> ${o.label==='la tua posizione' ? 'dalla tua posizione' : 'da '+esc(o.label)}: ${totMin} min di guida, ${fmtKm(totKm)} km (soste escluse)
+        <a class="btn small" href="${gm}" target="_blank" rel="noopener">Apri il giro in Google Maps</a></div>
+      <div id="zoneMap" class="zone-map"></div>
+      <ol class="zone-route">
+        <li class="zone-start"><span class="zone-n s">P</span><div><strong>Partenza</strong> · ${esc(o.label)}</div></li>
+        ${res.order.map((x, i)=>`<li><span class="zone-n">${i+1}</span><div class="zone-stop">
+          <div class="zone-leg">+${res.legs[i].min} min · ${fmtKm(res.legs[i].km)} km ${i ? `dalla tappa ${i}` : 'dalla partenza'}</div>
+          <div>${zoneItemTitle(x)}</div><div class="todo-sub">${zoneItemSub(x)}</div>
+          <div class="todo-actions" style="margin-top:4px;"><a class="btn secondary small" href="https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${prevPt(i).lat},${prevPt(i).lng}&destination=${x.g.lat},${x.g.lng}" target="_blank" rel="noopener">Vedi itinerario</a><button type="button" class="btn secondary small" data-zone-map="${x.g.lat},${x.g.lng}">Sulla mappa</button><button type="button" class="btn secondary small" data-zone-drop="${esc(x.key)}">Togli dal giro</button></div>
+        </div></li>`).join('')}
+      </ol>` : '<div class="empty" style="padding:4px 0;">Nessun cantiere posizionato in questo raggio: prova con un raggio più ampio.</div>';
+    if(res.others.length) body += `<details class="zone-others"><summary>Altri cantieri nel raggio (${res.others.length})</summary>
+      ${res.others.map(x=>`<div class="todo-row"><div class="todo-main">${zoneItemTitle(x)}<div class="todo-sub">${fmtKm(x.air)} km in linea d'aria · ${zoneItemSub(x)}</div></div>
+        <div class="todo-actions"><button type="button" class="btn secondary small" data-zone-add="${esc(x.key)}">${z.excluded.has(x.key) ? 'Rimetti nel giro' : 'Aggiungi al giro'}</button></div></div>`).join('')}</details>`;
+    body += `<div class="fc-note" style="margin-top:6px;">${res.approx ? 'Tempi stimati in linea d\'aria (servizio dei percorsi non raggiungibile). ' : 'Tempi in auto senza traffico. '}${res.missing ? `${res.missing} cantieri non sono ancora posizionati sulla mappa e non sono considerati: apri la Mappa con "Portale: da valutare" acceso per posizionarli (una volta sola).` : ''}</div>`;
+  }
   return `<div class="card zone-card">
     <h3>Cosa fare in zona</h3>
-    <div class="fc-note" style="margin-bottom:8px;">Cantieri del portale (seguiti e da valutare) e progetti in corso vicino a te, ordinati per tempo in auto.</div>
-    <div class="zone-origins">
-      <button type="button" class="btn small" data-zone-here>Dove sono ora</button>
-      ${zoneOriginsHtml()}
-    </div>
-    <div class="zone-search"><input id="zonePlace" placeholder="oppure vicino a… (es. Settimo Torinese)" autocomplete="off"><button type="button" class="btn secondary small" data-zone-place>Cerca</button>
-      <span class="zone-radius">Raggio ${[5, 10, 20].map(r=>`<button type="button" class="btn small ${z.radius===r ? '' : 'secondary'}" data-zone-radius="${r}">${r} km</button>`).join('')}</span></div>
+    <div class="fc-note" style="margin-bottom:8px;">Il giro più breve tra i cantieri vicini (portale seguiti e da valutare, progetti in corso), partendo da dove sei.</div>
+    <div class="zone-origins"><button type="button" class="btn small" data-zone-here>Dove sono ora</button>${zoneOriginsHtml()}</div>
+    <div class="zone-search"><input id="zonePlace" placeholder="oppure vicino a… (es. Settimo Torinese)" autocomplete="off"><button type="button" class="btn secondary small" data-zone-place>Cerca</button></div>
+    <div class="zone-opts"><span>Raggio ${[5, 10, 20].map(r=>`<button type="button" class="btn small ${z.radius===r ? '' : 'secondary'}" data-zone-radius="${r}">${r} km</button>`).join('')}</span>
+      <span>Tappe ${[5, 8, 12].map(n=>`<button type="button" class="btn small ${z.max===n ? '' : 'secondary'}" data-zone-max="${n}">${n}</button>`).join('')}</span></div>
     ${z.busy ? `<div class="fc-note" style="margin-top:8px;">${esc(z.busy)}</div>` : ''}
     ${z.err ? `<div class="fc-note" style="margin-top:8px;color:var(--danger);">${esc(z.err)}</div>` : ''}
-    ${z.origin && res && !z.busy ? `<div class="todo-title" style="margin-top:10px;">Vicino a ${esc(z.origin.label)}, entro ${z.radius} km (${res.items.length})</div>
-      ${res.items.length ? res.items.map(zoneRowHtml).join('') : '<div class="empty" style="padding:4px 0;">Nessun cantiere posizionato in questo raggio: prova con un raggio piu\' ampio.</div>'}
-      <div class="fc-note" style="margin-top:6px;">${res.approx ? 'Tempi stimati in linea d\'aria. ' : 'Tempi in auto senza traffico. '}${res.missing ? `${res.missing} cantieri non sono ancora posizionati sulla mappa e non sono considerati: apri la Mappa con "Portale: da valutare" acceso per posizionarli (una volta sola).` : ''}</div>` : ''}
+    ${body}
   </div>`;
 }
+// Mappa del giro (ricreata a ogni ridisegno di Oggi).
+function mountZoneMap(){
+  const el = document.getElementById('zoneMap'), res = zone.res;
+  if(!el || el.dataset.mounted || !res || !res.order.length) return;
+  el.dataset.mounted = '1';
+  loadLeaflet().then(()=>{
+    if(!document.body.contains(el)) return;
+    if(zoneMapObj){ try{ zoneMapObj.remove(); }catch(e){} }
+    const m = zoneMapObj = L.map(el, { zoomControl:true, scrollWheelZoom:false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(m);
+    L.polyline(res.line, { color:'#00487E', weight:4, opacity:.8 }).addTo(m);
+    const o = zone.origin;
+    L.marker([o.lat, o.lng], { icon: L.divIcon({ className:'', html:'<div class="zone-pin s">P</div>', iconSize:[24,24], iconAnchor:[12,12] }) }).addTo(m);
+    res.order.forEach((x, i)=>L.marker([x.g.lat, x.g.lng], { icon: L.divIcon({ className:'', html:`<div class="zone-pin ${x.kind}">${i+1}</div>`, iconSize:[24,24], iconAnchor:[12,12] }), title: (x.kind==='progetto' ? x.p.nome : x.r.p.titolo) || '' }).addTo(m));
+    m.fitBounds(L.latLngBounds([[o.lat, o.lng], ...res.line]), { padding:[20,20], maxZoom:15 });
+  }).catch(()=>{ el.innerHTML = '<div class="empty">Mappa non caricata (connessione?).</div>'; });
+}
 document.addEventListener('click', e=>{
-  const t = e.target.closest && e.target.closest('[data-zone-here], [data-zone-at], [data-zone-radius], [data-zone-place], [data-zone-map]');
+  const t = e.target.closest && e.target.closest('[data-zone-here], [data-zone-at], [data-zone-radius], [data-zone-max], [data-zone-place], [data-zone-map], [data-zone-drop], [data-zone-add]');
   if(!t || !db) return;
   if(t.dataset.zoneMap){ const [lat, lng] = t.dataset.zoneMap.split(',').map(Number); mapFocus = { lat, lng }; mapNear = zone.origin ? { ...zone.origin } : mapNear; view = 'map'; tableDetailCallId = null; setActiveTab('navMap'); renderMain(); return; }
+  if(t.dataset.zoneDrop){ zone.excluded.add(t.dataset.zoneDrop); zone.included.delete(t.dataset.zoneDrop); runZone(); return; }
+  if(t.dataset.zoneAdd){ zone.excluded.delete(t.dataset.zoneAdd); zone.included.add(t.dataset.zoneAdd); runZone(); return; }
   if(t.dataset.zoneRadius){ zone.radius = +t.dataset.zoneRadius; if(zone.origin) runZone(); else zoneRefresh(); return; }
-  if(t.dataset.zoneAt){ const [ll, label] = t.dataset.zoneAt.split('|'), [lat, lng] = ll.split(',').map(Number); zone.origin = { lat, lng, label }; runZone(); return; }
+  if(t.dataset.zoneMax){ zone.max = +t.dataset.zoneMax; if(zone.origin) runZone(); else zoneRefresh(); return; }
+  const fresh = ()=>{ zone.excluded.clear(); zone.included.clear(); };   // nuovo punto di partenza: giro da capo
+  if(t.dataset.zoneAt){ const [ll, label] = t.dataset.zoneAt.split('|'), [lat, lng] = ll.split(',').map(Number); zone.origin = { lat, lng, label }; fresh(); runZone(); return; }
   if(t.hasAttribute('data-zone-place')){
     const q = (document.getElementById('zonePlace') || {}).value || '';
     if(!q.trim()) return;
     zone.busy = 'Cerco la località…'; zoneRefresh();
-    geocode(q.trim()).then(g=>{ if(!g){ zone.busy = ''; zone.err = 'Località non trovata.'; zoneRefresh(); return; } zone.origin = { ...g, label: q.trim() }; runZone(); })
+    geocode(q.trim()).then(g=>{ if(!g){ zone.busy = ''; zone.err = 'Località non trovata.'; zoneRefresh(); return; } zone.origin = { ...g, label: q.trim() }; fresh(); runZone(); })
       .catch(err=>{ zone.busy = ''; zone.err = err.message || String(err); zoneRefresh(); });
     return;
   }
   if(!navigator.geolocation){ zone.err = 'Posizione non disponibile su questo dispositivo.'; zoneRefresh(); return; }
-  if(myPos && myPos.at && Date.now() - myPos.at < 120000){ zone.origin = { lat: myPos.lat, lng: myPos.lng, label: 'la tua posizione' }; runZone(); return; }   // gia' letta dalla Mappa
+  if(myPos && myPos.at && Date.now() - myPos.at < 120000){ zone.origin = { lat: myPos.lat, lng: myPos.lng, label: 'la tua posizione' }; fresh(); runZone(); return; }   // gia' letta dalla Mappa
   zone.busy = 'Leggo la tua posizione…'; zone.err = ''; zoneRefresh();
-  navigator.geolocation.getCurrentPosition(pos=>{ zone.origin = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'la tua posizione' }; runZone(); },
+  navigator.geolocation.getCurrentPosition(pos=>{ zone.origin = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'la tua posizione' }; fresh(); runZone(); },
     err=>{ zone.busy = ''; zone.err = err.code===1
       ? 'Accesso alla posizione non consentito: abilitalo per questo sito (su iPhone: Impostazioni > Privacy > Localizzazione > Safari, "Mentre usi l\'app").'
       : 'Posizione non disponibile in questo momento (segnale GPS debole?): riprova tra poco o cerca la località.'; zoneRefresh(); },
@@ -6893,7 +6987,7 @@ function followupView(){
 
 function renderCallFlow(){
   const main = document.getElementById('main');
-  queueMicrotask(()=>{ mountPlanners(); mountTrips(); });
+  queueMicrotask(()=>{ mountPlanners(); mountTrips(); mountZoneMap(); });
   if(!selectedId || callStep==='pick'){
     const q = (document.getElementById('callPickSearch')?.value || '').trim().toLowerCase();
     const list = contacts.filter(c=>!q || fullName(c).toLowerCase().includes(q) || (c.azienda||'').toLowerCase().includes(q))

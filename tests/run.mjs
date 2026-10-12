@@ -123,7 +123,8 @@ async function openApp({ width = 1280, height = 900 } = {}) {
   await page.route(/router\.project-osrm\.org/, r => {
     const pts = new URL(r.request().url()).pathname.split('/').pop().split(';').map(s => s.split(',').map(Number));
     const km = (a, b) => { const R = 6371, t = x => x * Math.PI / 180, dLa = t(b[1] - a[1]), dLo = t(b[0] - a[0]); const h = Math.sin(dLa / 2) ** 2 + Math.cos(t(a[1])) * Math.cos(t(b[1])) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
-    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 'Ok', durations: pts.map(a => pts.map(b => Math.round(km(a, b) * 1.3 * 60))) }) });
+    if (/\/route\//.test(r.request().url())) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 'Ok', routes: [{ geometry: { coordinates: pts } }] }) });
+    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 'Ok', durations: pts.map(a => pts.map(b => Math.round(km(a, b) * 1.3 * 60))), distances: pts.map(a => pts.map(b => Math.round(km(a, b) * 1300))) }) });
   });
   await page.route(/google\.com\/maps|maps\.google/, r => r.fulfill({ contentType: 'text/html', body: '' }));
   await page.route(/cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\/3\.11\.174\/(pdf(\.worker)?)\.min\.js/, r => {
@@ -567,7 +568,7 @@ await test('fasi: in attesa di Michael, file allegato alla fase dalla timeline e
   const file = name => ({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 prova') });
   let [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#main [data-phase-attach="p4|propostaTecnica"]')]);
   await fc.setFiles(file('proposta-tecnica.pdf'));
-  await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p4').fasi || {}).propostaTecnica);
+  await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p4').fasi || {}).propostaTecnica, null, { timeout: 15000 }).catch(async e => { throw new Error('passo 1 (proposta): ' + JSON.stringify(await page.evaluate(() => ({ p4: window.__fake.docs('projects').find(p => p.id === 'p4'), files: [...window.__fake.files.keys()], notice: document.getElementById('noticeBar').innerText, view })))); });
   let p4 = await page.evaluate(() => window.__fake.docs('projects').find(p => p.id === 'p4'));
   expect(p4.fasi.propostaTecnica === daysAgo(0) && (p4.allegati || []).some(a => a.tag === 'propostaTecnica' && a.nome === 'proposta-tecnica.pdf'), 'file o fase non registrati: ' + JSON.stringify(p4));
   txt = await show_(page, 'agenda');
@@ -577,10 +578,10 @@ await test('fasi: in attesa di Michael, file allegato alla fase dalla timeline e
   expect((await page.textContent('#main .timeline')).includes('proposta-tecnica.pdf'), 'il file non compare sotto la fase');
   [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#main [data-phase-attach="p4|offertaEconomica"]')]);
   await fc.setFiles(file('offerta.pdf'));
-  await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p4').fasi || {}).offertaEconomica);
+  await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p4').fasi || {}).offertaEconomica, null, { timeout: 15000 }).catch(async e => { throw new Error('passo 2 (offerta): ' + JSON.stringify(await page.evaluate(() => ({ p4: window.__fake.docs('projects').find(p => p.id === 'p4'), notice: document.getElementById('noticeBar').innerText, view })))); });
   p4 = await page.evaluate(() => window.__fake.docs('projects').find(p => p.id === 'p4'));
   expect(p4.allegati.length === 2 && p4.allegati.some(a => a.tag === 'offertaEconomica'), 'offerta non allegata: ' + JSON.stringify(p4.allegati));
-  await page.waitForFunction(() => document.querySelector('#main .timeline') && document.querySelector('#main .timeline').textContent.includes('offerta.pdf'));
+  await page.waitForFunction(() => document.querySelector('#main .timeline') && document.querySelector('#main .timeline').textContent.includes('offerta.pdf'), null, { timeout: 15000 }).catch(async e => { throw new Error('passo 3 (timeline): ' + JSON.stringify(await page.evaluate(() => ({ view, can: canAutoRender(), hold: plannerHold - Date.now(), tl: (document.querySelector('#main .timeline') || {}).textContent })))); });
 });
 
 await test('cosa fare in zona e la mia posizione sulla mappa', async () => {
@@ -593,15 +594,23 @@ await test('cosa fare in zona e la mia posizione sulla mappa', async () => {
   await show_(page, 'agenda');
   await page.fill('#zonePlace', 'Alba');
   await page.click('[data-zone-place]');
-  await page.waitForFunction(() => /Vicino a Alba/.test(document.querySelector('.zone-card').innerText));
+  await page.waitForFunction(() => /Giro di[\s\S]*?da Alba/.test(document.querySelector('.zone-card').innerText));
   let txt = await page.textContent('.zone-card');
   expect(txt.includes('Palazzina di 8 alloggi') && !txt.includes('Nuovo complesso residenziale'), 'cantieri vicino ad Alba:\n' + txt);
-  const href = await page.getAttribute('.zone-card a.btn', 'href');
-  expect(/maps\/dir\/\?api=1&origin=44\.7,8\.03&destination=44\.7,8\.03&travelmode=driving/.test(href), 'link itinerario: ' + href);
+  expect(/Giro di 1 tappa/.test(txt), 'riepilogo del giro:\n' + txt);
+  const href = await page.getAttribute('.zone-sum a.btn', 'href');
+  expect(href.includes('origin=44.7,8.03') && href.includes('destination=44.7,8.03') && href.includes('travelmode=driving'), 'link del giro: ' + href);
   await page.click('[data-zone-here]');
-  await page.waitForFunction(() => /Vicino a la tua posizione/.test(document.querySelector('.zone-card').innerText));
+  await page.waitForFunction(() => /Giro di[\s\S]*?dalla tua posizione/.test(document.querySelector('.zone-card').innerText));
   txt = await page.textContent('.zone-card');
-  expect(txt.includes('Nuovo complesso residenziale') && !txt.includes('Palazzina di 8 alloggi'), 'cantieri vicino a Torino:\n' + txt);
+  expect(txt.includes('Nuovo complesso residenziale') && txt.includes('Residenza Aurora') && !txt.includes('Palazzina di 8 alloggi'), 'cantieri vicino a Torino:\n' + txt);
+  expect(/Giro di 2 tappe/.test(txt) && txt.includes('dalla partenza') && txt.includes('dalla tappa 1'), 'tappe del giro:\n' + txt);
+  await page.waitForFunction(() => document.querySelectorAll('#zoneMap .zone-pin').length === 3 && document.querySelector('#zoneMap .leaflet-interactive'));
+  await page.click('.zone-route [data-zone-drop]');
+  await page.waitForFunction(() => /Giro di 1 tappa/.test(document.querySelector('.zone-card').innerText) && /Altri cantieri nel raggio \(1\)/.test(document.querySelector('.zone-card').innerText));
+  await page.click('.zone-others summary');
+  await page.click('.zone-others [data-zone-add]');
+  await page.waitForFunction(() => /Giro di 2 tappe/.test(document.querySelector('.zone-card').innerText));
   if (shotsDir) await (await page.$('.zone-card')).screenshot({ path: path.join(shotsDir, 'cosa-fare-in-zona.png') });
   await page.click('.zone-card [data-zone-map]');
   await page.waitForFunction(() => view === 'map');
