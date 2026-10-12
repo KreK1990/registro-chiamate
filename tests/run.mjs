@@ -103,7 +103,8 @@ const backupStore = new Map();
 const backupCalls = [];
 
 async function openApp({ width = 1280, height = 900 } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height }, serviceWorkers: 'block', locale: 'it-IT', timezoneId: 'Europe/Rome' });
+  const ctx = await browser.newContext({ viewport: { width, height }, serviceWorkers: 'block', locale: 'it-IT', timezoneId: 'Europe/Rome',
+    geolocation: { latitude: 45.07, longitude: 7.68 }, permissions: ['geolocation'] });   // il telefono "e'" a Torino
   await ctx.addInitScript(seed => { window.__seed = seed; window.alert = m => { (window.__alerts = window.__alerts || []).push(String(m)); }; }, seedData());
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
@@ -332,6 +333,9 @@ await test('PDF del portale: lettura e importazione', async () => {
 // telefono: niente deve uscire dalla larghezza dello schermo
 await ctx.close();
 ({ ctx, page } = await openApp({ width: 390, height: 844 }));
+// Chrome di prova: la posizione simulata va letta una volta prima che la Mappa la segua, altrimenti le
+// letture successive scadono (solo nel browser di test)
+await page.evaluate(() => new Promise(r => navigator.geolocation.getCurrentPosition(r, r, { timeout: 5000 })));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
   const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"]];
@@ -577,6 +581,31 @@ await test('fasi: in attesa di Michael, file allegato alla fase dalla timeline e
   p4 = await page.evaluate(() => window.__fake.docs('projects').find(p => p.id === 'p4'));
   expect(p4.allegati.length === 2 && p4.allegati.some(a => a.tag === 'offertaEconomica'), 'offerta non allegata: ' + JSON.stringify(p4.allegati));
   await page.waitForFunction(() => document.querySelector('#main .timeline') && document.querySelector('#main .timeline').textContent.includes('offerta.pdf'));
+});
+
+await test('cosa fare in zona e la mia posizione sulla mappa', async () => {
+  await page.evaluate(() => {
+    const s = window.__fake.docs('portale').find(d => d.id === 'ps1'); window.__fake.put('portale', 'ps1', { ...s, geo: { lat: 44.70, lng: 8.03, a: 'Corso Italia 5, Alba', v: GEO_V } });
+    const i = window.__fake.docs('portaleImport').find(d => d.id === '9000001'); window.__fake.put('portaleImport', '9000001', { ...i, geo: { lat: 45.07, lng: 7.68, a: 'Torino', v: GEO_V } });
+  });
+  await show_(page, 'agenda', 'startPortalImport()');
+  await page.waitForFunction(() => portalImport && portalImport.get('9000001') && portalImport.get('9000001').geo && portalSaved.get('9000002') && portalSaved.get('9000002').geo);
+  await show_(page, 'agenda');
+  await page.fill('#zonePlace', 'Alba');
+  await page.click('[data-zone-place]');
+  await page.waitForFunction(() => /Vicino a Alba/.test(document.querySelector('.zone-card').innerText));
+  let txt = await page.textContent('.zone-card');
+  expect(txt.includes('Palazzina di 8 alloggi') && !txt.includes('Nuovo complesso residenziale'), 'cantieri vicino ad Alba:\n' + txt);
+  const href = await page.getAttribute('.zone-card a.btn', 'href');
+  expect(/maps\/dir\/\?api=1&origin=44\.7,8\.03&destination=44\.7,8\.03&travelmode=driving/.test(href), 'link itinerario: ' + href);
+  await page.click('[data-zone-here]');
+  await page.waitForFunction(() => /Vicino a la tua posizione/.test(document.querySelector('.zone-card').innerText));
+  txt = await page.textContent('.zone-card');
+  expect(txt.includes('Nuovo complesso residenziale') && !txt.includes('Palazzina di 8 alloggi'), 'cantieri vicino a Torino:\n' + txt);
+  if (shotsDir) await (await page.$('.zone-card')).screenshot({ path: path.join(shotsDir, 'cosa-fare-in-zona.png') });
+  await page.click('.zone-card [data-zone-map]');
+  await page.waitForFunction(() => view === 'map');
+  await page.waitForSelector('.me-dot', { timeout: 15000 });
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
