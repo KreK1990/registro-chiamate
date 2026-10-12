@@ -555,6 +555,29 @@ await test('suggerisci quando: incastra il sopralluogo prima dell\'appuntamento 
   await page.click('#sopBackBtn');
 });
 
+await test('fasi: in attesa di Michael, file allegato alla fase dalla timeline e da Oggi', async () => {
+  await page.evaluate(d => window.__fake.put('projects', 'p4', { codice: '4800004', nome: 'Torre Delta', via: 'Via Roma 9', citta: 'Torino', partecipanti: [], fasi: { richiesta: d }, createdAt: 4, updatedAt: 4 }), daysAgo(10));
+  await page.waitForFunction(() => projects.some(p => p.id === 'p4'));
+  let txt = await show_(page, 'agenda');
+  expect(/In attesa di Michael \/ Claudia \(1\)/.test(txt) && txt.includes('Torre Delta') && txt.includes('attesa da Michael da 10 giorni'), 'manca il promemoria:\n' + txt.slice(0, 1500));
+  const file = name => ({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 prova') });
+  let [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#main [data-phase-attach="p4|propostaTecnica"]')]);
+  await fc.setFiles(file('proposta-tecnica.pdf'));
+  await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p4').fasi || {}).propostaTecnica);
+  let p4 = await page.evaluate(() => window.__fake.docs('projects').find(p => p.id === 'p4'));
+  expect(p4.fasi.propostaTecnica === daysAgo(0) && (p4.allegati || []).some(a => a.tag === 'propostaTecnica' && a.nome === 'proposta-tecnica.pdf'), 'file o fase non registrati: ' + JSON.stringify(p4));
+  txt = await show_(page, 'agenda');
+  expect(!txt.includes('Torre Delta'), 'dopo l\'arrivo la commessa non deve essere piu\' in attesa');
+  await show_(page, 'projectDetail', "selectedProjectId='p4'");
+  expect((await page.textContent('#main .timeline')).includes('proposta-tecnica.pdf'), 'il file non compare sotto la fase');
+  [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#main [data-phase-attach="p4|offertaEconomica"]')]);
+  await fc.setFiles(file('offerta.pdf'));
+  await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p4').fasi || {}).offertaEconomica);
+  p4 = await page.evaluate(() => window.__fake.docs('projects').find(p => p.id === 'p4'));
+  expect(p4.allegati.length === 2 && p4.allegati.some(a => a.tag === 'offertaEconomica'), 'offerta non allegata: ' + JSON.stringify(p4.allegati));
+  await page.waitForFunction(() => document.querySelector('#main .timeline') && document.querySelector('#main .timeline').textContent.includes('offerta.pdf'));
+});
+
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
   await show_(page, 'portal', "portalTab='esamina'");
   await page.waitForSelector('.portal-card[data-pid="9000001"]');

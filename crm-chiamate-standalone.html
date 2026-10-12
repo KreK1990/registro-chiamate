@@ -301,6 +301,11 @@ body.foto-open{overflow:hidden;}
 .trip-opt .todo-sub{display:block;margin-top:2px;}
 .trip-extra{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:2px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;}
 .trip-extra.low{background:var(--accent);color:#fff;}
+.ph-files{grid-area:extra;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:4px 0 2px;font-size:13px;}
+.ph-file{display:inline-flex;gap:4px;align-items:baseline;}
+.ph-drop-hint{display:none;}
+@media (hover:hover){ .ph-drop-hint{display:inline;} }
+.timeline li.drop-on{outline:2px dashed var(--accent);outline-offset:2px;background:var(--accent-soft);}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -1716,7 +1721,7 @@ function bindSettings(){
 // "Rimanda" nasconde la voce fino a una data (projects/contacts.rimandaAl).
 // Intervalli in Impostazioni (settings.promemoria).
 // ---------------------------------------------------------------------------
-const TODO_DEFAULTS = { sollecito:15, ferma:30, ricontatto:60, nonRaggiunto:7, richiamo:7 };
+const TODO_DEFAULTS = { sollecito:15, ferma:30, ricontatto:60, nonRaggiunto:7, richiamo:7, attesa:7 };
 let todoShowAll = { ricontatto:false };
 function todoDays(k){ const v = Number((appSettings.promemoria||{})[k]); return v>0 ? v : TODO_DEFAULTS[k]; }
 function addDaysISO(iso, n){ const d = new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
@@ -1830,8 +1835,14 @@ function todoActivityHtml(p){
     + (lastMeet ? line(lastMeet, 'Incontro', lastMeet.appuntamento.slice(0,10)) : '');
 }
 function todoCardHtml(){
-  const chase = offersToChase(), stalled = stalledProjects(), recall = contactsToRecall();
-  const total = chase.length + stalled.length + recall.length;
+  const waiting = waitingProjects(), waitingIds = new Set(waiting.map(x=>x.p.id));
+  const chase = offersToChase(), stalled = stalledProjects().filter(x=>!waitingIds.has(x.p.id)), recall = contactsToRecall();
+  const total = chase.length + waiting.length + stalled.length + recall.length;
+  const waitingRows = waiting.map(({p, who, key, since, what, days})=>`<div class="todo-row">
+      <div class="todo-main">${todoProjLine(p)}
+        <div class="todo-sub">${esc(what)} il ${fmtDate(since)} · <strong>${esc(phaseLabel(key))}</strong> attesa da ${esc(who)} da <strong>${days} giorni</strong></div></div>
+      <div class="todo-actions">${storageAvailable() ? `<button class="btn small" data-phase-attach="${p.id}|${key}">Arrivata: allega file</button>` : ''}<button class="btn secondary small" data-phase-mark="${p.id}|${key}">Arrivata oggi</button><button class="btn secondary small" data-todo-snooze-p="${p.id}">Rimanda 7 gg</button></div>
+    </div>`).join('');
   const section = (title, hint, rows)=>rows ? `<div class="todo-section"><div class="todo-title">${title}</div><div class="fc-note" style="margin:-2px 0 6px;">${hint}</div>${rows}</div>` : '';
   const chaseRows = chase.map(({p, since, label, days})=>`<div class="todo-row">
       <div class="todo-main">${todoProjLine(p)}
@@ -1857,6 +1868,7 @@ function todoCardHtml(){
     <h3>Da fare${total ? ` (${total})` : ''}</h3>
     ${total ? '' : '<div class="empty">Niente in sospeso: offerte, commesse e clienti sono tutti seguiti.</div>'}
     ${section(`Offerte da sollecitare (${chase.length})`, `presentate da almeno ${todoDays('sollecito')} giorni senza conferma`, chaseRows)}
+    ${section(`In attesa di Michael / Claudia (${waiting.length})`, `proposta tecnica o offerta economica non ancora arrivata dopo ${todoDays('attesa')} giorni`, waitingRows)}
     ${section(`Commesse ferme (${stalled.length})`, `prima dell'offerta, nessun passo avanti da ${todoDays('ferma')} giorni`, stalledRows)}
     ${section(`Da ricontattare (${recall.length})`, `clienti senza progetti in corso, non sentiti da ${todoDays('ricontatto')} giorni (${todoDays('nonRaggiunto')} se non raggiunti)`, recallRows)}
   </div>`;
@@ -1902,6 +1914,7 @@ function promemoriaSettingsHtml(){
     <div class="fc-note" style="margin-bottom:10px;">Dopo quanti giorni una voce compare nella sezione "Da fare".</div>
     <div class="todo-sets">
       ${f('sollecito', 'Sollecitare un\'offerta presentata dopo')}
+      ${f('attesa', 'Segnalare proposta tecnica (Michael) o offerta (Claudia) in attesa da')}
       ${f('ferma', 'Segnalare una commessa ferma (prima dell\'offerta) dopo')}
       ${f('ricontatto', 'Ricontattare un cliente sentito o incontrato dopo')}
       ${f('nonRaggiunto', 'Riprovare un cliente non raggiunto dopo')}
@@ -2212,7 +2225,7 @@ function attachmentsCardHtml(p){
     <div class="fc-note" id="attachStatus">${esc(attachBusy)}</div>
     ${list.length ? list.map(a=>`<div class="attach-row">
       <div class="attach-main"><span class="name-link" data-attach-open="${a.id}">${esc(a.nome)}</span>
-        <span class="fc-note">${a.tag==='ordine' ? 'ordine · ' : ''}${fmtDate(a.caricatoIl)} · ${fmtSize(a.size||0)}</span></div>
+        <span class="fc-note">${a.tag==='ordine' ? 'ordine · ' : a.tag ? esc(phaseLabel(a.tag))+' · ' : ''}${fmtDate(a.caricatoIl)} · ${fmtSize(a.size||0)}</span></div>
       <div class="todo-actions">${confirmDeleteAttachId===a.id ? `
         <span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare il file?</span>
         <button class="btn small" data-attach-del-yes="${a.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button>
@@ -3216,6 +3229,80 @@ function bindTripSettings(){
   document.getElementById('tripInizio')?.addEventListener('change', e=>{ if(e.target.value) save({ inizio: e.target.value }); });
   document.getElementById('tripFine')?.addEventListener('change', e=>{ if(e.target.value) save({ fine: e.target.value }); });
   document.getElementById('tripMargine')?.addEventListener('change', e=>{ const n = Math.round(+e.target.value); if(isFinite(n) && n>=0 && n<=120) save({ margine: n }); else e.target.value = viaggi().margine; });
+}
+
+// ---------------------------------------------------------------------------
+// File nelle fasi del progetto e attese da Michael / Claudia. Sulle fasi di PHASE_FILES della
+// timeline "Allega file" (o trascinando il file sulla fase) carica i file nei Documenti del
+// progetto con tag = chiave della fase e, se la fase non ha ancora una data, la segna con oggi:
+// arriva la mail, si salva l'allegato e in un gesto si aggiorna la commessa. In Oggi -> Da fare,
+// "In attesa di Michael / Claudia" (`waitingProjects`): richiesta (o elaborati) fatta e niente
+// proposta tecnica, oppure proposta tecnica fatta e niente offerta economica, da
+// promemoria.attesa giorni (7); anche li' "Allega file". Ascoltatori su document (servono sia
+// nella scheda progetto sia in Oggi).
+// ---------------------------------------------------------------------------
+const PHASE_FILES = ['elaborati', 'propostaTecnica', 'offertaEconomica'];
+function phaseLabel(key){ const ph = PROJECT_PHASES.find(x=>x.key===key); return ph ? ph.label : key; }
+function phaseFilesHtml(p, key){
+  if(!PHASE_FILES.includes(key) || !storageAvailable()) return '';
+  const files = (p.allegati||[]).filter(a=>a.tag===key);
+  return `<div class="ph-files">
+    ${files.map(a=>`<div class="ph-file"><span class="name-link" data-attach-open="${a.id}">${esc(a.nome)}</span> <span class="fc-note">${fmtDate(a.caricatoIl)}</span></div>`).join('')}
+    <button type="button" class="btn secondary small" data-phase-attach="${p.id}|${key}">Allega file</button>
+    <span class="fc-note ph-drop-hint">oppure trascinalo qui</span>
+  </div>`;
+}
+async function attachToPhase(pid, key, files){
+  const p = projects.find(x=>x.id===pid);
+  if(!p || !files.length) return;
+  showNotice(`Caricamento di ${files.length===1 ? `"${esc(files[0].name)}"` : files.length+' file'} in ${esc(phaseLabel(key))}…`);
+  try{
+    await addProjectFiles(p, files, key);
+    attachBusy = ''; renderAttachStatus();
+    const fresh = projects.find(x=>x.id===pid) || p;
+    const marked = !(fresh.fasi && fresh.fasi[key]);
+    if(marked) await setProjectPhase(fresh, key, todayISO());
+    showNotice(`${files.length===1 ? 'File allegato' : files.length+' file allegati'} a <strong>${esc(projectTitle(fresh))}</strong> · ${esc(phaseLabel(key))}${marked ? ', fase segnata con la data di oggi' : ''}. <button class="btn secondary small" id="noticeClose">Chiudi</button>`);
+  }catch(e){ attachBusy = ''; renderAttachStatus(); showNotice(`Caricamento non riuscito: ${esc(e.message||e.code||'')} <button class="btn secondary small" id="noticeClose">Chiudi</button>`); }
+  if(canAutoRender()) renderMain();
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-phase-attach]');
+  if(!b || !db) return;
+  const [pid, key] = b.dataset.phaseAttach.split('|');
+  const input = document.createElement('input');
+  input.type = 'file'; input.multiple = true;
+  input.addEventListener('change', ()=>attachToPhase(pid, key, [...(input.files||[])]));
+  input.click();
+});
+// trascinamento dei file dal computer su una fase della timeline
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-phase-mark]');
+  if(!b || !db) return;
+  const [pid, key] = b.dataset.phaseMark.split('|'), p = projects.find(x=>x.id===pid);
+  if(p){ b.disabled = true; setProjectPhase(p, key, todayISO()).then(()=>{ if(canAutoRender()) renderMain(); }).catch(err=>{ b.disabled = false; alert('Errore nel salvataggio: '+(err.message||err.code||'')); }); }
+});
+document.addEventListener('dragover', e=>{
+  const li = e.target.closest && e.target.closest('[data-phase-drop]');
+  if(!li || !e.dataTransfer || ![...e.dataTransfer.types].includes('Files')) return;
+  e.preventDefault(); li.classList.add('drop-on');
+});
+document.addEventListener('dragleave', e=>{ const li = e.target.closest && e.target.closest('[data-phase-drop]'); if(li && !li.contains(e.relatedTarget)) li.classList.remove('drop-on'); });
+document.addEventListener('drop', e=>{
+  const li = e.target.closest && e.target.closest('[data-phase-drop]');
+  if(!li) return;
+  e.preventDefault(); li.classList.remove('drop-on');
+  const [pid, key] = li.dataset.phaseDrop.split('|');
+  attachToPhase(pid, key, [...(e.dataTransfer.files||[])]);
+});
+function waitingProjects(){
+  const t = todayISO(), n = todoDays('attesa'), done = (p, k)=>phaseDone(p, k), planned = (p, k)=>!!(p.fasi && p.fasi[k]);
+  return openProjects().filter(p=>!snoozed(p) && !done(p, 'offertaPresentata') && !planned(p, 'offertaEconomica')).map(p=>{
+    if(done(p, 'propostaTecnica')) return { p, who:'Claudia', key:'offertaEconomica', since: p.fasi.propostaTecnica, what:'proposta tecnica pronta' };
+    if(planned(p, 'propostaTecnica')) return null;   // data prevista: si aspetta quella
+    const since = [p.fasi && p.fasi.richiesta, p.fasi && p.fasi.elaborati].filter(d=>d && d<=t).sort().pop();
+    return since ? { p, who:'Michael', key:'propostaTecnica', since, what: p.fasi.elaborati && p.fasi.elaborati<=t ? 'elaborati ricevuti' : 'richiesta' } : null;
+  }).filter(Boolean).map(x=>({ ...x, days: daysBetween(x.since, t) })).filter(x=>x.days >= n).sort((a,b)=>b.days - a.days);
 }
 
 // ---------------------------------------------------------------------------
@@ -5181,10 +5268,11 @@ function projectDetailView(){
     <div class="card">
       <h3>Fasi del progetto</h3>
       <ol class="timeline">
-        ${PROJECT_PHASES.map(ph=>{ const d = f[ph.key] || ''; return `<li class="${d ? (d>today ? 'planned' : 'done') : ''}">
+        ${PROJECT_PHASES.map(ph=>{ const d = f[ph.key] || ''; return `<li class="${d ? (d>today ? 'planned' : 'done') : ''}" ${PHASE_FILES.includes(ph.key) && storageAvailable() ? `data-phase-drop="${p.id}|${ph.key}"` : ''}>
           <span class="dot"></span>
           <div><div class="ph-label">${esc(ph.label)}</div>${ph.owner ? `<div class="ph-owner">a cura di ${esc(ph.owner)}</div>` : ''}${d && d>today ? '<div class="ph-owner">prevista</div>' : ''}</div>
           <div class="ph-date"><input type="date" data-phase="${ph.key}" value="${d}">${d ? '' : `<button class="btn secondary small" data-phase-today="${ph.key}">Oggi</button>`}</div>
+          ${phaseFilesHtml(p, ph.key)}
           ${ph.key==='confermaOrdine' && d ? `<div class="ph-extra">
             <label>Importo deliberato (€)</label>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">

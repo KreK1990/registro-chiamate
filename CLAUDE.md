@@ -164,7 +164,11 @@ Campi principali:
 - **Oggi → "Da fare"** (blocco "Da fare (in Oggi)", prima del Forecast): calcolato dai dati.
   Offerte da sollecitare (offertaPresentata raggiunta, non confermata ne' persa, da
   `promemoria.sollecito` giorni contati dall'ultimo `projects.sollecitatoIl` o dall'ultima telefonata/incontro collegati al progetto in `calls.progetti` (`linkedActivityDate`); per ogni offerta l'ultima telefonata e l'ultimo incontro con i partecipanti (`projectContactActivity`), con pulsante "Riguardava questa commessa" che aggiunge il progetto a `calls.progetti`); commesse ferme
-  (prima dell'offerta, nessuna fase da `promemoria.ferma` giorni); da ricontattare (clienti con
+  (prima dell'offerta, nessuna fase da `promemoria.ferma` giorni); **in attesa di Michael / Claudia**
+  (`waitingProjects`, `promemoria.attesa` = 7 giorni: richiesta/elaborati senza proposta tecnica, o
+  proposta tecnica senza offerta economica; una data futura conta come prevista e non segnala;
+  pulsanti "Arrivata: allega file", "Arrivata oggi" `data-phase-mark`, "Rimanda"; queste commesse non
+  si ripetono tra le ferme); da ricontattare (clienti con
   chiamate, senza progetti in corso o acquisiti, senza follow-up o appuntamenti futuri, senza
   "Non interessato" nell'ultimo anno, fermi da `promemoria.ricontatto` giorni o
   `promemoria.nonRaggiunto` se l'ultimo esito e' in `ESITI_NON_RAGGIUNTO`; prima Interessato/Da
@@ -258,6 +262,11 @@ Campi principali:
   [{id, nome, path, tipo, size, caricatoIl, tag?}], max 20 MB. Regole in `storage.rules` (da
   pubblicare a mano in Console Firebase -> Storage -> Regole). "Ordine da PDF" propone di
   allegare il PDF (tag 'ordine'). I file non sono nei backup notturni (solo l'elenco).
+  **File nelle fasi** (blocco "File nelle fasi del progetto e attese da Michael / Claudia"): sulle fasi
+  `PHASE_FILES` (elaborati, propostaTecnica, offertaEconomica) della timeline "Allega file"
+  (`data-phase-attach="pid|fase"`) o trascinamento sulla fase (`data-phase-drop`) carica nei Documenti
+  con `tag` = chiave della fase (`attachToPhase`) e, se la fase e' vuota, la segna con oggi; i file
+  compaiono sotto la fase e nei Documenti con il nome della fase. Esito nella barra in alto (showNotice).
 - **Foto del cantiere** (scheda progetto, sopra i Documenti; blocco omonimo, solo versione online):
   ridotte sul dispositivo prima del caricamento (canvas -> JPEG; `FOTO_QUALITA`: normale 2560 px
   q 0,85 ~1 MB, predefinita, o alta 4000 px q 0,9, scelta dall'utente il 2026-10-06; in Impostazioni,
