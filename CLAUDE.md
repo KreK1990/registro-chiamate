@@ -79,6 +79,9 @@ Campi principali:
   giorni (7) alle 09:00 se vuoto (`bindAutoFollowUp`, segnato `data-auto`, tolto se l'esito
   cambia e la data non e' stata toccata). `TODO_DEFAULTS.nonRaggiunto` portato da 30 a 7 (richiesta
   dell'utente 2026-10-08: chi non risponde va riprovato dopo circa una settimana).
+  **Salva nella rubrica del telefono** (scheda contatto, blocco omonimo): `vcardText` (vCard 3.0: N, FN,
+  ORG, TITLE, TEL cell/lavoro, EMAIL, ADR; niente note) scaricato come .vcf (`downloadVCard`); su
+  iPhone apre "Nuovo contatto". Una tantum, scelta dell'utente 2026-10-12 (no export di massa, no CardDAV).
   Lo studio/attività è un'entità "derivata", senza collection propria: contatti con lo
   stesso `azienda` normalizzato (`normStudio`: minuscole, spazi e punteggiatura) sono
   lo stesso studio; via/citta/telefono dello studio si ricavano dai membri

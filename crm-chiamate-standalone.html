@@ -1242,6 +1242,7 @@ function renderMain(){
         ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
         ${fullAddress(c) && !geoEditing('contacts', c.id) ? `<div style="margin-top:6px;">${geoEditBtn('contacts', c)}</div>` : ''}
         ${fullAddress(c)? (geoEditing('contacts', c.id) ? geoEditHtml(c) : `<div class="map-embed"><iframe src="${mapEmbedUrl(c)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa: ${esc(fullAddress(c))}"></iframe></div>`):''}
+        ${c.cellulare || c.telefono || c.email ? '<div style="margin-top:8px;"><button type="button" class="btn secondary small" id="vcardBtn">Salva nella rubrica del telefono</button></div>' : ''}
         ${c.tag?`<div style="margin-top:8px;">${tagPills(c.tag)}</div>`:''}
         ${c.note?`<div style="margin-top:8px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(c.note)}</div>`:''}
         ${followUpBadge(c.followUp,true)}
@@ -1298,6 +1299,7 @@ function renderMain(){
     document.getElementById('saveCallBtn').addEventListener('click', saveCall);
     bindAutoFollowUp('callEsito', 'callFollowUpDate', 'callFollowUpTime', 'callDate');
     bindContactOff(c);
+    document.getElementById('vcardBtn')?.addEventListener('click', ()=>downloadVCard(c));
     bindContactProjects(c);
     main.querySelectorAll('[data-contact-id]').forEach(el=>{
       el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; confirmDeleteId=null; renderMain(); main.scrollTop=0; });
@@ -3583,6 +3585,35 @@ function startMyPosition(){
 function stopMyPosition(){
   if(myPosWatch!=null && navigator.geolocation) navigator.geolocation.clearWatch(myPosWatch);
   myPosWatch = null; myPosMarker = null; myPosCircle = null;
+}
+
+// ---------------------------------------------------------------------------
+// Salva nella rubrica del telefono (scheda contatto): crea un vCard 3.0 del contatto (nome,
+// studio, professione, cellulare, telefono, email, indirizzo; niente note, che restano nell'app)
+// e lo scarica come file .vcf: su iPhone si apre la scheda "Nuovo contatto" da confermare, sul
+// PC si apre con Outlook o Contatti. Una tantum: le modifiche successive non si propagano.
+// ---------------------------------------------------------------------------
+function vcardText(c){
+  const e = s=>String(s||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/([,;])/g,'\\$1');
+  const lines = ['BEGIN:VCARD', 'VERSION:3.0',
+    `N:${e(c.cognome)};${e(c.nome)};;;`,
+    `FN:${e([c.nome, c.cognome].filter(Boolean).join(' ') || fullName(c))}`];
+  if(c.azienda) lines.push(`ORG:${e(c.azienda)}`);
+  if(c.professione) lines.push(`TITLE:${e(c.professione)}`);
+  if(c.cellulare) lines.push(`TEL;TYPE=CELL,VOICE:${e(c.cellulare)}`);
+  if(c.telefono) lines.push(`TEL;TYPE=WORK,VOICE:${e(c.telefono)}`);
+  if(c.email) lines.push(`EMAIL;TYPE=INTERNET,WORK:${e(c.email)}`);
+  if(c.via || c.citta) lines.push(`ADR;TYPE=WORK:;;${e(c.via)};${e(c.citta)};;;Italia`);
+  lines.push('END:VCARD');
+  return lines.join('\r\n') + '\r\n';
+}
+function downloadVCard(c){
+  const name = (fullName(c) || 'contatto').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+  const blob = new Blob([vcardText(c)], { type:'text/vcard;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name+'.vcf';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 10000);
 }
 
 // ---------------------------------------------------------------------------

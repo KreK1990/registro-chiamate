@@ -624,6 +624,15 @@ await test('cosa fare in zona e la mia posizione sulla mappa', async () => {
   await page.waitForSelector('.me-dot', { timeout: 15000 });
 });
 
+await test('contatto: salva nella rubrica del telefono (vCard)', async () => {
+  await show_(page, 'detail', "selectedId='c1'");
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#vcardBtn')]);
+  const txt = fs.readFileSync(await dl.path(), 'utf8');
+  expect(dl.suggestedFilename() === 'Rossi Mario.vcf', 'nome del file: ' + dl.suggestedFilename());
+  for (const l of ['BEGIN:VCARD', 'N:Rossi;Mario;;;', 'FN:Mario Rossi', 'ORG:Studio Rossi', 'TITLE:Architetto', 'TEL;TYPE=CELL,VOICE:333 1234567', 'EMAIL;TYPE=INTERNET,WORK:mario@studiorossi.it', 'ADR;TYPE=WORK:;;Via Roma 1;Torino;;;Italia', 'END:VCARD'])
+    expect(txt.includes(l + '\r\n'), 'manca nel vCard: ' + l + '\n' + txt);
+});
+
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
   await show_(page, 'portal', "portalTab='esamina'");
   await page.waitForSelector('.portal-card[data-pid="9000001"]');
