@@ -162,8 +162,13 @@ Campi principali:
   `settings` con un solo documento (creato al primo salvataggio con `add`, poi `update`):
   `budget {'YYYY': euro}`. Backup: "Scarica tutto in Excel" (`exportAllExcel`: fogli
   Contatti, Chiamate, Progetti, Ordini; sostituisce il vecchio export CSV) e, solo online, le
-  copie automatiche notturne. (La mail di presentazione da modello e' stata provata e tolta
-  su richiesta dell'utente: eventuali `mailOggetto`/`mailTesto` in settings sono inutilizzati.)
+  copie automatiche notturne. (Una prima mail da modello fu tolta su richiesta dell'utente: `mailOggetto`/
+  `mailTesto` in settings sono inutilizzati.) **Mail di presentazione** (2026-10-12, testo dato dall'utente;
+  blocco omonimo): "Mail di presentazione" nella scheda contatto e nelle mail informative da inviare
+  (`data-mail-pres`) apre Outlook web (`outlook.office.com/mail/deeplink/compose`, to/subject/body),
+  "con l'app di posta" usa mailto:. Testo `MAIL_PRES_DEFAULT` con `{firma}`; `settings.mailPres` {firma,
+  oggetto, testo} in Impostazioni; la firma (nome dell'utente) MAI nel codice, il repo e' pubblico.
+  Senza firma chiede di impostarla. Aprendo la mail annota `contacts.mailPresentazioneIl`.
 - **Oggi → "Da fare"** (blocco "Da fare (in Oggi)", prima del Forecast): calcolato dai dati.
   Offerte da sollecitare (offertaPresentata raggiunta, non confermata ne' persa, da
   `promemoria.sollecito` giorni contati dall'ultimo `projects.sollecitatoIl` o dall'ultima telefonata/incontro collegati al progetto in `calls.progetti` (`linkedActivityDate`); per ogni offerta l'ultima telefonata e l'ultimo incontro con i partecipanti (`projectContactActivity`), con pulsante "Riguardava questa commessa" che aggiunge il progetto a `calls.progetti`); commesse ferme

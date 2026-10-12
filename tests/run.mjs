@@ -111,6 +111,7 @@ async function openApp({ width = 1280, height = 900 } = {}) {
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   const fake = fs.readFileSync(path.join(here, 'fake-firebase.js'), 'utf8');
   await page.route('https://www.gstatic.com/firebasejs/**', r => r.fulfill({ contentType: 'text/javascript', body: r.request().url().includes('firebase-app-compat') ? fake : '' }));
+  await ctx.route(/outlook\.office\.com/, r => r.fulfill({ contentType: 'text/html', body: '<p>outlook finto</p>' }));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ contentType: 'text/css', body: '' }));
   await page.route(/tile\.openstreetmap\.org/, r => r.fulfill({ status: 204, body: '' }));
   // posizioni finte: qualche comune riconoscibile, tutto il resto ad Alba
@@ -631,6 +632,24 @@ await test('contatto: salva nella rubrica del telefono (vCard)', async () => {
   expect(dl.suggestedFilename() === 'Rossi Mario.vcf', 'nome del file: ' + dl.suggestedFilename());
   for (const l of ['BEGIN:VCARD', 'N:Rossi;Mario;;;', 'FN:Mario Rossi', 'ORG:Studio Rossi', 'TITLE:Architetto', 'TEL;TYPE=CELL,VOICE:333 1234567', 'EMAIL;TYPE=INTERNET,WORK:mario@studiorossi.it', 'ADR;TYPE=WORK:;;Via Roma 1;Torino;;;Italia', 'END:VCARD'])
     expect(txt.includes(l + '\r\n'), 'manca nel vCard: ' + l + '\n' + txt);
+});
+
+await test('mail di presentazione: firma richiesta, poi Outlook con destinatario, oggetto e testo', async () => {
+  await show_(page, 'detail', "selectedId='c1'");
+  await page.click('[data-mail-pres="c1"]');
+  expect((await page.textContent('#noticeBar')).includes('manca la tua firma'), 'senza firma doveva chiedere di impostarla');
+  await show_(page, 'settings');
+  await page.fill('#mpFirma', 'Geom. Prova Test');
+  await page.press('#mpFirma', 'Tab');
+  await page.waitForFunction(() => (appSettings.mailPres || {}).firma === 'Geom. Prova Test');
+  await show_(page, 'detail', "selectedId='c1'");
+  const [pop] = await Promise.all([page.waitForEvent('popup'), page.click('[data-mail-pres="c1"]')]);
+  const u = new URL(pop.url());
+  expect(u.hostname === 'outlook.office.com' && u.searchParams.get('to') === 'mario@studiorossi.it', 'indirizzo: ' + pop.url());
+  expect(u.searchParams.get('body').startsWith('Buongiorno, sono Geom. Prova Test, Tecnico Commerciale Schöck GmbH.') && u.searchParams.get('body').includes('Possiamo fissare un breve incontro?'), 'testo: ' + u.searchParams.get('body'));
+  expect(u.searchParams.get('subject').includes('Isokorb'), 'oggetto: ' + u.searchParams.get('subject'));
+  await pop.close();
+  await page.waitForFunction(() => (window.__fake.docs('contacts').find(c => c.id === 'c1') || {}).mailPresentazioneIl);
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {

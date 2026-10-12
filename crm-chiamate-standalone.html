@@ -344,6 +344,8 @@ body.foto-open{overflow:hidden;}
 .me-rot{position:absolute;inset:0;}
 .me-arrow{position:absolute;left:11px;top:0;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:10px solid #1a73e8;}
 @keyframes mePulse{0%{box-shadow:0 0 0 1px rgba(0,0,0,.25),0 0 0 0 rgba(26,115,232,.45);}70%{box-shadow:0 0 0 1px rgba(0,0,0,.25),0 0 0 10px rgba(26,115,232,0);}100%{box-shadow:0 0 0 1px rgba(0,0,0,.25),0 0 0 0 rgba(26,115,232,0);}}
+.contact-tools{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:8px;}
+.mail-pres-alt{font-size:12.5px;}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -1242,7 +1244,7 @@ function renderMain(){
         ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
         ${fullAddress(c) && !geoEditing('contacts', c.id) ? `<div style="margin-top:6px;">${geoEditBtn('contacts', c)}</div>` : ''}
         ${fullAddress(c)? (geoEditing('contacts', c.id) ? geoEditHtml(c) : `<div class="map-embed"><iframe src="${mapEmbedUrl(c)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa: ${esc(fullAddress(c))}"></iframe></div>`):''}
-        ${c.cellulare || c.telefono || c.email ? '<div style="margin-top:8px;"><button type="button" class="btn secondary small" id="vcardBtn">Salva nella rubrica del telefono</button></div>' : ''}
+        ${c.cellulare || c.telefono || c.email ? `<div class="contact-tools">${c.cellulare || c.telefono || c.email ? '<button type="button" class="btn secondary small" id="vcardBtn">Salva nella rubrica del telefono</button>' : ''}${mailPresBtn(c)}${c.mailPresentazioneIl ? `<span class="fc-note">mail di presentazione aperta il ${fmtDate(c.mailPresentazioneIl)}</span>` : ''}</div>` : ''}
         ${c.tag?`<div style="margin-top:8px;">${tagPills(c.tag)}</div>`:''}
         ${c.note?`<div style="margin-top:8px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(c.note)}</div>`:''}
         ${followUpBadge(c.followUp,true)}
@@ -1723,6 +1725,7 @@ function settingsView(){
   ${promemoriaSettingsHtml()}
   ${photoSettingsHtml()}
   ${tripSettingsHtml()}
+  ${mailPresSettingsHtml()}
   <div class="card">
     <h3>Backup</h3>
     <div class="fc-note" style="margin-bottom:10px;">Excel con contatti, chiamate, progetti e ordini: utile da conservare o da girare al responsabile.</div>
@@ -1743,6 +1746,7 @@ function bindSettings(){
   bindPromemoriaSettings();
   bindPhotoSettings();
   bindTripSettings();
+  bindMailPresSettings();
   document.getElementById('excelAllBtn').addEventListener('click', exportAllExcel);
   document.getElementById('backupNowBtn')?.addEventListener('click', e=>backupNow(e.target));
   document.querySelectorAll('[data-backup-date]').forEach(b=>b.addEventListener('click', ()=>downloadBackup(b.dataset.backupDate, b)));
@@ -3614,6 +3618,66 @@ function downloadVCard(c){
   const a = document.createElement('a'); a.href = url; a.download = name+'.vcf';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 10000);
+}
+
+// ---------------------------------------------------------------------------
+// Mail di presentazione: "Mail di presentazione" nella scheda contatto e nelle mail informative da
+// inviare apre la mail gia' scritta (Outlook web, come l'invito; in alternativa l'app di posta con
+// mailto:) indirizzata al cliente. Oggetto, testo e firma in Impostazioni (settings.mailPres
+// {firma, oggetto, testo}); {firma} nel testo diventa la firma. La firma (nome dell'utente) sta
+// solo nelle impostazioni, mai nel codice: il repository e' pubblico. Aprendo la mail si annota
+// contacts.mailPresentazioneIl (data), mostrata nella scheda.
+// ---------------------------------------------------------------------------
+const MAIL_PRES_DEFAULT = {
+  oggetto: 'Schöck Isokorb: balconi e logge senza ponti termici',
+  testo: 'Buongiorno, sono {firma}, Tecnico Commerciale Schöck GmbH.\n\n'
+    + 'Nei vostri progetti, balconi, terrazze e logge possono diventare nodi complessi da gestire per ponti termici e continuità del cappotto.\n'
+    + 'Con il sistema Isokorb, il ponte termico viene risolto all’interno del nodo strutturale, lasciando più libertà al progettista e permettendo di ottenere dettagli costruttivi più puliti, semplici e funzionali, senza dover “impacchettare” il balcone con il cappotto.\n'
+    + 'Le mostrerei volentieri in 15 minuti come questa soluzione può semplificare i vostri progetti. Possiamo fissare un breve incontro?\n'
+    + 'Grazie.\n\nCordialmente.'
+};
+function mailPres(){ const m = appSettings.mailPres || {}; return { firma: m.firma || '', oggetto: m.oggetto || MAIL_PRES_DEFAULT.oggetto, testo: m.testo || MAIL_PRES_DEFAULT.testo }; }
+function mailPresUrls(c){
+  const m = mailPres(), body = m.testo.replace(/\{firma\}/g, m.firma);
+  const q = new URLSearchParams({ subject: m.oggetto, body }); if(c.email) q.set('to', c.email);
+  return { outlook: 'https://outlook.office.com/mail/deeplink/compose?' + q.toString(),
+    mailto: `mailto:${encodeURIComponent(c.email||'')}?subject=${encodeURIComponent(m.oggetto)}&body=${encodeURIComponent(body)}` };
+}
+function mailPresBtn(c){
+  if(!c || !c.email) return '';
+  return `<button type="button" class="btn secondary small" data-mail-pres="${c.id}">Mail di presentazione</button><a href="#" class="addr-link mail-pres-alt" data-mail-pres-app="${c.id}">con l'app di posta</a>`;
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-mail-pres], [data-mail-pres-app]');
+  if(!b || !db) return;
+  e.preventDefault(); e.stopPropagation();
+  const id = b.dataset.mailPres || b.dataset.mailPresApp, c = contacts.find(x=>x.id===id);
+  if(!c) return;
+  if(!mailPres().firma){
+    showNotice('Per la mail di presentazione manca la tua firma: inseriscila in <strong>Impostazioni → Mail di presentazione</strong>. <button class="btn secondary small" id="noticeClose">Chiudi</button>');
+    return;
+  }
+  const u = mailPresUrls(c);
+  if(b.dataset.mailPresApp) location.href = u.mailto; else window.open(u.outlook, '_blank', 'noopener');
+  db.collection('contacts').doc(c.id).update({ mailPresentazioneIl: todayISO() }).catch(()=>{});
+}, true);
+function mailPresSettingsHtml(){
+  const m = mailPres();
+  return `<div class="card">
+    <h3>Mail di presentazione</h3>
+    <div class="fc-note" style="margin-bottom:8px;">La mail che si apre con "Mail di presentazione" (scheda contatto e mail da inviare). <strong>{firma}</strong> nel testo viene sostituito con la firma.</div>
+    <label>Firma (nome e titolo)</label><input id="mpFirma" value="${esc(m.firma)}" placeholder="Es. Geom. Mario Rossi">
+    <label>Oggetto</label><input id="mpOggetto" value="${esc(m.oggetto)}">
+    <label>Testo</label><textarea id="mpTesto" rows="11">${esc(m.testo)}</textarea>
+    <div class="todo-actions" style="margin-top:8px;"><button type="button" class="btn secondary small" id="mpReset">Ripristina il testo predefinito</button></div>
+  </div>`;
+}
+function bindMailPresSettings(){
+  const save = patch=>saveSettings({ mailPres: { ...(appSettings.mailPres || {}), ...patch } });
+  document.getElementById('mpFirma')?.addEventListener('change', e=>save({ firma: e.target.value.trim() }));
+  document.getElementById('mpOggetto')?.addEventListener('change', e=>save({ oggetto: e.target.value.trim() }));
+  document.getElementById('mpTesto')?.addEventListener('change', e=>save({ testo: e.target.value }));
+  document.getElementById('mpReset')?.addEventListener('click', ()=>{ save({ oggetto: '', testo: '' }); document.getElementById('mpOggetto').value = MAIL_PRES_DEFAULT.oggetto; document.getElementById('mpTesto').value = MAIL_PRES_DEFAULT.testo; });
 }
 
 // ---------------------------------------------------------------------------
@@ -7661,7 +7725,7 @@ function pendingMailsCardHtml(){
         <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc([c.professione, c.azienda].filter(Boolean).join(' · '))}${g.since ? `${c.professione||c.azienda ? ' · ' : ''}richiesta il ${fmtDate(g.since)}` : ''}</div>
         ${c.email ? `<a href="mailto:${esc(c.email)}" class="addr-link" onclick="event.stopPropagation()" style="font-size:13.5px;">${esc(c.email)}</a>` : `<span style="font-size:12.5px;color:var(--danger);">Email mancante: apri la scheda e aggiungila</span>`}
       </div>
-      <button class="btn small" data-mail-done="${g.contactId}">Mail inviata</button>
+      <div class="todo-actions">${mailPresBtn(c)}<button class="btn small" data-mail-done="${g.contactId}">Mail inviata</button></div>
     </div>`; }).join('')}
   </div>`;
 }
