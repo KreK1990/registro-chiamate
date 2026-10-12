@@ -168,7 +168,9 @@ Campi principali:
   (`waitingProjects`, `promemoria.attesa` = 7 giorni: richiesta/elaborati senza proposta tecnica, o
   proposta tecnica senza offerta economica; una data futura conta come prevista e non segnala;
   pulsanti "Arrivata: allega file", "Arrivata oggi" `data-phase-mark`, "Rimanda"; queste commesse non
-  si ripetono tra le ferme); da ricontattare (clienti con
+  si ripetono tra le ferme). Le attese sono in un riquadro a se' sopra "Da fare" (`waitingCardHtml`,
+  `<details>`): aperto se ci sono commesse in attesa, chiuso se non ce ne sono; `waitingOpen` ricorda
+  solo i clic dell'utente sul titolo (non l'evento toggle, che scatta anche all'apertura automatica); da ricontattare (clienti con
   chiamate, senza progetti in corso o acquisiti, senza follow-up o appuntamenti futuri, senza
   "Non interessato" nell'ultimo anno, fermi da `promemoria.ricontatto` giorni o
   `promemoria.nonRaggiunto` se l'ultimo esito e' in `ESITI_NON_RAGGIUNTO`; prima Interessato/Da

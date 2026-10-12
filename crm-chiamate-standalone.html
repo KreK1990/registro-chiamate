@@ -306,6 +306,14 @@ body.foto-open{overflow:hidden;}
 .ph-drop-hint{display:none;}
 @media (hover:hover){ .ph-drop-hint{display:inline;} }
 .timeline li.drop-on{outline:2px dashed var(--accent);outline-offset:2px;background:var(--accent-soft);}
+.waiting-card summary{cursor:pointer;display:flex;align-items:baseline;gap:4px 12px;flex-wrap:wrap;list-style:none;}
+.waiting-card summary::-webkit-details-marker{display:none;}
+.waiting-card summary::before{content:'▸';color:var(--muted);font-size:13px;}
+.waiting-card[open] summary::before{content:'▾';}
+.waiting-card summary h3{display:inline;margin:0;}
+.waiting-card.has{border-left:3px solid var(--brand-yellow);}
+.waiting-n{display:inline-block;min-width:20px;padding:0 6px;margin-left:4px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;line-height:20px;text-align:center;vertical-align:2px;}
+.waiting-body{margin-top:8px;}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -1834,15 +1842,26 @@ function todoActivityHtml(p){
   return (lastCall ? line(lastCall, 'Telefonata', lastCall.data) : '')
     + (lastMeet ? line(lastMeet, 'Incontro', lastMeet.appuntamento.slice(0,10)) : '');
 }
-function todoCardHtml(){
-  const waiting = waitingProjects(), waitingIds = new Set(waiting.map(x=>x.p.id));
-  const chase = offersToChase(), stalled = stalledProjects().filter(x=>!waitingIds.has(x.p.id)), recall = contactsToRecall();
-  const total = chase.length + waiting.length + stalled.length + recall.length;
-  const waitingRows = waiting.map(({p, who, key, since, what, days})=>`<div class="todo-row">
+// Riquadro a se' in Oggi, apribile e richiudibile: aperto quando ci sono commesse in attesa
+// (finche' l'utente non lo chiude: waitingOpen ricorda la scelta nella sessione), chiuso se non ce ne sono.
+let waitingOpen = null;
+function waitingCardHtml(){
+  const waiting = waitingProjects(), open = waitingOpen===null ? waiting.length > 0 : waitingOpen;
+  const rows = waiting.map(({p, who, key, since, what, days})=>`<div class="todo-row">
       <div class="todo-main">${todoProjLine(p)}
         <div class="todo-sub">${esc(what)} il ${fmtDate(since)} · <strong>${esc(phaseLabel(key))}</strong> attesa da ${esc(who)} da <strong>${days} giorni</strong></div></div>
       <div class="todo-actions">${storageAvailable() ? `<button class="btn small" data-phase-attach="${p.id}|${key}">Arrivata: allega file</button>` : ''}<button class="btn secondary small" data-phase-mark="${p.id}|${key}">Arrivata oggi</button><button class="btn secondary small" data-todo-snooze-p="${p.id}">Rimanda 7 gg</button></div>
     </div>`).join('');
+  return `<details class="card waiting-card ${waiting.length ? 'has' : ''}" id="waitingCard" ${open ? 'open' : ''}>
+    <summary><h3>In attesa di Michael / Claudia${waiting.length ? ` <span class="waiting-n">${waiting.length}</span>` : ''}</h3>
+      <span class="fc-note">${waiting.length ? `proposta tecnica o offerta economica non arrivata dopo ${todoDays('attesa')} giorni` : 'nessuna commessa in attesa'}</span></summary>
+    <div class="waiting-body">${rows || '<div class="empty" style="padding:4px 0;">Proposte tecniche e offerte sono tutte arrivate o segnate.</div>'}</div>
+  </details>`;
+}
+function todoCardHtml(){
+  const waitingIds = new Set(waitingProjects().map(x=>x.p.id));   // hanno il loro riquadro: non si ripetono tra le ferme
+  const chase = offersToChase(), stalled = stalledProjects().filter(x=>!waitingIds.has(x.p.id)), recall = contactsToRecall();
+  const total = chase.length + stalled.length + recall.length;
   const section = (title, hint, rows)=>rows ? `<div class="todo-section"><div class="todo-title">${title}</div><div class="fc-note" style="margin:-2px 0 6px;">${hint}</div>${rows}</div>` : '';
   const chaseRows = chase.map(({p, since, label, days})=>`<div class="todo-row">
       <div class="todo-main">${todoProjLine(p)}
@@ -1868,7 +1887,6 @@ function todoCardHtml(){
     <h3>Da fare${total ? ` (${total})` : ''}</h3>
     ${total ? '' : '<div class="empty">Niente in sospeso: offerte, commesse e clienti sono tutti seguiti.</div>'}
     ${section(`Offerte da sollecitare (${chase.length})`, `presentate da almeno ${todoDays('sollecito')} giorni senza conferma`, chaseRows)}
-    ${section(`In attesa di Michael / Claudia (${waiting.length})`, `proposta tecnica o offerta economica non ancora arrivata dopo ${todoDays('attesa')} giorni`, waitingRows)}
     ${section(`Commesse ferme (${stalled.length})`, `prima dell'offerta, nessun passo avanti da ${todoDays('ferma')} giorni`, stalledRows)}
     ${section(`Da ricontattare (${recall.length})`, `clienti senza progetti in corso, non sentiti da ${todoDays('ricontatto')} giorni (${todoDays('nonRaggiunto')} se non raggiunti)`, recallRows)}
   </div>`;
@@ -1897,6 +1915,7 @@ function bindTodo(main){
     const progetti = [...new Set([...(k.progetti||[]), b.dataset.todoProj])];
     db.collection('calls').doc(k.id).update({ progetti }).catch(fail);
   }));
+  document.querySelector('#waitingCard > summary')?.addEventListener('click', e=>{ waitingOpen = !e.currentTarget.parentElement.open; });   // solo i clic dell'utente
   main.querySelectorAll('[data-todo-snooze-p]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd('projects', b.dataset.todoSnoozeP, { rimandaAl: addDaysISO(todayISO(), 7) }); }));
   main.querySelectorAll('[data-todo-snooze-c]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd('contacts', b.dataset.todoSnoozeC, { rimandaAl: addDaysISO(todayISO(), 30) }); }));
   main.querySelectorAll('[data-todo-call]').forEach(b=>b.addEventListener('click', ()=>{
@@ -6663,6 +6682,7 @@ function agendaView(){
       <h3>Follow-up da fare${dueFU.length?` (${dueFU.length} scaduti)`:''}</h3>
       ${fuHtml}
     </div>
+    ${waitingCardHtml()}
     ${todoCardHtml()}
     ${aiCardHtml()}
     ${completeCardHtml()}`;
