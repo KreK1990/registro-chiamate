@@ -3643,8 +3643,9 @@ function mailPresText(){ const m = mailPres(); return m.testo.replace(/\{firma\}
 function mailPresHtml(t){ return '<div>' + esc(t).replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>') + '</div>'; }
 function mailPresUrls(c, withBody){
   const m = mailPres(), body = mailPresText().replace(/\*\*/g, '');
-  const q = new URLSearchParams({ subject: m.oggetto }); if(withBody) q.set('body', body); if(c.email) q.set('to', c.email);
-  return { outlook: 'https://outlook.office.com/mail/deeplink/compose?' + q.toString(),
+  // spazi come %20 (encodeURIComponent): con URLSearchParams diventano "+" e Outlook li lascia nell'oggetto
+  const q = [['to', c.email || ''], ['subject', m.oggetto], ['body', withBody ? body : '']].filter(x=>x[1]).map(([k, v])=>k+'='+encodeURIComponent(v)).join('&');
+  return { outlook: 'https://outlook.office.com/mail/deeplink/compose?' + q,
     mailto: `mailto:${encodeURIComponent(c.email||'')}?subject=${encodeURIComponent(m.oggetto)}${withBody ? '&body='+encodeURIComponent(body) : ''}` };
 }
 // Copia il testo formattato negli appunti (dentro il clic: Safari lo consente solo li').

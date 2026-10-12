@@ -648,6 +648,7 @@ await test('mail di presentazione: firma richiesta, poi Outlook con destinatario
   expect(u.hostname === 'outlook.office.com' && u.searchParams.get('to') === 'mario@studiorossi.it', 'indirizzo: ' + pop.url());
   expect(!u.searchParams.has('body'), 'il testo va negli appunti, non nel collegamento: ' + pop.url());
   expect(u.searchParams.get('subject').includes('Isokorb'), 'oggetto: ' + u.searchParams.get('subject'));
+  expect(!pop.url().includes('+') && pop.url().includes('subject=SCH%C3%96CK%20Isokorb'), 'spazi dell\'oggetto da scrivere come %20, non +: ' + pop.url());
   // testo formattato negli appunti, con il grassetto
   const clip = await page.evaluate(async () => { const it = (await navigator.clipboard.read())[0]; return { html: await (await it.getType('text/html')).text(), txt: await (await it.getType('text/plain')).text() }; });
   expect(clip.html.includes('<b>Isokorb</b>') && clip.html.includes('<b>15 minuti</b>') && clip.html.includes('Geom. Prova Test'), 'appunti (html): ' + clip.html.slice(0, 300));
