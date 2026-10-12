@@ -3636,10 +3636,11 @@ const MAIL_PRES_DEFAULT = {
     + 'Le mostrerei volentieri in 15 minuti come questa soluzione può semplificare i vostri progetti. Possiamo fissare un breve incontro?\n'
     + 'Grazie.\n\nCordialmente.'
 };
-function mailPres(){ const m = appSettings.mailPres || {}; return { firma: m.firma || '', oggetto: m.oggetto || MAIL_PRES_DEFAULT.oggetto, testo: m.testo || MAIL_PRES_DEFAULT.testo }; }
+function mailPres(){ const m = appSettings.mailPres || {}; return { firma: m.firma || '', oggetto: m.oggetto || MAIL_PRES_DEFAULT.oggetto, testo: m.testo || MAIL_PRES_DEFAULT.testo, modello: !!m.modello }; }
 function mailPresUrls(c){
-  const m = mailPres(), body = m.testo.replace(/\{firma\}/g, m.firma);
-  const q = new URLSearchParams({ subject: m.oggetto, body }); if(c.email) q.set('to', c.email);
+  // con il modello personale di Outlook (formattato, inserito dall'utente) la mail si apre senza testo
+  const m = mailPres(), body = m.modello ? '' : m.testo.replace(/\{firma\}/g, m.firma);
+  const q = new URLSearchParams({ subject: m.oggetto }); if(body) q.set('body', body); if(c.email) q.set('to', c.email);
   return { outlook: 'https://outlook.office.com/mail/deeplink/compose?' + q.toString(),
     mailto: `mailto:${encodeURIComponent(c.email||'')}?subject=${encodeURIComponent(m.oggetto)}&body=${encodeURIComponent(body)}` };
 }
@@ -3653,12 +3654,13 @@ document.addEventListener('click', e=>{
   e.preventDefault(); e.stopPropagation();
   const id = b.dataset.mailPres || b.dataset.mailPresApp, c = contacts.find(x=>x.id===id);
   if(!c) return;
-  if(!mailPres().firma){
+  if(!mailPres().firma && !mailPres().modello){
     showNotice('Per la mail di presentazione manca la tua firma: inseriscila in <strong>Impostazioni → Mail di presentazione</strong>. <button class="btn secondary small" id="noticeClose">Chiudi</button>');
     return;
   }
   const u = mailPresUrls(c);
   if(b.dataset.mailPresApp) location.href = u.mailto; else window.open(u.outlook, '_blank', 'noopener');
+  if(mailPres().modello) showNotice('In Outlook inserisci il tuo modello: <strong>"…" (Altre opzioni) → Modelli personali</strong>, poi Invia. <button class="btn secondary small" id="noticeClose">Chiudi</button>');
   db.collection('contacts').doc(c.id).update({ mailPresentazioneIl: todayISO() }).catch(()=>{});
 }, true);
 function mailPresSettingsHtml(){
@@ -3666,6 +3668,7 @@ function mailPresSettingsHtml(){
   return `<div class="card">
     <h3>Mail di presentazione</h3>
     <div class="fc-note" style="margin-bottom:8px;">La mail che si apre con "Mail di presentazione" (scheda contatto e mail da inviare). <strong>{firma}</strong> nel testo viene sostituito con la firma.</div>
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;margin:4px 0 8px;"><input type="checkbox" id="mpModello" style="width:auto;margin:0;" ${m.modello ? 'checked' : ''}> Uso il mio modello personale di Outlook (testo formattato): la mail si apre con destinatario e oggetto, il testo lo inserisco da "…" → Modelli personali</label>
     <label>Firma (nome e titolo)</label><input id="mpFirma" value="${esc(m.firma)}" placeholder="Es. Geom. Mario Rossi">
     <label>Oggetto</label><input id="mpOggetto" value="${esc(m.oggetto)}">
     <label>Testo</label><textarea id="mpTesto" rows="11">${esc(m.testo)}</textarea>
@@ -3674,6 +3677,7 @@ function mailPresSettingsHtml(){
 }
 function bindMailPresSettings(){
   const save = patch=>saveSettings({ mailPres: { ...(appSettings.mailPres || {}), ...patch } });
+  document.getElementById('mpModello')?.addEventListener('change', e=>save({ modello: e.target.checked }));
   document.getElementById('mpFirma')?.addEventListener('change', e=>save({ firma: e.target.value.trim() }));
   document.getElementById('mpOggetto')?.addEventListener('change', e=>save({ oggetto: e.target.value.trim() }));
   document.getElementById('mpTesto')?.addEventListener('change', e=>save({ testo: e.target.value }));
