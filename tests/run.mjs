@@ -104,7 +104,7 @@ const backupCalls = [];
 
 async function openApp({ width = 1280, height = 900 } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, serviceWorkers: 'block', locale: 'it-IT', timezoneId: 'Europe/Rome',
-    geolocation: { latitude: 45.07, longitude: 7.68 }, permissions: ['geolocation'] });   // il telefono "e'" a Torino
+    geolocation: { latitude: 45.07, longitude: 7.68 }, permissions: ['geolocation', 'clipboard-read', 'clipboard-write'] });   // il telefono "e'" a Torino
   await ctx.addInitScript(seed => { window.__seed = seed; window.alert = m => { (window.__alerts = window.__alerts || []).push(String(m)); }; }, seedData());
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
@@ -646,8 +646,13 @@ await test('mail di presentazione: firma richiesta, poi Outlook con destinatario
   const [pop] = await Promise.all([page.waitForEvent('popup'), page.click('[data-mail-pres="c1"]')]);
   const u = new URL(pop.url());
   expect(u.hostname === 'outlook.office.com' && u.searchParams.get('to') === 'mario@studiorossi.it', 'indirizzo: ' + pop.url());
-  expect(u.searchParams.get('body').startsWith('Buongiorno, sono Geom. Prova Test, Tecnico Commerciale Schöck GmbH.') && u.searchParams.get('body').includes('Possiamo fissare un breve incontro?'), 'testo: ' + u.searchParams.get('body'));
+  expect(!u.searchParams.has('body'), 'il testo va negli appunti, non nel collegamento: ' + pop.url());
   expect(u.searchParams.get('subject').includes('Isokorb'), 'oggetto: ' + u.searchParams.get('subject'));
+  // testo formattato negli appunti, con il grassetto
+  const clip = await page.evaluate(async () => { const it = (await navigator.clipboard.read())[0]; return { html: await (await it.getType('text/html')).text(), txt: await (await it.getType('text/plain')).text() }; });
+  expect(clip.html.includes('<b>Isokorb</b>') && clip.html.includes('<b>15 minuti</b>') && clip.html.includes('Geom. Prova Test'), 'appunti (html): ' + clip.html.slice(0, 300));
+  expect(clip.txt.startsWith('Buongiorno, sono Geom. Prova Test, Tecnico Commerciale Schöck GmbH.') && !clip.txt.includes('**'), 'appunti (testo): ' + clip.txt.slice(0, 200));
+  expect((await page.textContent('#noticeBar')).includes('copiato con il grassetto'), 'manca l\'indicazione di incollare');
   await pop.close();
   await page.waitForFunction(() => (window.__fake.docs('contacts').find(c => c.id === 'c1') || {}).mailPresentazioneIl);
 });

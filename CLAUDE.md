@@ -170,7 +170,11 @@ Campi principali:
   oggetto, testo} in Impostazioni; la firma (nome dell'utente) MAI nel codice, il repo e' pubblico.
   Senza firma chiede di impostarla. Aprendo la mail annota `contacts.mailPresentazioneIl`. Provata e tolta
   (2026-10-12, non funzionava per l'utente) l'opzione "modello personale di Outlook" con mail aperta vuota;
-  un eventuale `mailPres.modello` rimasto in settings e' ignorato. Il deeplink accetta solo testo semplice.
+  un eventuale `mailPres.modello` rimasto in settings e' ignorato. Il deeplink accetta solo testo semplice, quindi il
+  GRASSETTO passa dagli appunti: il testo usa `**...**`; al clic `copyMailPres` copia HTML (`mailPresHtml`:
+  <b>, <br>) + testo semplice con ClipboardItem (dentro il clic, per Safari) e Outlook/mailto si aprono con
+  destinatario e oggetto senza corpo; l'utente incolla. Senza ClipboardItem: corpo in testo semplice nel link.
+  Oggetto predefinito e grassetti presi dalla mail reale dell'utente (2026-10-12).
 - **Oggi → "Da fare"** (blocco "Da fare (in Oggi)", prima del Forecast): calcolato dai dati.
   Offerte da sollecitare (offertaPresentata raggiunta, non confermata ne' persa, da
   `promemoria.sollecito` giorni contati dall'ultimo `projects.sollecitatoIl` o dall'ultima telefonata/incontro collegati al progetto in `calls.progetti` (`linkedActivityDate`); per ogni offerta l'ultima telefonata e l'ultimo incontro con i partecipanti (`projectContactActivity`), con pulsante "Riguardava questa commessa" che aggiunge il progetto a `calls.progetti`); commesse ferme
