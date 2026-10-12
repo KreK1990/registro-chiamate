@@ -285,6 +285,8 @@ Campi principali:
   (`data-phase-attach="pid|fase"`) o trascinamento sulla fase (`data-phase-drop`) carica nei Documenti
   con `tag` = chiave della fase (`attachToPhase`) e, se la fase e' vuota, la segna con oggi; i file
   compaiono sotto la fase e nei Documenti con il nome della fase. Esito nella barra in alto (showNotice).
+  Alla fine aspetta che l'aggiornamento in tempo reale porti file e fase prima di ridisegnare
+  (prima la timeline poteva restare quella vecchia: emerso da un test intermittente).
 - **Foto del cantiere** (scheda progetto, sopra i Documenti; blocco omonimo, solo versione online):
   ridotte sul dispositivo prima del caricamento (canvas -> JPEG; `FOTO_QUALITA`: normale 2560 px
   q 0,85 ~1 MB, predefinita, o alta 4000 px q 0,9, scelta dall'utente il 2026-10-06; in Impostazioni,
@@ -350,7 +352,8 @@ Campi principali:
   conserva scartato e `geo`; i nuovi entrano con `nuovo` e `primaImportazione`; nessuno viene tolto;
   "nuovo" vale solo per l'ultimo PDF (agli altri si toglie). Prima di unire aspetta che
   `portalImport` sia letto. Filtro "Regione" (`REGIONI_PROV`/`PROV_REGIONE`, `portalRegion`, dalla
-  sigla della provincia; `portalFilters.regione`), che restringe anche l'elenco delle province. Descrizione salvata fino a 4000 caratteri (600 nelle importazioni prima del
+  sigla della provincia; `portalFilters.regione`), che restringe anche l'elenco delle province. "Ordina per" (`portalFilters.ordine`):
+  priorita' (predefinito) o importo materiale stimato (`vol`, decrescente, senza unita' in fondo). Descrizione salvata fino a 4000 caratteri (600 nelle importazioni prima del
   2026-10-06: per il testo intero si ricarica il PDF). Le schede mostrano 3 righe di descrizione e il
   primo telefono/email dei soggetti; "Mostra tutto" (o il titolo) apre testo completo e tutti i
   recapiti (`portalOpen`, solo classe CSS `.open`, niente ridisegno). Pagine "Da esaminare" (si ripulisce con Da seguire / Scarta) e "Cantieri

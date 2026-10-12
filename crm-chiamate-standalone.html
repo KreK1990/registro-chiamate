@@ -3314,6 +3314,14 @@ async function attachToPhase(pid, key, files){
     if(marked) await setProjectPhase(fresh, key, todayISO());
     showNotice(`${files.length===1 ? 'File allegato' : files.length+' file allegati'} a <strong>${esc(projectTitle(fresh))}</strong> · ${esc(phaseLabel(key))}${marked ? ', fase segnata con la data di oggi' : ''}. <button class="btn secondary small" id="noticeClose">Chiudi</button>`);
   }catch(e){ attachBusy = ''; renderAttachStatus(); showNotice(`Caricamento non riuscito: ${esc(e.message||e.code||'')} <button class="btn secondary small" id="noticeClose">Chiudi</button>`); }
+  // si ridisegna quando l'aggiornamento in tempo reale ha portato file e fase (altrimenti la
+  // timeline poteva restare quella di prima)
+  const n0 = (p.allegati||[]).length + files.length;
+  for(let w=0; w<30; w++){
+    const q = projects.find(x=>x.id===pid);
+    if(q && (q.allegati||[]).length >= n0 && q.fasi && q.fasi[key]) break;
+    await new Promise(r=>setTimeout(r, 100));
+  }
   if(canAutoRender()) renderMain();
 }
 document.addEventListener('click', e=>{
@@ -4132,7 +4140,7 @@ function portalRole(r){ const x = PORTAL_ROLE_MAP.find(([re])=>re.test(r||'')); 
 // seguitoIl, aggiornatoIl}: un nuovo PDF non li tocca mai.
 let portalImport = null, portalImportStarted = false, portalBusy = '', portalShow = 40, portalSaved = new Map(), portalTab = 'esamina';
 let portalOpen = new Set();   // cantieri aperti con "Mostra tutto"
-let portalFilters = { regione:'', ristrutturazioni:false, noti:false, nuovi:false, fase:'', prov:'', minUnita:0, q:'', scartati:false, collegati:false };
+let portalFilters = { ordine:'prio', regione:'', ristrutturazioni:false, noti:false, nuovi:false, fase:'', prov:'', minUnita:0, q:'', scartati:false, collegati:false };
 function onPortalSnapshot(snap){
   portalSaved = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
   if((view==='portal') && canAutoRender()) renderMain();
@@ -4181,7 +4189,8 @@ function portalFiltered(rows){
     if(f.minUnita && !(p.unita >= f.minUnita)) return false;
     if(q && !normName([p.titolo, p.comune, p.indirizzo, p.descrizione, r.saved && r.saved.nota, ...(p.soggetti||[]).map(s=>s.nome+' '+(s.altro||[]).join(' '))].join(' ')).includes(q)) return false;
     return true;
-  }).sort((a,b)=>portalTab==='seguiti' ? 0 : (b.prio - a.prio || (b.p.unita||0) - (a.p.unita||0)));
+  }).sort((a,b)=>f.ordine==='vol' ? ((b.vol ?? -1) - (a.vol ?? -1) || b.prio - a.prio)   // importo materiale stimato, senza unita' in fondo
+    : portalTab==='seguiti' ? 0 : (b.prio - a.prio || (b.p.unita||0) - (a.p.unita||0)));
 }
 function portalCardHtml(r){
   const p = r.p, stars = '★★★'.slice(0, r.stelle) + '☆☆☆'.slice(0, 3 - r.stelle), followed = portalTab==='seguiti';
@@ -4234,6 +4243,7 @@ function portalView(){
     </div>`;
   const filters = `<div class="card portal-filters">
       ${portalTab==='esamina' ? `<label class="map-filter"><input type="checkbox" id="pfScartati" ${f.scartati?'checked':''}> Mostra gli scartati</label><label class="map-filter"><input type="checkbox" id="pfCollegati" ${f.collegati?'checked':''}> Mostra quelli già nei miei progetti (${exam.filter(r=>r.proj).length})</label>` : ''}
+      <select id="pfOrdine" style="width:auto;" aria-label="Ordina per"><option value="prio" ${f.ordine!=='vol'?'selected':''}>Ordina per priorità</option><option value="vol" ${f.ordine==='vol'?'selected':''}>Ordina per importo materiale stimato</option></select>
       <select id="pfFase" style="width:auto;"><option value="">Tutte le fasi</option><option value="presto" ${f.fase==='presto'?'selected':''}>Prima dei lavori (programmazione e progettazione)</option>${['Programmazione','Progettazione','Esecuzione'].map(x=>`<option ${f.fase===x?'selected':''}>${x}</option>`).join('')}</select>
       <select id="pfRegione" style="width:auto;"><option value="">Tutte le regioni</option>${regions.map(x=>`<option ${f.regione===x?'selected':''}>${esc(x)}</option>`).join('')}</select>
       <select id="pfProv" style="width:auto;"><option value="">Tutte le province</option>${provs.filter(x=>!f.regione || portalRegion(x)===f.regione).map(x=>`<option ${f.prov===x?'selected':''}>${x}</option>`).join('')}</select>
@@ -4348,6 +4358,7 @@ function bindPortal(){
   const set = (k, v)=>{ portalFilters[k] = v; portalShow = 40; renderMain(); };
   document.getElementById('pfScartati')?.addEventListener('change', e=>set('scartati', e.target.checked));
   document.getElementById('pfCollegati')?.addEventListener('change', e=>set('collegati', e.target.checked));
+  document.getElementById('pfOrdine')?.addEventListener('change', e=>set('ordine', e.target.value));
   document.getElementById('pfFase')?.addEventListener('change', e=>set('fase', e.target.value));
   document.getElementById('pfRegione')?.addEventListener('change', e=>{ if(portalFilters.prov && portalRegion(portalFilters.prov)!==e.target.value) portalFilters.prov = ''; set('regione', e.target.value); });
   document.getElementById('pfProv')?.addEventListener('change', e=>set('prov', e.target.value));

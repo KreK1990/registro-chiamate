@@ -319,6 +319,13 @@ await test('PDF del portale: lettura e importazione', async () => {
   expect(regs.includes('Piemonte'), 'regioni proposte: ' + regs.join(', '));
   const cnt = await page.evaluate(() => { portalFilters.regione = 'Piemonte'; const a = portalFiltered(portalExamRows()).length; portalFilters.regione = 'Liguria'; const b = portalFiltered(portalExamRows()).length; portalFilters.regione = ''; return [a, b]; });
   expect(cnt[0] > 300 && cnt[1] === 0, 'conteggi per regione (Piemonte, Liguria): ' + cnt.join(', '));
+  // ordine per importo materiale stimato: decrescente, senza unita' in fondo
+  await page.selectOption('#pfOrdine', 'vol');
+  const vols = await page.evaluate(() => portalFiltered(portalExamRows()).map(r => r.vol));
+  const bad = vols.findIndex((v, i) => i && (v ?? -1) > (vols[i - 1] ?? -1));
+  expect(bad < 0 && vols[0] > 0, 'ordine per importo sbagliato alla posizione ' + bad + ': ' + vols.slice(0, 8).join(', '));
+  expect((await page.inputValue('#pfOrdine')) === 'vol', 'la scelta dell\'ordine non resta selezionata');
+  await page.evaluate(() => { portalFilters.ordine = 'prio'; });
   // secondo PDF: si aggiunge, non toglie e non duplica; scartati e posizioni restano
   const pid = await page.evaluate(() => { const d = window.__fake.docs('portaleImport').find(x => x.id !== '9000001'); window.__fake.put('portaleImport', d.id, { ...d, scartato: true, geo: { lat: 45, lng: 7, a: 'x' } }); return d.id; });
   await page.evaluate(async () => {
@@ -581,7 +588,7 @@ await test('fasi: in attesa di Michael, file allegato alla fase dalla timeline e
   await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p4').fasi || {}).offertaEconomica, null, { timeout: 15000 }).catch(async e => { throw new Error('passo 2 (offerta): ' + JSON.stringify(await page.evaluate(() => ({ p4: window.__fake.docs('projects').find(p => p.id === 'p4'), notice: document.getElementById('noticeBar').innerText, view })))); });
   p4 = await page.evaluate(() => window.__fake.docs('projects').find(p => p.id === 'p4'));
   expect(p4.allegati.length === 2 && p4.allegati.some(a => a.tag === 'offertaEconomica'), 'offerta non allegata: ' + JSON.stringify(p4.allegati));
-  await page.waitForFunction(() => document.querySelector('#main .timeline') && document.querySelector('#main .timeline').textContent.includes('offerta.pdf'), null, { timeout: 15000 }).catch(async e => { throw new Error('passo 3 (timeline): ' + JSON.stringify(await page.evaluate(() => ({ view, can: canAutoRender(), hold: plannerHold - Date.now(), tl: (document.querySelector('#main .timeline') || {}).textContent })))); });
+  await page.waitForFunction(() => document.querySelector('#main .timeline') && document.querySelector('#main .timeline').textContent.includes('offerta.pdf'), null, { timeout: 15000 }).catch(async e => { throw new Error('passo 3 (timeline): ' + JSON.stringify(await page.evaluate(() => ({ view, can: canAutoRender(), hold: plannerHold - Date.now(), glob: (projects.find(p => p.id === 'p4') || {}).fasi })))); });
 });
 
 await test('cosa fare in zona e la mia posizione sulla mappa', async () => {
