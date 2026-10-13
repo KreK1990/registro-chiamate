@@ -730,6 +730,28 @@ await test('attività: conversione dei vecchi incontri, incontro e mail registra
   expect(!ag.includes('Incontri da registrare') || !(await page.$('[data-meet-register="k9a"]')), 'l\'appuntamento registrato non deve restare da registrare');
 });
 
+await test('clic su un appuntamento: oggi -> registra l\'incontro, registrato -> incontro, futuro -> telefonata', async () => {
+  await page.evaluate(([d0, d5]) => {
+    window.__fake.put('calls', 'k9b', { contactId: 'c3', data: d0, esito: 'Appuntamento fissato', appuntamento: d0 + 'T00:05', note: 'fissato' });
+    window.__fake.put('calls', 'k9c', { contactId: 'c4', data: d0, esito: 'Appuntamento fissato', appuntamento: d5 + 'T10:00', note: 'futuro' });
+  }, [daysAgo(0), daysAgo(-5)]);
+  await page.waitForFunction(() => calls.some(k => k.id === 'k9b') && calls.some(k => k.id === 'k9c'));
+  await show_(page, 'agenda');
+  await page.click('#main [data-appt-call-id="k9b"]');
+  await page.waitForFunction(() => view === 'detail' && selectedId === 'c3' && document.querySelector('#actFormCard [data-act-type="incontro"].on'));
+  await page.fill('#callMeetNote', 'note dell\'incontro di oggi');
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => (calls.find(k => k.id === 'k9b') || {}).incontroId);
+  await show_(page, 'agenda');
+  await page.click('#main [data-appt-call-id="k9b"]');
+  await page.waitForFunction(() => { const m = calls.find(k => k.id === tableDetailCallId); return m && m.tipo === 'incontro' && m.daAppuntamento === 'k9b'; });
+  expect((await page.textContent('#main')).includes('note dell\'incontro di oggi'), 'il dettaglio dell\'incontro non mostra le note');
+  await show_(page, 'appt', "tableDetailCallId=null; apptSubView='list'");
+  await page.click('#main [data-appt-call-id="k9c"]');
+  await page.waitForFunction(() => tableDetailCallId === 'k9c');
+  await page.evaluate(() => { tableDetailCallId = null; });
+});
+
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
   await show_(page, 'portal', "portalTab='esamina'");
   await page.waitForSelector('.portal-card[data-pid="9000001"]');

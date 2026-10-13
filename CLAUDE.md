@@ -107,6 +107,9 @@ Campi principali:
   date italiane o inglesi). Un appuntamento passato senza incontro e' "da registrare" (`apptToRegister`,
   `meetingOf`): riquadro "Incontri da registrare" in Oggi (ultimi 60 giorni) e Appuntamenti -> Svolti con
   "Registra l'incontro" (`actPrefill`: incontro precompilato con data, ora, progetti, daAppuntamento).
+  Clic su un appuntamento (Oggi, riepilogo, calendari, Appuntamenti; ascoltatore in cattura su document):
+  incontro gia' registrato -> si apre l'incontro; appuntamento di oggi o passato -> `openMeetRegister`;
+  futuro -> la telefonata. Le righe di storico e liste di attivita' hanno `data-appt-raw` e aprono la riga.
   Conversione una tantum `migrateActivities` (settings.attivitaV2; parte solo dopo aver letto calls e dopo
   una copia di sicurezza POST): ogni appuntamento passato ottiene un incontro `inc_<id telefonata>` (id fisso:
   sicuro se due dispositivi convertono insieme) con le note dell'incontro; le righe importate da Excel

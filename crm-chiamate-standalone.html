@@ -3906,11 +3906,25 @@ document.addEventListener('click', e=>{
   const b = e.target.closest && e.target.closest('[data-meet-register]');
   if(!b || !db) return;
   e.preventDefault(); e.stopPropagation();
-  const k = calls.find(x=>x.id===b.dataset.meetRegister); if(!k) return;
+  const k = calls.find(x=>x.id===b.dataset.meetRegister); if(k) openMeetRegister(k);
+}, true);
+function openMeetRegister(k){
   actPrefill = { contactId: k.contactId, data: k.appuntamento.slice(0,10), ora: k.appuntamento.slice(11,16), progetti: k.progetti || [], daAppuntamento: k.id };
-  actFormType = 'incontro';
-  selectedId = k.contactId; view = 'detail'; tableDetailCallId = null; confirmDeleteId = null; setActiveTab('navContacts'); renderMain();
+  actFormType = 'incontro'; actFormFor = k.contactId;
+  selectedId = k.contactId; view = 'detail'; tableDetailCallId = null; editingCallId = null; confirmDeleteId = null; setActiveTab('navContacts'); renderMain();
   setTimeout(()=>document.getElementById('actFormCard')?.scrollIntoView({ block:'start' }), 0);
+}
+// Clic su un appuntamento (Oggi, riepilogo, calendari, Appuntamenti): se l'incontro c'e' gia' si apre
+// quello; se l'appuntamento e' di oggi o passato e non e' registrato si apre la registrazione
+// dell'incontro; se e' futuro resta la telefonata. Le righe con data-appt-raw aprono la riga stessa.
+document.addEventListener('click', e=>{
+  const el = e.target.closest && e.target.closest('[data-appt-call-id]');
+  if(!el || !db || el.hasAttribute('data-appt-raw') || (e.target.closest('a, button') && !e.target.closest('a, button').hasAttribute('data-appt-call-id'))) return;
+  const k = calls.find(x=>x.id===el.dataset.apptCallId);
+  if(!k || !isPhone(k) || !k.appuntamento) return;
+  const m = meetingOf(k);
+  if(m){ e.preventDefault(); e.stopPropagation(); tableDetailCallId = m.id; editingCallId = null; confirmDeleteCallId = null; renderMain(); return; }
+  if(k.appuntamento.slice(0,10) <= todayISO()){ e.preventDefault(); e.stopPropagation(); openMeetRegister(k); }
 }, true);
 function meetRegisterBtn(k){ return apptToRegister(k) ? `<button type="button" class="btn small" data-meet-register="${k.id}">Registra l'incontro</button>` : ''; }
 // Oggi: appuntamenti degli ultimi 60 giorni gia' passati e senza incontro registrato.
@@ -3967,7 +3981,7 @@ function actDetailBody(k){
     return `<div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
         <div><label>Tipo</label><div>${actTag(k)}</div></div>
         <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}${k.ora ? ' ore '+esc(k.ora) : ''}</div></div>
-        ${from ? `<div><label>Fissato con</label><div style="font-size:14px;"><a href="#" class="addr-link" data-appt-call-id="${from.id}">telefonata del ${fmtDate(from.data)}</a></div></div>` : ''}
+        ${from ? `<div><label>Fissato con</label><div style="font-size:14px;"><a href="#" class="addr-link" data-appt-raw data-appt-call-id="${from.id}">telefonata del ${fmtDate(from.data)}</a></div></div>` : ''}
         ${(k.progetti||[]).length ? `<div><label>Progetti</label><div style="font-size:14px;">${k.progetti.map(id=>{ const pr = projects.find(x=>x.id===id); return pr ? `<a href="#" class="addr-link" data-open-project="${pr.id}">${esc(projectTitle(pr))}</a>` : ''; }).filter(Boolean).join('<br>')}${k.consegnaOfferta ? ' <span class="esito-tag appt">Consegna offerta</span>' : ''}</div></div>` : ''}
       </div>
       <div style="margin-top:14px;"><label>Note dell'incontro</label><div style="font-size:14px;white-space:pre-wrap;">${esc(k.note)||'<span style="color:var(--muted);">Nessuna nota.</span>'}</div></div>`;
@@ -5888,7 +5902,7 @@ function contactHistoryHtml(contactId, projectId){
   if(!list.length) return '<div class="part-history"><div class="empty" style="padding:6px 0;">Nessuna chiamata registrata con questo contatto.</div></div>';
   return `<div class="part-history">${list.map(k=>{
     const linked = (k.progetti||[]).includes(projectId);
-    return `<div class="hist-item ${linked ? 'linked' : ''}" data-appt-call-id="${k.id}">
+    return `<div class="hist-item ${linked ? 'linked' : ''}" data-appt-raw data-appt-call-id="${k.id}">
       <div class="hist-head">
         <span class="hist-date">${isMeet(k) ? 'Incontro' : isMailAct(k) ? 'Mail' : 'Chiamata'} del ${fmtDate(k.data)}</span> ${k.esito || !isPhone(k) ? esitoCell(k) : ''}
         ${linked ? `<span class="hist-tag">${k.consegnaOfferta ? 'questo progetto · consegna offerta' : 'questo progetto'}</span>` : ''}
@@ -6009,7 +6023,7 @@ function projectDetailView(){
     ${projectPortalCardHtml(p)}
     <div class="card">
       <h3>Chiamate e incontri collegati (${linked.length})</h3>
-      ${linked.length ? linked.map(k=>{ const c = byId[k.contactId]||{}; return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
+      ${linked.length ? linked.map(k=>{ const c = byId[k.contactId]||{}; return `<div class="call-item" data-appt-raw data-appt-call-id="${k.id}" style="cursor:pointer;">
         <span class="date">${isMeet(k) ? 'Incontro del '+fmtDate(k.data)+(k.ora ? ' ore '+k.ora : '') : isMailAct(k) ? 'Mail del '+fmtDate(k.data) : k.appuntamento ? 'Chiamata del '+fmtDate(k.data)+' · appuntamento '+fmtDateTime(k.appuntamento) : 'Chiamata del '+fmtDate(k.data)}</span> ${k.consegnaOfferta ? '<span class="esito-tag appt">Consegna offerta</span>' : (!k.appuntamento && k.esito ? esc(k.esito) : '')}
         <div style="font-weight:600;font-size:14px;margin-top:4px;">${esc(fullName(c))}</div>
         ${k.noteIncontro||k.note ? `<div style="font-size:13px;color:var(--muted);">${esc(k.noteIncontro||k.note)}</div>` : ''}
@@ -7148,7 +7162,7 @@ function drillCallsList(list){
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
   return list.length ? list.map(k=>{
     const c = byId[k.contactId]||{};
-    return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
+    return `<div class="call-item" data-appt-raw data-appt-call-id="${k.id}" style="cursor:pointer;">
       <span class="date">${fmtDate(k.data)}</span> ${esitoCell(k)}
       <div style="font-weight:600;font-size:14px;margin-top:4px;">${esc(fullName(c))}</div>
       ${k.progetto?`<div style="font-size:13px;color:var(--muted);">${esc(k.progetto)}</div>`:''}
@@ -7730,6 +7744,8 @@ function bindTableDetail(){
   };
   document.getElementById('openCallContactBtn')?.addEventListener('click', openContact);
   document.querySelectorAll('#main [data-open-project]').forEach(a=>a.addEventListener('click', e=>{ e.preventDefault(); openProject(a.dataset.openProject); }));
+  // collegamenti tra telefonata e incontro (Fissato con / svolto il) dentro il dettaglio
+  document.querySelectorAll('#main [data-appt-call-id]').forEach(a=>a.addEventListener('click', e=>{ e.preventDefault(); tableDetailCallId = a.dataset.apptCallId; editingCallId = null; confirmDeleteCallId = null; renderMain(); }));
   document.getElementById('markMailSentBtn')?.addEventListener('click', async ()=>{
     try{ await db.collection('calls').doc(tableDetailCallId).update({ mailInviataIl: todayISO() }); }
     catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
