@@ -22,7 +22,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
   download, "Fai una copia adesso"): backup JSON di
-  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi}` (version 2; restano fuori
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,mails}` (version 2; restano fuori
   `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
   chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
   manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
@@ -168,7 +168,15 @@ Campi principali:
   (`data-mail-pres`) apre Outlook web (`outlook.office.com/mail/deeplink/compose`, to/subject/body),
   "con l'app di posta" usa mailto:. Testo `MAIL_PRES_DEFAULT` con `{firma}`; `settings.mailPres` {firma,
   oggetto, testo} in Impostazioni; la firma (nome dell'utente) MAI nel codice, il repo e' pubblico.
-  Senza firma chiede di impostarla. Aprendo la mail annota `contacts.mailPresentazioneIl`. Provata e tolta
+  Senza firma chiede di impostarla. Aprendo la mail la registra nella collection `mails` {contactId, data,
+  ora, tipo:'presentazione', oggetto, createdAt} (`logPresentationMail`; chiude anche la "mail informativa"
+  in sospeso del cliente); le vecchie `contacts.mailPresentazioneIl` valgono come una mail (`contactMails`).
+  **Ultimi contatti** (blocco "Mail inviate e ultimi contatti"): riquadro nella scheda contatto
+  (`lastContactsHtml`: ultima telefonata con esito, ultima mail, ultimo incontro; elenco "Mail inviate" con
+  Elimina e conferma inline) e riga "Ultimo contatto" nella registrazione chiamata; `lastActivities(cid)`.
+  "Da ricontattare" conta l'ultima attivita' su ogni canale: se l'ultima e' una mail, richiamo dopo
+  `promemoria.dopoMail` (7) giorni ("mail di presentazione inviata N giorni fa"); anche contatti con sole
+  mail. `lastContactDays` (mappa) e `suggest.mjs` (legge `mails`, passa a Claude solo i giorni) idem. Provata e tolta
   (2026-10-12, non funzionava per l'utente) l'opzione "modello personale di Outlook" con mail aperta vuota;
   un eventuale `mailPres.modello` rimasto in settings e' ignorato. Il deeplink accetta solo testo semplice, quindi il
   GRASSETTO passa dagli appunti: il testo usa `**...**`; al clic `copyMailPres` copia HTML (`mailPresHtml`:

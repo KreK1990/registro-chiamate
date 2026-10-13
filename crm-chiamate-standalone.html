@@ -346,6 +346,11 @@ body.foto-open{overflow:hidden;}
 @keyframes mePulse{0%{box-shadow:0 0 0 1px rgba(0,0,0,.25),0 0 0 0 rgba(26,115,232,.45);}70%{box-shadow:0 0 0 1px rgba(0,0,0,.25),0 0 0 10px rgba(26,115,232,0);}100%{box-shadow:0 0 0 1px rgba(0,0,0,.25),0 0 0 0 rgba(26,115,232,0);}}
 .contact-tools{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:8px;}
 .mail-pres-alt{font-size:12.5px;}
+.last-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px 16px;font-size:13.5px;}
+.last-item{display:flex;flex-direction:column;gap:1px;}
+.last-k{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;}
+.last-mails{margin-top:10px;font-size:13.5px;}
+.last-mails summary{cursor:pointer;color:var(--accent);font-weight:600;}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -876,7 +881,7 @@ function boot(){
 // All'uscita non deve restare nulla dei dati dell'utente precedente.
 function resetSession(){
   contacts = []; calls = []; projects = []; selectedProjectId = null; db = null;
-  appSettings = {}; settingsDocId = null; sops = []; sopEdit = null; spegniFormId = null; backupList = null; backupMsg = '';
+  appSettings = {}; settingsDocId = null; sops = []; sopEdit = null; spegniFormId = null; mails = []; confirmDeleteMailId = null; backupList = null; backupMsg = '';
   forecastHistory = []; historyLoaded = false; projectsSeen = false; clearTimeout(historyTimer);
   aiSugg = undefined; aiBusy = false; aiMsg = '';
   portalImport = null; portalImportStarted = false; portalSaved = new Map(); portalTab = 'esamina';
@@ -1025,6 +1030,7 @@ function startApp(uid){
   unsubscribers.push(db.collection('portale').onSnapshot(onPortalSnapshot, showDataError));
   unsubscribers.push(db.collection('settings').onSnapshot(onSettingsSnapshot, showDataError));
   unsubscribers.push(db.collection('sopralluoghi').onSnapshot(onSopSnapshot, showDataError));
+  unsubscribers.push(db.collection('mails').onSnapshot(onMailsSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -1249,6 +1255,7 @@ function renderMain(){
         ${c.note?`<div style="margin-top:8px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(c.note)}</div>`:''}
         ${followUpBadge(c.followUp,true)}
       </div>
+      ${lastContactsHtml(c)}
       ${studioColleaguesHtml(c)}
       ${contactProjectsHtml(c)}
       ${contactPortalHtml(c)}
@@ -1766,7 +1773,7 @@ function bindSettings(){
 // "Rimanda" nasconde la voce fino a una data (projects/contacts.rimandaAl).
 // Intervalli in Impostazioni (settings.promemoria).
 // ---------------------------------------------------------------------------
-const TODO_DEFAULTS = { sollecito:15, ferma:30, ricontatto:60, nonRaggiunto:7, richiamo:7, attesa:7 };
+const TODO_DEFAULTS = { sollecito:15, ferma:30, ricontatto:60, nonRaggiunto:7, richiamo:7, attesa:7, dopoMail:7 };
 let todoShowAll = { ricontatto:false };
 function todoDays(k){ const v = Number((appSettings.promemoria||{})[k]); return v>0 ? v : TODO_DEFAULTS[k]; }
 function addDaysISO(iso, n){ const d = new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
@@ -1813,25 +1820,26 @@ function contactsToRecall(){
   const yearAgo = addDaysISO(t, -365);
   const byContact = new Map();
   calls.forEach(k=>{ if(k.contactId) (byContact.get(k.contactId) || byContact.set(k.contactId, []).get(k.contactId)).push(k); });
-  const out = [];
+  const out = [], nMail = todoDays('dopoMail');
   contacts.forEach(c=>{
-    const list = byContact.get(c.id);
-    if(!list || !list.length || snoozed(c) || c.spento) return;
+    const list = byContact.get(c.id) || [], lastMail = (contactMails(c.id)[0] || {}).data || '';
+    if((!list.length && !lastMail) || snoozed(c) || c.spento) return;
     if(c.followUp && new Date(c.followUp) > now) return;
     if(list.some(k=>k.appuntamento && new Date(k.appuntamento) > now)) return;
     const projs = projectsOfContact(c.id);
     if(projs.some(isWon) || projs.some(p=>!isLost(p))) return;   // acquisito o in corso: lo segue il progetto
     const sorted = list.slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
-    const last = sorted[0];
+    const last = sorted[0] || {};
     if(sorted.some(k=>k.esito==='Non interessato' && (k.data||'') >= yearAgo)) return;
     const lastAppt = list.map(k=>k.appuntamento||'').filter(a=>a && new Date(a) <= now).sort().pop() || '';
-    const since = [last.data||'', lastAppt.slice(0,10)].sort().pop();
+    const since = [last.data||'', lastAppt.slice(0,10), lastMail].sort().pop();
     if(!since) return;
-    const reached = !ESITI_NON_RAGGIUNTO.includes(last.esito);
+    const viaMail = !!lastMail && lastMail===since && lastMail > (last.data||'') && lastMail > lastAppt.slice(0,10);   // l'ultima attivita' e' la mail
+    const reached = !!last.data && !ESITI_NON_RAGGIUNTO.includes(last.esito);
     const days = daysBetween(since, t);
-    if(days < (reached || lastAppt ? nRag : nNon)) return;
-    const hot = ['Interessato','Da richiamare'].includes(last.esito) ? 0 : lastAppt ? 1 : reached ? 2 : 3;
-    out.push({ c, last, since, days, met: !!lastAppt, reached, hot });
+    if(days < (viaMail ? nMail : reached || lastAppt ? nRag : nNon)) return;
+    const hot = viaMail ? 1 : ['Interessato','Da richiamare'].includes(last.esito) ? 0 : lastAppt ? 1 : reached ? 2 : 3;
+    out.push({ c, last, since, days, met: !!lastAppt, reached, hot, viaMail });
   });
   return out.sort((a,b)=>a.hot - b.hot || b.days - a.days);
 }
@@ -1914,9 +1922,9 @@ function todoCardHtml(){
       <div class="todo-actions"><button class="btn secondary small" data-todo-snooze-p="${p.id}">Rimanda 7 gg</button></div>
     </div>`; }).join('');
   const recallShown = todoShowAll.ricontatto ? recall : recall.slice(0, 8);
-  const recallRows = recallShown.map(({c, last, days, met, reached})=>`<div class="todo-row">
+  const recallRows = recallShown.map(({c, last, days, met, reached, viaMail})=>`<div class="todo-row">
       <div class="todo-main"><span class="name-link" data-contact-id="${c.id}">${esc(fullName(c))}</span>${c.azienda ? `<span class="fc-addr"> · ${esc(c.azienda)}</span>` : ''}
-        <div class="todo-sub">${met ? 'incontrato, nessun progetto' : reached ? 'sentito' : 'non raggiunto'} · ultimo contatto ${days} giorni fa${last.esito ? ` (${esc(last.esito)})` : ''}</div>
+        <div class="todo-sub">${viaMail ? `mail di presentazione inviata ${days} giorni fa${last.data ? ` · ultima telefonata ${fmtDate(last.data)}${last.esito ? ` (${esc(last.esito)})` : ''}` : ''}` : `${met ? 'incontrato, nessun progetto' : reached ? 'sentito' : 'non raggiunto'} · ultimo contatto ${days} giorni fa${last.esito ? ` (${esc(last.esito)})` : ''}`}</div>
         <div class="todo-sub">${phoneLinks(c,'font-size:12.5px;')}</div></div>
       <div class="todo-actions"><button class="btn small" data-todo-call="${c.id}">Richiama</button><button class="btn secondary small" data-todo-snooze-c="${c.id}">Rimanda 30 gg</button></div>
     </div>`).join('') + (recall.length > 8 ? `<button class="btn secondary small" id="todoMoreRecall" style="margin-top:6px;">${todoShowAll.ricontatto ? 'Mostra meno' : `Mostra tutti (${recall.length})`}</button>` : '');
@@ -1925,7 +1933,7 @@ function todoCardHtml(){
     ${total ? '' : '<div class="empty">Niente in sospeso: offerte, commesse e clienti sono tutti seguiti.</div>'}
     ${section(`Offerte da sollecitare (${chase.length})`, `presentate da almeno ${todoDays('sollecito')} giorni senza conferma`, chaseRows)}
     ${section(`Commesse ferme (${stalled.length})`, `prima dell'offerta, nessun passo avanti da ${todoDays('ferma')} giorni`, stalledRows)}
-    ${section(`Da ricontattare (${recall.length})`, `clienti senza progetti in corso, non sentiti da ${todoDays('ricontatto')} giorni (${todoDays('nonRaggiunto')} se non raggiunti)`, recallRows)}
+    ${section(`Da ricontattare (${recall.length})`, `clienti senza progetti in corso, non sentiti da ${todoDays('ricontatto')} giorni (${todoDays('nonRaggiunto')} se non raggiunti, ${todoDays('dopoMail')} dopo una mail)`, recallRows)}
   </div>`;
 }
 function completeCardHtml(){
@@ -1975,6 +1983,7 @@ function promemoriaSettingsHtml(){
       ${f('ricontatto', 'Ricontattare un cliente sentito o incontrato dopo')}
       ${f('nonRaggiunto', 'Riprovare un cliente non raggiunto dopo')}
       ${f('richiamo', 'Chiamata senza risposta: proporre il follow-up dopo')}
+      ${f('dopoMail', 'Richiamare dopo una mail di presentazione dopo')}
     </div>
   </div>`;
 }
@@ -3678,7 +3687,7 @@ document.addEventListener('click', e=>{
   if(b.dataset.mailPresApp) location.href = u.mailto; else window.open(u.outlook, '_blank', 'noopener');
   copied.then(()=>showNotice('Testo della mail <strong>copiato con il grassetto</strong>: nel corpo della mail fai <strong>Incolla</strong> (Ctrl+V, o tieni premuto e Incolla), poi Invia. <button class="btn secondary small" id="noticeClose">Chiudi</button>'))
     .catch(()=>{ if(canCopy) showNotice('Non sono riuscito a copiare il testo: riprova, oppure usa il testo da Impostazioni → Mail di presentazione. <button class="btn secondary small" id="noticeClose">Chiudi</button>'); });
-  db.collection('contacts').doc(c.id).update({ mailPresentazioneIl: todayISO() }).catch(()=>{});
+  logPresentationMail(c, mailPres().oggetto);
 }, true);
 function mailPresSettingsHtml(){
   const m = mailPres();
@@ -3698,6 +3707,68 @@ function bindMailPresSettings(){
   document.getElementById('mpTesto')?.addEventListener('change', e=>save({ testo: e.target.value }));
   document.getElementById('mpReset')?.addEventListener('click', ()=>{ save({ oggetto: '', testo: '' }); document.getElementById('mpOggetto').value = MAIL_PRES_DEFAULT.oggetto; document.getElementById('mpTesto').value = MAIL_PRES_DEFAULT.testo; });
 }
+
+// ---------------------------------------------------------------------------
+// Mail inviate e ultimi contatti. Ogni "Mail di presentazione" aperta viene registrata nella
+// collection "mails" {contactId, data 'YYYY-MM-DD', ora 'HH:MM', tipo:'presentazione', oggetto,
+// createdAt} (le vecchie contacts.mailPresentazioneIl valgono come una mail). Il riquadro "Ultimi
+// contatti" (scheda contatto e registrazione chiamata) mostra ultima telefonata, mail e incontro;
+// le mail registrate per sbaglio si eliminano da li'. "Da ricontattare", le distanze della mappa e i
+// candidati per Claude contano l'ultima attivita' su qualsiasi canale; dopo una mail il richiamo e'
+// proposto dopo promemoria.dopoMail giorni (7).
+// ---------------------------------------------------------------------------
+let mails = [], confirmDeleteMailId = null;
+function onMailsSnapshot(snap){
+  mails = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(m=>m.contactId && m.data);
+  if(canAutoRender()) renderMain();
+}
+function contactMails(cid){
+  const list = mails.filter(m=>m.contactId===cid);
+  const c = contacts.find(x=>x.id===cid);
+  if(c && c.mailPresentazioneIl && !list.some(m=>m.data===c.mailPresentazioneIl)) list.push({ id:'', contactId:cid, data:c.mailPresentazioneIl, tipo:'presentazione', legacy:true });
+  return list.sort((a,b)=>(b.data+(b.ora||'')).localeCompare(a.data+(a.ora||'')));
+}
+function lastActivities(cid){
+  const now = new Date(), mine = calls.filter(k=>k.contactId===cid);
+  const call = mine.slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''))[0] || null;
+  const meet = mine.filter(k=>k.appuntamento && new Date(k.appuntamento) <= now).sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento))[0] || null;
+  const mail = contactMails(cid)[0] || null;
+  const dates = [call && call.data, meet && meet.appuntamento.slice(0,10), mail && mail.data].filter(Boolean).sort();
+  return { call, meet, mail, last: dates.pop() || '' };
+}
+function lastContactsHtml(c){
+  const a = lastActivities(c.id), t = todayISO(), ago = d=>{ const n = daysBetween(d, t); return n===0 ? 'oggi' : n===1 ? 'ieri' : n+' giorni fa'; };
+  const item = (label, html)=>`<div class="last-item"><span class="last-k">${label}</span><span>${html}</span></div>`;
+  const list = contactMails(c.id);
+  return `<div class="card last-card">
+    <h3>Ultimi contatti</h3>
+    <div class="last-grid">
+      ${item('Telefonata', a.call ? `${fmtDate(a.call.data)} · ${ago(a.call.data)}${a.call.esito ? ` · ${esc(a.call.esito)}` : ''}` : '<span class="fc-note">nessuna</span>')}
+      ${item('Mail', a.mail ? `${fmtDate(a.mail.data)} · ${ago(a.mail.data)} · presentazione` : '<span class="fc-note">nessuna</span>')}
+      ${item('Incontro', a.meet ? `${fmtDate(a.meet.appuntamento.slice(0,10))} · ${ago(a.meet.appuntamento.slice(0,10))}` : '<span class="fc-note">nessuno</span>')}
+    </div>
+    ${list.length ? `<details class="last-mails" ${list.some(m=>m.id && m.id===confirmDeleteMailId) ? 'open' : ''}><summary>Mail inviate (${list.length})</summary>
+      ${list.map(m=>`<div class="todo-row"><div class="todo-main">${fmtDate(m.data)}${m.ora ? ' ore '+esc(m.ora) : ''} · mail di presentazione${m.oggetto ? `<div class="todo-sub">${esc(m.oggetto)}</div>` : ''}</div>
+        ${m.id ? `<div class="todo-actions">${confirmDeleteMailId===m.id ? `<span style="color:var(--danger);font-size:12.5px;font-weight:600;">Togliere questa mail (non inviata)?</span><button class="btn small" data-mail-del-yes="${m.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button><button class="btn secondary small" data-mail-del-no>No</button>` : `<button class="btn secondary small" data-mail-del="${m.id}">Elimina</button>`}</div>` : ''}</div>`).join('')}
+    </details>` : ''}
+  </div>`;
+}
+async function logPresentationMail(c, oggetto){
+  const now = new Date(), pad = n=>String(n).padStart(2,'0');
+  try{
+    await db.collection('mails').add({ contactId:c.id, data: todayISO(), ora: `${pad(now.getHours())}:${pad(now.getMinutes())}`, tipo:'presentazione', oggetto: oggetto||'', createdAt: Date.now() });
+    if(pendingMailGroups().some(g=>g.contactId===c.id)) await markMailSent(c.id);   // la mail informativa in sospeso e' questa
+  }catch(e){ console.warn('Mail non registrata:', e); }
+}
+document.addEventListener('click', e=>{
+  const t = e.target.closest && e.target.closest('[data-mail-del], [data-mail-del-no], [data-mail-del-yes]');
+  if(!t || !db) return;
+  e.preventDefault(); e.stopPropagation();
+  if(t.dataset.mailDel){ confirmDeleteMailId = t.dataset.mailDel; renderMain(); return; }
+  if(t.hasAttribute('data-mail-del-no')){ confirmDeleteMailId = null; renderMain(); return; }
+  const id = t.dataset.mailDelYes; confirmDeleteMailId = null; t.disabled = true;
+  db.collection('mails').doc(id).delete().then(()=>renderMain()).catch(err=>alert('Errore: '+(err.message||err.code||'')));
+});
 
 // ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
@@ -3851,7 +3922,7 @@ function mapMissingHtml(){
       ${noAddrList.map(c=>`<div class="todo-row"><div class="todo-main"><span class="name-link" data-map-contact="${c.id}">${esc(fullName(c))}</span>${c.azienda ? `<span class="fc-addr"> · ${esc(c.azienda)}</span>` : ''}<div class="todo-sub">senza indirizzo</div></div></div>`).join('')}` : ''}
   </details>`;
 }
-function lastContactDays(c){ const d = calls.filter(k=>k.contactId===c.id).map(k=>k.data||'').sort().pop(); return d ? daysBetween(d, todayISO()) : null; }
+function lastContactDays(c){ const d = lastActivities(c.id).last; return d ? daysBetween(d, todayISO()) : null; }
 function mapPopupHtml(pt){
   if(pt.kind==='sop'){ const s = pt.s;
     return `<div class="map-pop"><div class="fc-note">Sopralluogo · ${fmtDateTime(s.quando)}</div><strong>${esc(sopTitle(s))}</strong><div>${esc(pt.addr)}</div>
@@ -7146,6 +7217,7 @@ function renderCallFlow(){
     <div class="card">
       <div class="top-actions" style="margin-bottom:4px;"><button class="btn secondary small" id="changeContactBtn">Cambia contatto</button></div>
       <h3>Chiamata con ${esc(fullName(c))}</h3>
+      ${(()=>{ const a = lastActivities(c.id); return a.last ? `<div class="fc-note" style="margin:-4px 0 10px;">Ultimo contatto: ${[a.call && 'telefonata '+fmtDate(a.call.data)+(a.call.esito ? ' ('+esc(a.call.esito)+')' : ''), a.mail && 'mail '+fmtDate(a.mail.data), a.meet && 'incontro '+fmtDate(a.meet.appuntamento.slice(0,10))].filter(Boolean).join(' · ')}</div>` : ''; })()}
       ${isOff(c) ? `<div class="pdf-warn" style="margin:-4px 0 10px;">Contatto spento (${esc(spentoLabel(c))}): se torna attuale riattivalo dalla sua scheda.</div>` : ''}
       ${(c.cellulare||c.telefono)?`<div style="margin:-6px 0 12px;font-size:15px;">${phoneLinks(c)}</div>`:''}
       <div class="field-row">

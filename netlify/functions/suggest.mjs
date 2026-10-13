@@ -23,7 +23,7 @@ const isLost = (p) => p.esito === 'persa';
 const isWon = (p, today) => !isLost(p) && phaseDone(p, 'confermaOrdine', today);
 
 // Candidati e dati anonimi per Claude (stesse esclusioni della lista "Da ricontattare").
-function buildCandidates(contacts, calls, projects, today) {
+function buildCandidates(contacts, calls, projects, today, mails = []) {
   const now = new Date();
   const yearAgo = new Date(now.getTime() - 365 * 864e5).toISOString().slice(0, 10);
   const byContact = new Map();
@@ -41,7 +41,9 @@ function buildCandidates(contacts, calls, projects, today) {
     const sorted = list.slice().sort((a, b) => (b.data || '').localeCompare(a.data || ''));
     if (sorted.some((k) => k.esito === 'Non interessato' && (k.data || '') >= yearAgo)) return;
     const meetings = list.filter((k) => k.appuntamento && new Date(k.appuntamento) <= now).map((k) => k.appuntamento.slice(0, 10));
-    const last = [sorted[0].data || '', ...meetings].sort().pop();
+    // anche le mail di presentazione contano come contatto (collection "mails")
+    const mailDates = mails.filter((m) => m.contactId === c.id).map((m) => m.data || '').concat(c.mailPresentazioneIl ? [c.mailPresentazioneIl] : []);
+    const last = [sorted[0].data || '', ...meetings, ...mailDates].sort().pop();
     if (!last || days(last, today) < MIN_DAYS) return;
     out.push({
       id: c.id,
@@ -50,6 +52,7 @@ function buildCandidates(contacts, calls, projects, today) {
         giorni_dall_ultimo_contatto: days(last, today),
         chiamate: sorted.slice(0, 6).map((k) => ({ giorni_fa: days(k.data, today), esito: k.esito || 'non indicato', incontro_fissato: !!k.appuntamento })),
         incontri_svolti: meetings.length,
+        mail_di_presentazione: mailDates.filter(Boolean).map((d) => ({ giorni_fa: days(d, today) })),
         commesse_confermate: projs.filter((p) => isWon(p, today)).length,
         commesse_perse: projs.filter(isLost).length,
       },
@@ -103,9 +106,9 @@ export default async function handler(req) {
     if (runs >= MAX_RUNS_PER_DAY) return json(429, { error: `Oggi hai già chiesto ${runs} analisi: riprova domani.` });
 
     const base = db.collection('users').doc(uid);
-    const [cs, ks, ps] = await Promise.all(['contacts', 'calls', 'projects'].map((n) => base.collection(n).get()));
+    const [cs, ks, ps, ms] = await Promise.all(['contacts', 'calls', 'projects', 'mails'].map((n) => base.collection(n).get()));
     const docs = (s) => s.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const candidates = buildCandidates(docs(cs), docs(ks), docs(ps), today);
+    const candidates = buildCandidates(docs(cs), docs(ks), docs(ps), today, docs(ms));
     if (!candidates.length) {
       const empty = { items: [], data: today, analisi: runs + 1, candidati: 0, creatoIl: Date.now() };
       await ref.set(empty);

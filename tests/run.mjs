@@ -655,7 +655,34 @@ await test('mail di presentazione: firma richiesta, poi Outlook con destinatario
   expect(clip.txt.startsWith('Buongiorno, sono Geom. Prova Test, Tecnico Commerciale Schöck GmbH.') && !clip.txt.includes('**'), 'appunti (testo): ' + clip.txt.slice(0, 200));
   expect((await page.textContent('#noticeBar')).includes('copiato con il grassetto'), 'manca l\'indicazione di incollare');
   await pop.close();
-  await page.waitForFunction(() => (window.__fake.docs('contacts').find(c => c.id === 'c1') || {}).mailPresentazioneIl);
+  await page.waitForFunction(() => window.__fake.docs('mails').some(m => m.contactId === 'c1' && m.tipo === 'presentazione' && m.oggetto.includes('Isokorb')));
+  await show_(page, 'detail', "selectedId='c1'");
+  await page.waitForFunction(() => /Mail[\s\S]*presentazione/i.test(document.querySelector('.last-card').innerText));
+  // registrata per sbaglio: si toglie
+  await page.click('.last-mails summary');
+  await page.click('.last-mails [data-mail-del]');
+  await page.click('.last-mails [data-mail-del-yes]');
+  await page.waitForFunction(() => !window.__fake.docs('mails').some(m => m.contactId === 'c1'));
+});
+
+await test('ultimi contatti: la mail conta per i promemoria Da ricontattare', async () => {
+  await page.evaluate(([d10, d100, d2]) => {
+    window.__fake.put('contacts', 'c7', { nome: 'Solo', cognome: 'Mail' });
+    window.__fake.put('mails', 'm7', { contactId: 'c7', data: d10, ora: '10:00', tipo: 'presentazione', oggetto: 'x' });
+    window.__fake.put('contacts', 'c8', { nome: 'Vecchio', cognome: 'Cliente' });
+    window.__fake.put('calls', 'k8', { contactId: 'c8', data: d100, esito: 'Interessato', note: '' });
+  }, [daysAgo(10), daysAgo(100), daysAgo(2)]);
+  await page.waitForFunction(() => mails.some(m => m.id === 'm7') && calls.some(k => k.id === 'k8'));
+  let txt = await show_(page, 'agenda');
+  expect(txt.includes('Mail Solo') && txt.includes('mail di presentazione inviata 10 giorni fa'), 'contatto con sola mail non proposto:\n' + txt.slice(0, 2000));
+  expect(txt.includes('Cliente Vecchio'), 'il cliente fermo da 100 giorni doveva essere da ricontattare');
+  await page.evaluate(d2 => window.__fake.put('mails', 'm8', { contactId: 'c8', data: d2, ora: '09:00', tipo: 'presentazione', oggetto: 'x' }), daysAgo(2));
+  await page.waitForFunction(() => mails.some(m => m.id === 'm8'));
+  txt = await show_(page, 'agenda');
+  expect(!txt.includes('Cliente Vecchio'), 'dopo una mail di 2 giorni fa il cliente non va ancora richiamato');
+  await show_(page, 'detail', "selectedId='c8'");
+  const last = await page.textContent('.last-card');
+  expect(last.includes('Interessato') && /Mail[\s\S]*2 giorni fa/i.test(last), 'riquadro ultimi contatti: ' + last);
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
