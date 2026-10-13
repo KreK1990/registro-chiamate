@@ -351,6 +351,12 @@ body.foto-open{overflow:hidden;}
 .last-k{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;}
 .last-mails{margin-top:10px;font-size:13.5px;}
 .last-mails summary{cursor:pointer;color:var(--accent);font-weight:600;}
+.act-types{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 10px;}
+.act-pill{padding:7px 14px;border:1px solid var(--border-strong);border-radius:2px;background:var(--panel);color:var(--text);font:600 13.5px var(--sans);cursor:pointer;}
+.act-pill.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.act-tag{display:inline-block;padding:1px 7px;border-radius:2px;font-size:11.5px;font-weight:600;color:#fff;background:#00487E;}
+.act-tag.incontro{background:#7a4fb5;}
+.act-tag.mail{background:#3d4650;}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -734,14 +740,14 @@ h2{color:var(--accent);font-weight:800;}
       <div class="nav">
         <button id="navAgenda" class="active">Oggi<span id="mailBadge" class="nav-badge hidden"></span></button>
         <button id="navContacts">Contatti</button>
-        <button id="navCall">Chiamata</button>
+        <button id="navCall">Attività</button>
         <button id="navFollowup">Follow-up<span id="fuBadge" class="nav-badge hidden"></span></button>
         <button id="navAppt">Appuntamenti</button>
         <button id="navProjects">Progetti</button>
         <button id="navDeliveries">Consegne<span id="delBadge" class="nav-badge hidden"></span></button>
         <button id="navMap">Mappa</button>
         <button id="navForecast">Forecast</button>
-        <button id="navTable">Tabella chiamate</button>
+        <button id="navTable">Tabella attività</button>
         <button id="navDashboard">Dashboard</button>
         <button id="navSettings">Impostazioni</button>
       </div>
@@ -881,7 +887,7 @@ function boot(){
 // All'uscita non deve restare nulla dei dati dell'utente precedente.
 function resetSession(){
   contacts = []; calls = []; projects = []; selectedProjectId = null; db = null;
-  appSettings = {}; settingsDocId = null; sops = []; sopEdit = null; spegniFormId = null; mails = []; confirmDeleteMailId = null; backupList = null; backupMsg = '';
+  appSettings = {}; settingsDocId = null; sops = []; sopEdit = null; spegniFormId = null; confirmDeleteMailId = null; actPrefill = null; actFormType = 'telefonata'; callsSeen = false; backupList = null; backupMsg = '';
   forecastHistory = []; historyLoaded = false; projectsSeen = false; clearTimeout(historyTimer);
   aiSugg = undefined; aiBusy = false; aiMsg = '';
   portalImport = null; portalImportStarted = false; portalSaved = new Map(); portalTab = 'esamina';
@@ -1021,6 +1027,7 @@ function startApp(uid){
   }, showDataError));
   unsubscribers.push(db.collection('calls').onSnapshot(snap=>{
     calls = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    callsSeen = true;
     if(canAutoRender()) renderMain();
     renderFooter();
     renderSidebarToday();
@@ -1030,7 +1037,6 @@ function startApp(uid){
   unsubscribers.push(db.collection('portale').onSnapshot(onPortalSnapshot, showDataError));
   unsubscribers.push(db.collection('settings').onSnapshot(onSettingsSnapshot, showDataError));
   unsubscribers.push(db.collection('sopralluoghi').onSnapshot(onSopSnapshot, showDataError));
-  unsubscribers.push(db.collection('mails').onSnapshot(onMailsSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -1260,7 +1266,7 @@ function renderMain(){
       ${contactProjectsHtml(c)}
       ${contactPortalHtml(c)}
       <div class="card">
-        <h3>Storico chiamate (${myCalls.length})</h3>
+        <h3>Storico attività (${myCalls.length})</h3>
         ${myCalls.length? `<div class="table-wrap"><table class="calls-table">
           <thead><tr><th>Data</th><th>Esito</th><th>Progetto</th><th>Note</th></tr></thead>
           <tbody>${myCalls.map(k=>`<tr data-call-id="${k.id}" class="${isApptCall(k)?'row-appt':''}" style="cursor:pointer;">
@@ -1269,23 +1275,29 @@ function renderMain(){
             <td>${esc(k.progetto||'—')}</td>
             <td>${esc(k.note||'—')}</td>
           </tr>`).join('')}</tbody>
-        </table></div>` : '<div class="empty">Nessuna chiamata registrata.</div>'}
+        </table></div>` : '<div class="empty">Nessuna attività registrata.</div>'}
       </div>
-      <div class="card">
-        <h3>Registra una nuova chiamata</h3>
+      <div class="card" id="actFormCard">
+        <h3>Registra un'attività</h3>
+        ${actTypePills()}
         <div class="field-row">
-          <div><label>Data</label><input type="date" id="callDate" value="${todayISO()}"></div>
-          <div><label>Esito</label><select id="callEsito">
+          <div><label>Data</label><input type="date" id="callDate" value="${actPf(c).data || todayISO()}"></div>
+          <div class="act-sec" data-act-sec="telefonata"><label>Esito</label><select id="callEsito">
             <option>Interessato</option><option>Da richiamare</option><option>Appuntamento fissato</option>
             <option>Non interessato</option><option>Nessuna risposta</option><option>Filtrato dalla segreteria</option><option>Altro</option>
           </select></div>
         </div>
+        ${actMeetHtml('call', c)}
+        ${actMailHtml('call')}
+        <div class="act-sec" data-act-sec="telefonata">
         <label>Note sulla chiamata</label>
         <textarea id="callNote" placeholder="Cosa vi siete detti..."></textarea>
         <label>Progetto / argomento trattato</label>
         <input id="callProgetto" placeholder="Es. Ristrutturazione Via Roma 12" value="${esc(portalCallValue(c))}">
         ${portalCallSuggestHtml(c, 'callProgetto')}
-        ${apptProjectsHtml(c.id)}
+        </div>
+        <div class="act-sec" data-act-sec="telefonata incontro">${apptProjectsHtml(c.id, actPf(c).progetti)}</div>
+        <div class="act-sec" data-act-sec="telefonata">
         <label style="margin-top:10px;">Email del cliente</label>
         <input id="callEmail" type="email" inputmode="email" autocomplete="off" value="${esc(c.email||'')}" placeholder="Se te la comunica, viene salvata nella scheda">
         <label style="display:flex;align-items:center;gap:7px;margin-top:8px;cursor:pointer;"><input type="checkbox" id="callMailCheck" style="width:auto;">Promemoria: inviare mail informativa</label>
@@ -1298,14 +1310,15 @@ function renderMain(){
           ${tripBoxHtml('callApptDate|callApptTime||c:'+c.id)}
           <div class="planner" data-planner="callApptDate|callApptTime"></div>
         </div>
+        </div>
         <label style="margin-top:10px;">Prossimo follow-up (opzionale)</label>
         <div class="field-row">
           <div><label>Data</label><input type="date" id="callFollowUpDate" value="${splitDT(c.followUp).date}"></div>
           <div><label>Ora</label><select id="callFollowUpTime">${timeOptions(splitDT(c.followUp).time)}</select></div>
         </div>
-        <button class="btn block" id="saveCallBtn">Salva chiamata</button>
+        <button class="btn block" id="saveCallBtn">Salva telefonata</button>
       </div>`;
-    document.getElementById('saveCallBtn').addEventListener('click', saveCall);
+    bindActForm({ prefix:'call', date:'callDate', fuDate:'callFollowUpDate', fuTime:'callFollowUpTime', saveBtn:'saveCallBtn', phoneSave: saveCall, contactId: ()=>selectedId, done: ()=>renderMain() });
     bindAutoFollowUp('callEsito', 'callFollowUpDate', 'callFollowUpTime', 'callDate');
     bindContactOff(c);
     document.getElementById('vcardBtn')?.addEventListener('click', ()=>downloadVCard(c));
@@ -1619,6 +1632,7 @@ function onSettingsSnapshot(snap){
   const d = snap.docs[0];
   settingsDocId = d ? d.id : null;
   appSettings = d ? d.data() : {};
+  if(!appSettings.attivitaV2) setTimeout(migrateActivities, 2500);   // incontri separati dalle telefonate (una volta)
   scheduleForecastSnapshot();
   if(canAutoRender() && (view==='settings' || view==='forecast' || view==='agenda')) renderMain();
 }
@@ -1639,8 +1653,8 @@ async function exportAllExcel(){
   const sheets = [];
   sheets.push(['Contatti', [['Cognome','Nome','Professione','Studio/Attività','Cellulare','Telefono studio','Email','Via','Città','Tag','Follow-up','Note'],
     ...contacts.slice().sort((a,b)=>fullName(a).localeCompare(fullName(b))).map(c=>[c.cognome||'', c.nome||'', c.professione||'', c.azienda||'', c.cellulare||'', c.telefono||'', c.email||'', c.via||'', c.citta||'', c.tag||'', c.followUp ? fmtDateTime(c.followUp) : '', c.note||''])]]);
-  sheets.push(['Chiamate', [['Data','Contatto','Studio/Attività','Esito','Argomento','Progetti','Note','Appuntamento','Note incontro','Mail informativa'],
-    ...calls.map(k=>{ const c = byId[k.contactId]||{}; return [cellDate(k.data), fullName(c), c.azienda||'', k.esito||'', k.progetto||'',
+  sheets.push(['Attività', [['Data','Tipo','Contatto','Studio/Attività','Esito','Argomento / oggetto','Progetti','Note','Appuntamento','Note incontro','Mail informativa'],
+    ...calls.map(k=>{ const c = byId[k.contactId]||{}; return [cellDate(k.data), actLabel(k), fullName(c), c.azienda||'', k.esito||'', k.progetto||k.oggetto||'',
       (k.progetti||[]).map(id=>projById[id] ? projById[id].codice : '').filter(Boolean).join(', '), k.note||'', k.appuntamento ? fmtDateTime(k.appuntamento) : '', k.noteIncontro||'',
       k.mailDaInviare ? (k.mailInviataIl ? 'inviata il '+fmtDate(k.mailInviataIl) : 'da inviare') : '']; })]]);
   const phaseCols = PROJECT_PHASES.map(ph=>ph.label);
@@ -1787,8 +1801,8 @@ function projectContactActivity(p){
   const ids = new Set((p.partecipanti||[]).map(x=>x.contactId)), now = new Date(), t = todayISO();
   const mine = calls.filter(k=>ids.has(k.contactId));
   return {
-    lastCall: mine.filter(k=>k.data && k.data <= t).sort((a,b)=>b.data.localeCompare(a.data))[0] || null,
-    lastMeet: mine.filter(k=>k.appuntamento && new Date(k.appuntamento) <= now).sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento))[0] || null
+    lastCall: mine.filter(k=>isPhone(k) && k.data && k.data <= t).sort((a,b)=>b.data.localeCompare(a.data))[0] || null,
+    lastMeet: mine.filter(k=>(isMeet(k) && k.data <= t) || (isPhone(k) && k.appuntamento && new Date(k.appuntamento) <= now && !meetingOf(k))).sort((a,b)=>meetDate(b).localeCompare(meetDate(a)))[0] || null
   };
 }
 // Ultima telefonata o incontro indicati come relativi al progetto (calls.progetti): contano
@@ -1828,10 +1842,10 @@ function contactsToRecall(){
     if(list.some(k=>k.appuntamento && new Date(k.appuntamento) > now)) return;
     const projs = projectsOfContact(c.id);
     if(projs.some(isWon) || projs.some(p=>!isLost(p))) return;   // acquisito o in corso: lo segue il progetto
-    const sorted = list.slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    const sorted = list.filter(isPhone).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
     const last = sorted[0] || {};
     if(sorted.some(k=>k.esito==='Non interessato' && (k.data||'') >= yearAgo)) return;
-    const lastAppt = list.map(k=>k.appuntamento||'').filter(a=>a && new Date(a) <= now).sort().pop() || '';
+    const lastAppt = [...list.filter(k=>isPhone(k) && k.appuntamento && new Date(k.appuntamento) <= now).map(k=>k.appuntamento), ...list.filter(k=>isMeet(k) && k.data <= t).map(k=>k.data+'T'+(k.ora||'00:00'))].sort().pop() || '';
     const since = [last.data||'', lastAppt.slice(0,10), lastMail].sort().pop();
     if(!since) return;
     const viaMail = !!lastMail && lastMail===since && lastMail > (last.data||'') && lastMail > lastAppt.slice(0,10);   // l'ultima attivita' e' la mail
@@ -1885,7 +1899,7 @@ function todoActivityHtml(p){
     </div>`;
   };
   return (lastCall ? line(lastCall, 'Telefonata', lastCall.data) : '')
-    + (lastMeet ? line(lastMeet, 'Incontro', lastMeet.appuntamento.slice(0,10)) : '');
+    + (lastMeet ? line(lastMeet, 'Incontro', meetDate(lastMeet)) : '');
 }
 // Riquadro a se' in Oggi, apribile e richiudibile: aperto quando ci sono commesse in attesa
 // (finche' l'utente non lo chiude: waitingOpen ricorda la scelta nella sessione), chiuso se non ce ne sono.
@@ -3717,23 +3731,22 @@ function bindMailPresSettings(){
 // candidati per Claude contano l'ultima attivita' su qualsiasi canale; dopo una mail il richiamo e'
 // proposto dopo promemoria.dopoMail giorni (7).
 // ---------------------------------------------------------------------------
-let mails = [], confirmDeleteMailId = null;
-function onMailsSnapshot(snap){
-  mails = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(m=>m.contactId && m.data);
-  if(canAutoRender()) renderMain();
-}
+let confirmDeleteMailId = null;
+// mail = attivita' di tipo 'mail' in calls (piu' le vecchie contacts.mailPresentazioneIl)
 function contactMails(cid){
-  const list = mails.filter(m=>m.contactId===cid);
+  const list = calls.filter(k=>isMailAct(k) && k.contactId===cid);
   const c = contacts.find(x=>x.id===cid);
-  if(c && c.mailPresentazioneIl && !list.some(m=>m.data===c.mailPresentazioneIl)) list.push({ id:'', contactId:cid, data:c.mailPresentazioneIl, tipo:'presentazione', legacy:true });
+  if(c && c.mailPresentazioneIl && !list.some(m=>m.data===c.mailPresentazioneIl)) list.push({ id:'', contactId:cid, data:c.mailPresentazioneIl, tipo:'mail', sottotipo:'presentazione', legacy:true });
   return list.sort((a,b)=>(b.data+(b.ora||'')).localeCompare(a.data+(a.ora||'')));
 }
 function lastActivities(cid){
   const now = new Date(), mine = calls.filter(k=>k.contactId===cid);
-  const call = mine.slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''))[0] || null;
-  const meet = mine.filter(k=>k.appuntamento && new Date(k.appuntamento) <= now).sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento))[0] || null;
+  const t = todayISO();
+  const call = mine.filter(isPhone).sort((a,b)=>(b.data||'').localeCompare(a.data||''))[0] || null;
+  // incontro: attivita' Incontro, o appuntamento passato non ancora registrato
+  const meet = mine.filter(k=>(isMeet(k) && k.data <= t) || (isPhone(k) && k.appuntamento && new Date(k.appuntamento) <= now && !meetingOf(k))).sort((a,b)=>meetDate(b).localeCompare(meetDate(a)))[0] || null;
   const mail = contactMails(cid)[0] || null;
-  const dates = [call && call.data, meet && meet.appuntamento.slice(0,10), mail && mail.data].filter(Boolean).sort();
+  const dates = [call && call.data, meet && meetDate(meet), mail && mail.data].filter(Boolean).sort();
   return { call, meet, mail, last: dates.pop() || '' };
 }
 function lastContactsHtml(c){
@@ -3744,8 +3757,8 @@ function lastContactsHtml(c){
     <h3>Ultimi contatti</h3>
     <div class="last-grid">
       ${item('Telefonata', a.call ? `${fmtDate(a.call.data)} · ${ago(a.call.data)}${a.call.esito ? ` · ${esc(a.call.esito)}` : ''}` : '<span class="fc-note">nessuna</span>')}
-      ${item('Mail', a.mail ? `${fmtDate(a.mail.data)} · ${ago(a.mail.data)} · presentazione` : '<span class="fc-note">nessuna</span>')}
-      ${item('Incontro', a.meet ? `${fmtDate(a.meet.appuntamento.slice(0,10))} · ${ago(a.meet.appuntamento.slice(0,10))}` : '<span class="fc-note">nessuno</span>')}
+      ${item('Mail', a.mail ? `${fmtDate(a.mail.data)} · ${ago(a.mail.data)}${a.mail.sottotipo==='presentazione' ? ' · presentazione' : a.mail.oggetto ? ' · '+esc(a.mail.oggetto) : ''}` : '<span class="fc-note">nessuna</span>')}
+      ${item('Incontro', a.meet ? `${fmtDate(meetDate(a.meet))} · ${ago(meetDate(a.meet))}${apptToRegister(a.meet) ? ' · da registrare' : ''}` : '<span class="fc-note">nessuno</span>')}
     </div>
     ${list.length ? `<details class="last-mails" ${list.some(m=>m.id && m.id===confirmDeleteMailId) ? 'open' : ''}><summary>Mail inviate (${list.length})</summary>
       ${list.map(m=>`<div class="todo-row"><div class="todo-main">${fmtDate(m.data)}${m.ora ? ' ore '+esc(m.ora) : ''} · mail di presentazione${m.oggetto ? `<div class="todo-sub">${esc(m.oggetto)}</div>` : ''}</div>
@@ -3756,7 +3769,7 @@ function lastContactsHtml(c){
 async function logPresentationMail(c, oggetto){
   const now = new Date(), pad = n=>String(n).padStart(2,'0');
   try{
-    await db.collection('mails').add({ contactId:c.id, data: todayISO(), ora: `${pad(now.getHours())}:${pad(now.getMinutes())}`, tipo:'presentazione', oggetto: oggetto||'', createdAt: Date.now() });
+    await db.collection('calls').add({ tipo:'mail', sottotipo:'presentazione', contactId:c.id, data: todayISO(), ora: `${pad(now.getHours())}:${pad(now.getMinutes())}`, oggetto: oggetto||'', note:'', createdAt: Date.now() });
     if(pendingMailGroups().some(g=>g.contactId===c.id)) await markMailSent(c.id);   // la mail informativa in sospeso e' questa
   }catch(e){ console.warn('Mail non registrata:', e); }
 }
@@ -3767,8 +3780,236 @@ document.addEventListener('click', e=>{
   if(t.dataset.mailDel){ confirmDeleteMailId = t.dataset.mailDel; renderMain(); return; }
   if(t.hasAttribute('data-mail-del-no')){ confirmDeleteMailId = null; renderMain(); return; }
   const id = t.dataset.mailDelYes; confirmDeleteMailId = null; t.disabled = true;
-  db.collection('mails').doc(id).delete().then(()=>renderMain()).catch(err=>alert('Errore: '+(err.message||err.code||'')));
+  db.collection('calls').doc(id).delete().then(()=>renderMain()).catch(err=>alert('Errore: '+(err.message||err.code||'')));
 });
+
+// ---------------------------------------------------------------------------
+// Attivita' (2026-10-13, richiesta dell'utente): la collection "calls" contiene attivita' di tre
+// tipi, campo `tipo`: 'telefonata' (anche se manca, i dati vecchi), 'incontro', 'mail'.
+// - telefonata: come prima (esito, note, progetto, progetti, appuntamento = incontro FISSATO).
+// - incontro: incontro SVOLTO {data, ora, note, progetti, consegnaOfferta, daAppuntamento: id della
+//   telefonata che l'aveva fissato}; la telefonata riceve incontroId. Un appuntamento passato senza
+//   incontro e' "da registrare" (Oggi e Appuntamenti -> "Registra l'incontro").
+// - mail: {data, ora, oggetto, note, testo (mail incollata), sottotipo 'presentazione' se nata dal
+//   pulsante "Mail di presentazione"}.
+// Il modulo (scheda contatto e "Attivita'") ha il selettore del tipo (`actFormType`, sezioni
+// [data-act-sec]); `actPrefill` precompila un incontro da un appuntamento. `migrateActivities` (una
+// volta, settings.attivitaV2) separa dalle telefonate gli incontri passati, dopo una copia di sicurezza.
+// ---------------------------------------------------------------------------
+const ACT_TYPES = [['telefonata', 'Telefonata'], ['incontro', 'Incontro'], ['mail', 'Mail']];
+function actType(k){ return (k && k.tipo) || 'telefonata'; }
+function isPhone(k){ return actType(k)==='telefonata'; }
+function isMeet(k){ return actType(k)==='incontro'; }
+function isMailAct(k){ return actType(k)==='mail'; }
+function actLabel(k){ return isMeet(k) ? 'Incontro' : isMailAct(k) ? 'Mail' : 'Telefonata'; }
+function actTag(k){ return `<span class="act-tag ${actType(k)}">${actLabel(k)}</span>`; }
+// incontro svolto collegato a un appuntamento (telefonata con appuntamento)
+function meetingOf(k){ return k && k.appuntamento ? calls.find(x=>isMeet(x) && (x.id===k.incontroId || x.daAppuntamento===k.id)) || null : null; }
+function apptToRegister(k){ return !!(k && isPhone(k) && k.appuntamento && new Date(k.appuntamento) <= new Date() && !meetingOf(k)); }
+function meetDate(k){ return isMeet(k) ? k.data : (k.appuntamento||'').slice(0,10); }
+let actFormType = 'telefonata', actPrefill = null, actFormFor = null;   // actPrefill = {contactId, data, ora, progetti, daAppuntamento}
+function actPf(c){
+  if(actPrefill && actPrefill.contactId!==c.id) actPrefill = null;
+  if(actFormFor!==c.id){ actFormFor = c.id; if(!actPrefill) actFormType = 'telefonata'; }   // altro cliente: si riparte dalla telefonata
+  return actPrefill || {};
+}
+function actTypePills(){
+  return `<div class="act-types" role="radiogroup" aria-label="Tipo di attività">${ACT_TYPES.map(([k, l])=>`<button type="button" class="act-pill ${actFormType===k ? 'on' : ''}" data-act-type="${k}" role="radio" aria-checked="${actFormType===k}">${l}</button>`).join('')}</div>`;
+}
+function actMeetHtml(prefix, c){
+  const pf = actPf(c), from = pf.daAppuntamento ? calls.find(x=>x.id===pf.daAppuntamento) : null;
+  return `<div class="act-sec" data-act-sec="incontro">
+    ${from ? `<div class="fc-note" style="margin:2px 0 6px;">Incontro dell'appuntamento fissato con la telefonata del ${fmtDate(from.data)}.</div>` : ''}
+    <label>Ora dell'incontro</label><select id="${prefix}MeetTime">${timeOptions(pf.ora || '')}</select>
+    <label>Note dell'incontro</label><textarea id="${prefix}MeetNote" placeholder="Com'è andato, cosa avete deciso, prossimi passi…"></textarea>
+  </div>`;
+}
+function actMailHtml(prefix){
+  return `<div class="act-sec" data-act-sec="mail">
+    <label>Oggetto</label><input id="${prefix}MailSubj" placeholder="Oggetto della mail">
+    <label>Note</label><textarea id="${prefix}MailNote" placeholder="Due righe su cosa hai scritto o ricevuto…"></textarea>
+    <label>Oppure incolla qui la mail (facoltativo)</label>
+    <textarea id="${prefix}MailPaste" rows="5" placeholder="Copia la mail da Outlook e incollala: oggetto e data si compilano da soli"></textarea>
+    <div class="fc-note" id="${prefix}MailParsed"></div>
+  </div>`;
+}
+// Mail incollata: oggetto, data/ora e destinatario dalle righe "Oggetto:", "Inviato:"/"Data:", "A:".
+const MESI_IT = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+const MONTHS_EN = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+function parsePastedMail(t){
+  const line = re=>{ const m = re.exec(t||''); return m ? m[1].trim() : ''; };
+  const oggetto = line(/^\s*(?:Oggetto|Subject)\s*:\s*(.+)$/mi);
+  const sent = line(/^\s*(?:Inviato|Data|Sent|Date)\s*:\s*(.+)$/mi);
+  const a = line(/^\s*(?:A|To)\s*:\s*(.+)$/mi);
+  let data = '', ora = '';
+  const pad = n=>String(n).padStart(2,'0');
+  let m = /(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/.exec(sent);
+  if(m) data = `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  else {
+    const low = sent.toLowerCase();
+    m = /(\d{1,2})\s+([a-zà]+)\s+(\d{4})/.exec(low);
+    if(m && MESI_IT.indexOf(m[2])>=0) data = `${m[3]}-${pad(MESI_IT.indexOf(m[2])+1)}-${pad(m[1])}`;
+    else { m = /([a-z]+)\s+(\d{1,2}),?\s+(\d{4})/.exec(low); if(m && MONTHS_EN.indexOf(m[1])>=0) data = `${m[3]}-${pad(MONTHS_EN.indexOf(m[1])+1)}-${pad(m[2])}`; }
+  }
+  m = /(\d{1,2})[:.](\d{2})(?:\s*([ap])\.?m\.?)?/i.exec(sent.replace(/\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4}/, ''));
+  if(m){ let h = +m[1]; if(m[3]){ const pm = /p/i.test(m[3]); if(pm && h<12) h += 12; if(!pm && h===12) h = 0; } ora = `${pad(h)}:${m[2]}`; }
+  return { oggetto, data, ora, a };
+}
+// cfg: { prefix, date, fuDate, fuTime, phoneSave, contactId(), done() }
+function bindActForm(cfg){
+  const main = document.getElementById('main');
+  const apply = ()=>{
+    main.querySelectorAll('[data-act-sec]').forEach(s=>s.classList.toggle('hidden', !s.dataset.actSec.split(' ').includes(actFormType)));
+    main.querySelectorAll('[data-act-type]').forEach(b=>{ const on = b.dataset.actType===actFormType; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    const btn = document.getElementById(cfg.saveBtn);
+    if(btn) btn.textContent = actFormType==='incontro' ? 'Salva incontro' : actFormType==='mail' ? 'Salva mail' : 'Salva telefonata';
+  };
+  main.querySelectorAll('[data-act-type]').forEach(b=>b.addEventListener('click', ()=>{ actFormType = b.dataset.actType; apply(); }));
+  const paste = document.getElementById(cfg.prefix+'MailPaste');
+  paste?.addEventListener('input', ()=>{
+    const r = parsePastedMail(paste.value), subj = document.getElementById(cfg.prefix+'MailSubj');
+    if(r.oggetto && !subj.value) subj.value = r.oggetto;
+    if(r.data) document.getElementById(cfg.date).value = r.data;
+    paste.dataset.ora = r.ora || '';
+    document.getElementById(cfg.prefix+'MailParsed').textContent = r.oggetto || r.data ? `Letto dalla mail: ${[r.oggetto && 'oggetto', r.data && 'data '+fmtDate(r.data)+(r.ora ? ' ore '+r.ora : ''), r.a && 'a '+r.a].filter(Boolean).join(' · ')}.` : '';
+  });
+  document.getElementById(cfg.saveBtn).addEventListener('click', ()=>saveActivity(cfg));
+  apply();
+}
+async function saveActivity(cfg){
+  if(actFormType==='telefonata') return cfg.phoneSave();
+  const v = id=>(document.getElementById(id) || {}).value || '';
+  const contactId = cfg.contactId(), data = v(cfg.date);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(data)){ alert('Inserisci la data.'); return; }
+  const followUp = combineDT(v(cfg.fuDate), v(cfg.fuTime)), pad = n=>String(n).padStart(2,'0'), now = new Date();
+  const btn = document.getElementById(cfg.saveBtn); btn.disabled = true;
+  try{
+    if(actFormType==='incontro'){
+      const ora = v(cfg.prefix+'MeetTime'), sel = readApptProjects(`${data}T${ora || '09:00'}`), pf = actPrefill || {};
+      const rec = { tipo:'incontro', contactId, data, ora, note: v(cfg.prefix+'MeetNote').trim(), progetti: sel.progetti, consegnaOfferta: sel.consegnaOfferta, createdAt: Date.now() };
+      if(pf.daAppuntamento) rec.daAppuntamento = pf.daAppuntamento;
+      const ref = await db.collection('calls').add(rec);
+      if(rec.daAppuntamento) await db.collection('calls').doc(rec.daAppuntamento).update({ incontroId: ref.id });
+      await markOfferPresented(sel, `${data}T${ora || '09:00'}`);
+    } else {
+      const paste = document.getElementById(cfg.prefix+'MailPaste');
+      await db.collection('calls').add({ tipo:'mail', contactId, data, ora: (paste && paste.dataset.ora) || `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+        oggetto: v(cfg.prefix+'MailSubj').trim(), note: v(cfg.prefix+'MailNote').trim(), testo: v(cfg.prefix+'MailPaste').trim(), createdAt: Date.now() });
+    }
+    await db.collection('contacts').doc(contactId).update({ followUp: followUp || '' });
+    actPrefill = null; actFormType = 'telefonata';
+    cfg.done();
+  }catch(e){ btn.disabled = false; alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
+// "Registra l'incontro" da un appuntamento passato: apre la scheda del cliente con l'incontro precompilato.
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-meet-register]');
+  if(!b || !db) return;
+  e.preventDefault(); e.stopPropagation();
+  const k = calls.find(x=>x.id===b.dataset.meetRegister); if(!k) return;
+  actPrefill = { contactId: k.contactId, data: k.appuntamento.slice(0,10), ora: k.appuntamento.slice(11,16), progetti: k.progetti || [], daAppuntamento: k.id };
+  actFormType = 'incontro';
+  selectedId = k.contactId; view = 'detail'; tableDetailCallId = null; confirmDeleteId = null; setActiveTab('navContacts'); renderMain();
+  setTimeout(()=>document.getElementById('actFormCard')?.scrollIntoView({ block:'start' }), 0);
+}, true);
+function meetRegisterBtn(k){ return apptToRegister(k) ? `<button type="button" class="btn small" data-meet-register="${k.id}">Registra l'incontro</button>` : ''; }
+// Oggi: appuntamenti degli ultimi 60 giorni gia' passati e senza incontro registrato.
+function meetingsToRegister(){ const from = addDaysISO(todayISO(), -60); return apptCalls().filter(k=>apptToRegister(k) && k.appuntamento.slice(0,10) >= from && !isOff(contacts.find(c=>c.id===k.contactId))); }
+function meetToRegisterCardHtml(){
+  const list = meetingsToRegister().sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento));
+  if(!list.length) return '';
+  const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
+  return `<div class="card meet-reg-card"><h3>Incontri da registrare (${list.length})</h3>
+    <div class="fc-note" style="margin-bottom:6px;">Appuntamenti già passati: registra com'è andato l'incontro (resta un'attività a sé, con la sua data).</div>
+    ${list.map(k=>{ const c = byId[k.contactId] || {}; return `<div class="todo-row"><div class="todo-main"><span class="name-link" data-contact-id="${c.id||''}">${esc(fullName(c))}</span>${c.azienda ? `<span class="fc-addr"> · ${esc(c.azienda)}</span>` : ''}
+      <div class="todo-sub">appuntamento del ${fmtDateTime(k.appuntamento)}${k.progetto ? ' · '+esc(k.progetto) : ''}</div></div>
+      <div class="todo-actions">${meetRegisterBtn(k)}</div></div>`; }).join('')}
+  </div>`;
+}
+// Conversione una tantum dei dati vecchi: ogni appuntamento passato diventa anche un incontro svolto
+// (note dell'incontro spostate li'); gli incontri importati da Excel diventano direttamente incontri.
+let activitiesMigrating = false, callsSeen = false;
+async function migrateActivities(){
+  if(activitiesMigrating || !db || !appSettings || appSettings.attivitaV2 || !settingsDocId) return;
+  if(!callsSeen){ setTimeout(migrateActivities, 1500); return; }   // le attivita' non sono ancora arrivate: senza, la conversione non vedrebbe nulla
+  const now = new Date(), todo = calls.filter(k=>isPhone(k) && k.appuntamento && new Date(k.appuntamento) <= now && !meetingOf(k) && !k.incontroId);
+  if(!todo.length){ saveSettings({ attivitaV2: todayISO() }); return; }
+  activitiesMigrating = true;
+  let safe = null;
+  try{
+    if(cloudBackups()) safe = await (await backupApi('POST')).json();   // copia di sicurezza prima di cambiare i dati
+  }catch(e){ activitiesMigrating = false; console.warn('Conversione rimandata: copia di sicurezza non riuscita', e); return; }
+  try{
+    const fs = firebase.firestore(), ops = [];
+    for(const k of todo){
+      const date = k.appuntamento.slice(0,10), ora = k.appuntamento.slice(11,16);
+      if(k.importBatch){   // incontro importato da Excel: la "chiamata" era solo un contenitore
+        ops.push(['upd', k.id, { tipo:'incontro', data: date, ora, esito:'', appuntamento:'', note: [k.note, k.noteIncontro].filter(Boolean).join('\n'), noteIncontro:'' }]);
+      } else {
+        const id = 'inc_'+k.id;   // fisso: se due dispositivi convertono insieme, si scrive lo stesso documento
+        ops.push(['set', id, { tipo:'incontro', contactId:k.contactId, data: date, ora, note: k.noteIncontro || '', progetti: k.progetti || [], consegnaOfferta: !!k.consegnaOfferta, daAppuntamento: k.id, createdAt: Date.now(), convertito: true }]);
+        ops.push(['upd', k.id, { incontroId: id, noteIncontro:'' }]);
+      }
+    }
+    for(let i=0; i<ops.length; i+=400){
+      const b = fs.batch();
+      ops.slice(i, i+400).forEach(([t, id, d])=>{ if(t==='set') b.set(db.doc('calls/'+id), d); else b.update(db.doc('calls/'+id), d); });
+      await b.commit();
+    }
+    saveSettings({ attivitaV2: todayISO() });
+    showNotice(`Attività aggiornate: ${todo.length} incontri passati ora sono attività a sé, separate dalle telefonate.${safe && safe.date ? ` Copia dei dati di prima: ${backupLabel(safe.date)} (Impostazioni → Backup).` : ''} <button class="btn secondary small" id="noticeClose">Chiudi</button>`);
+  }catch(e){ console.warn('Conversione delle attività non riuscita', e); }
+  activitiesMigrating = false;
+}
+function actDetailBody(k){
+  if(isMeet(k)){
+    const from = k.daAppuntamento ? calls.find(x=>x.id===k.daAppuntamento) : null;
+    return `<div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
+        <div><label>Tipo</label><div>${actTag(k)}</div></div>
+        <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}${k.ora ? ' ore '+esc(k.ora) : ''}</div></div>
+        ${from ? `<div><label>Fissato con</label><div style="font-size:14px;"><a href="#" class="addr-link" data-appt-call-id="${from.id}">telefonata del ${fmtDate(from.data)}</a></div></div>` : ''}
+        ${(k.progetti||[]).length ? `<div><label>Progetti</label><div style="font-size:14px;">${k.progetti.map(id=>{ const pr = projects.find(x=>x.id===id); return pr ? `<a href="#" class="addr-link" data-open-project="${pr.id}">${esc(projectTitle(pr))}</a>` : ''; }).filter(Boolean).join('<br>')}${k.consegnaOfferta ? ' <span class="esito-tag appt">Consegna offerta</span>' : ''}</div></div>` : ''}
+      </div>
+      <div style="margin-top:14px;"><label>Note dell'incontro</label><div style="font-size:14px;white-space:pre-wrap;">${esc(k.note)||'<span style="color:var(--muted);">Nessuna nota.</span>'}</div></div>`;
+  }
+  return `<div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
+      <div><label>Tipo</label><div>${actTag(k)}${k.sottotipo==='presentazione' ? ' <span class="fc-note">di presentazione</span>' : ''}</div></div>
+      <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}${k.ora ? ' ore '+esc(k.ora) : ''}</div></div>
+      ${k.oggetto ? `<div><label>Oggetto</label><div style="font-size:14px;">${esc(k.oggetto)}</div></div>` : ''}
+    </div>
+    ${k.note ? `<div style="margin-top:14px;"><label>Note</label><div style="font-size:14px;white-space:pre-wrap;">${esc(k.note)}</div></div>` : ''}
+    ${k.testo ? `<details style="margin-top:14px;"><summary class="name-link">Testo della mail</summary><div style="font-size:13.5px;white-space:pre-wrap;margin-top:6px;">${esc(k.testo)}</div></details>` : ''}`;
+}
+function actEditView(k, c){
+  const meet = isMeet(k);
+  return `
+    <div class="top-actions"><button class="btn secondary small" id="cancelEditCallBtn">Annulla modifica</button></div>
+    <div class="card">
+      <h3>Modifica ${meet ? 'incontro' : 'mail'} — ${esc(fullName(c))}</h3>
+      <div class="field-row">
+        <div><label>Data</label><input type="date" id="ecData" value="${esc(k.data||'')}"></div>
+        <div><label>Ora</label><select id="ecOra">${timeOptions(k.ora||'')}</select></div>
+      </div>
+      ${meet ? `${apptProjectsHtml(c.id, k.progetti||[], !!k.consegnaOfferta)}
+        <label style="margin-top:10px;">Note dell'incontro</label><textarea id="ecNote">${esc(k.note||'')}</textarea>`
+      : `<label>Oggetto</label><input id="ecOggetto" value="${esc(k.oggetto||'')}">
+        <label>Note</label><textarea id="ecNote">${esc(k.note||'')}</textarea>
+        <label>Testo della mail</label><textarea id="ecTesto" rows="6">${esc(k.testo||'')}</textarea>`}
+      <button class="btn block" id="saveEditCallBtn" style="margin-top:14px;">Salva modifiche</button>
+    </div>`;
+}
+async function saveActEdit(k){
+  const v = id=>(document.getElementById(id) || {}).value || '';
+  const data = v('ecData'); if(!/^\d{4}-\d{2}-\d{2}$/.test(data)){ alert('Inserisci la data.'); return; }
+  try{
+    if(isMeet(k)){
+      const sel = readApptProjects(`${data}T${v('ecOra') || '09:00'}`);
+      await db.collection('calls').doc(k.id).update({ data, ora: v('ecOra'), note: v('ecNote').trim(), progetti: sel.progetti, consegnaOfferta: sel.consegnaOfferta });
+      await markOfferPresented(sel, `${data}T${v('ecOra') || '09:00'}`);
+    } else await db.collection('calls').doc(k.id).update({ data, ora: v('ecOra'), oggetto: v('ecOggetto').trim(), note: v('ecNote').trim(), testo: v('ecTesto').trim() });
+    editingCallId = null; renderMain();
+  }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
+}
 
 // ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
@@ -5649,14 +5890,14 @@ function contactHistoryHtml(contactId, projectId){
     const linked = (k.progetti||[]).includes(projectId);
     return `<div class="hist-item ${linked ? 'linked' : ''}" data-appt-call-id="${k.id}">
       <div class="hist-head">
-        <span class="hist-date">Chiamata del ${fmtDate(k.data)}</span> ${k.esito ? esitoCell(k) : ''}
+        <span class="hist-date">${isMeet(k) ? 'Incontro' : isMailAct(k) ? 'Mail' : 'Chiamata'} del ${fmtDate(k.data)}</span> ${k.esito || !isPhone(k) ? esitoCell(k) : ''}
         ${linked ? `<span class="hist-tag">${k.consegnaOfferta ? 'questo progetto · consegna offerta' : 'questo progetto'}</span>` : ''}
       </div>
       ${k.progetto ? `<div class="hist-sub">${esc(k.progetto)}</div>` : ''}
       ${k.note ? `<div class="hist-note">${esc(k.note)}</div>` : ''}
       ${k.appuntamento ? `<div class="hist-meet">
         <span class="hist-date">Incontro del ${fmtDateTime(k.appuntamento)}</span>
-        ${k.noteIncontro ? `<div class="hist-note">${esc(k.noteIncontro)}</div>` : `<div class="hist-sub">${k.appuntamento.slice(0,10) > todayISO() ? 'incontro in programma' : 'nessuna nota sull\'incontro'}</div>`}
+        ${k.noteIncontro ? `<div class="hist-note">${esc(k.noteIncontro)}</div>` : `<div class="hist-sub">${k.appuntamento.slice(0,10) > todayISO() ? 'incontro in programma' : meetingOf(k) ? 'incontro registrato a parte' : 'incontro da registrare'}</div>`}
       </div>` : ''}
       ${!k.note && !k.appuntamento ? '<div class="hist-sub">nessuna nota</div>' : ''}
     </div>`; }).join('')}</div>`;
@@ -5769,7 +6010,7 @@ function projectDetailView(){
     <div class="card">
       <h3>Chiamate e incontri collegati (${linked.length})</h3>
       ${linked.length ? linked.map(k=>{ const c = byId[k.contactId]||{}; return `<div class="call-item" data-appt-call-id="${k.id}" style="cursor:pointer;">
-        <span class="date">${k.appuntamento ? 'Incontro del '+fmtDateTime(k.appuntamento) : 'Chiamata del '+fmtDate(k.data)}</span> ${k.consegnaOfferta ? '<span class="esito-tag appt">Consegna offerta</span>' : (!k.appuntamento && k.esito ? esc(k.esito) : '')}
+        <span class="date">${isMeet(k) ? 'Incontro del '+fmtDate(k.data)+(k.ora ? ' ore '+k.ora : '') : isMailAct(k) ? 'Mail del '+fmtDate(k.data) : k.appuntamento ? 'Chiamata del '+fmtDate(k.data)+' · appuntamento '+fmtDateTime(k.appuntamento) : 'Chiamata del '+fmtDate(k.data)}</span> ${k.consegnaOfferta ? '<span class="esito-tag appt">Consegna offerta</span>' : (!k.appuntamento && k.esito ? esc(k.esito) : '')}
         <div style="font-weight:600;font-size:14px;margin-top:4px;">${esc(fullName(c))}</div>
         ${k.noteIncontro||k.note ? `<div style="font-size:13px;color:var(--muted);">${esc(k.noteIncontro||k.note)}</div>` : ''}
       </div>`; }).join('') : '<div class="empty">Nessuna chiamata o incontro collegato. Quando registri una chiamata o un appuntamento puoi indicare questo progetto.</div>'}
@@ -6310,7 +6551,7 @@ function buildImportRows(s){
         const day = out.hasAppt ? 'A'+out.date : 'C'+out.callDate;
         const dupKey = (out.contact ? out.contact.id : out.newKey)+'|'+day;
         if(seen.has(dupKey)) out.skip = 'ripetuto nel file (stesso cliente e giorno)';
-        else if(out.contact && calls.some(k=>k.contactId===out.contact.id && (out.hasAppt ? (k.appuntamento||'').slice(0,10)===out.date : k.data===out.callDate))) out.skip = 'già presente nell\'app';
+        else if(out.contact && calls.some(k=>k.contactId===out.contact.id && (out.hasAppt ? ((k.appuntamento||'').slice(0,10)===out.date || (isMeet(k) && k.data===out.date)) : k.data===out.callDate))) out.skip = 'già presente nell\'app';
         seen.add(dupKey);
       }
     }
@@ -6525,11 +6766,12 @@ async function runImport(){
         });
         contactId = ref.id; newIds.set(r.newKey, contactId); s.created.contacts.push(contactId);
       }
-      const ref = await db.collection('calls').add({
-        contactId, data:r.callDate, esito: r.hasAppt ? 'Appuntamento fissato' : '', progetto:r.progetto,
-        note: r.hasAppt ? '' : r.note, appuntamento: r.hasAppt ? `${r.date}T${r.time}` : '',
-        noteIncontro: r.hasAppt ? r.note : '', createdAt:Date.now(), importBatch:s.batch
-      });
+      const past = r.hasAppt && r.date <= todayISO();   // incontro gia' svolto: attivita' Incontro
+      const ref = await db.collection('calls').add(past
+        ? { tipo:'incontro', contactId, data:r.date, ora:r.time, progetto:r.progetto, note:r.note, createdAt:Date.now(), importBatch:s.batch }
+        : { contactId, data:r.callDate, esito: r.hasAppt ? 'Appuntamento fissato' : '', progetto:r.progetto,
+            note: r.hasAppt ? '' : r.note, appuntamento: r.hasAppt ? `${r.date}T${r.time}` : '',
+            noteIncontro: '', createdAt:Date.now(), importBatch:s.batch });
       s.created.calls.push(ref.id);
       if(r.hasAppt) s.created.appts++;
       s.progress.done++;
@@ -6564,12 +6806,13 @@ function apptMatches(k){
   if(!words.length) return true;
   const c = contacts.find(x=>x.id===k.contactId) || {};
   const proj = (k.progetti||[]).map(id=>{ const p = projects.find(x=>x.id===id); return p ? (p.codice||'')+' '+(p.nome||'') : ''; });
-  const hay = normName([fullName(c), c.nome, c.azienda, c.professione, c.citta, k.progetto, k.esito, k.note, k.noteIncontro, ...proj].join(' '));
+  const hay = normName([fullName(c), c.nome, c.azienda, c.professione, c.citta, k.progetto, k.esito, k.note, k.noteIncontro, (meetingOf(k) || {}).note, ...proj].join(' '));
   return words.every(w=>hay.includes(w));
 }
 function apptView(){
   const now = new Date();
-  const cnt = pred=>apptSearch ? ` (${apptCalls().filter(k=>pred(new Date(k.appuntamento)) && apptMatches(k)).length + sops.filter(s=>pred(new Date(s.quando)) && sopMatches(s)).length})` : '';
+  const cnt = pred=>apptSearch ? ` (${pred(new Date(0)) ? calls.filter(k=>isMeet(k) && k.data <= todayISO() && meetMatches(k)).length + apptCalls().filter(k=>apptToRegister(k) && apptMatches(k)).length + sops.filter(s=>pred(new Date(s.quando)) && sopMatches(s)).length
+    : apptCalls().filter(k=>pred(new Date(k.appuntamento)) && apptMatches(k)).length + sops.filter(s=>pred(new Date(s.quando)) && sopMatches(s)).length})` : '';
   const header = `<div class="top-actions" style="justify-content:space-between;">
     <div class="subnav" style="margin-bottom:0;">
       <button id="apptListBtn" class="${apptSubView==='list'?'active':''}">Elenco${cnt(d=>d>now)}</button>
@@ -6588,25 +6831,38 @@ function apptView(){
   return header + body;
 }
 
+// Svolti: gli incontri registrati (attivita' Incontro), gli appuntamenti passati ancora da registrare
+// e i sopralluoghi passati, dal piu' recente.
+function meetMatches(k){
+  const words = normName(apptSearch).split(' ').filter(Boolean);
+  if(!words.length) return true;
+  const c = contacts.find(x=>x.id===k.contactId) || {};
+  const proj = (k.progetti||[]).map(id=>{ const p = projects.find(x=>x.id===id); return p ? (p.codice||'')+' '+(p.nome||'') : ''; });
+  const hay = normName([fullName(c), c.nome, c.azienda, c.professione, c.citta, k.progetto, k.note, 'incontro', ...proj].join(' '));
+  return words.every(w=>hay.includes(w));
+}
 function apptDoneView(){
-  const now = new Date();
-  const list = apptCalls().filter(k=> new Date(k.appuntamento) <= now && apptMatches(k)).sort((a,b)=>b.appuntamento.localeCompare(a.appuntamento));
+  const now = new Date(), t = todayISO();
+  const met = calls.filter(k=>isMeet(k) && k.data <= t && meetMatches(k));
+  const toReg = apptCalls().filter(k=>apptToRegister(k) && apptMatches(k));
   const sl = sops.filter(s=>new Date(s.quando) <= now && sopMatches(s));
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
-  if(list.length===0 && !sl.length) return `<div class="empty">${apptSearch ? 'Nessun incontro svolto corrisponde alla ricerca.' : 'Nessun incontro ancora svolto.'}</div>`;
-  return mergeTimed(list.map(k=>({ t:k.appuntamento, h:(()=>{
-    const c = byId[k.contactId] || {};
-    const hasNote = !!(k.noteIncontro && k.noteIncontro.trim());
-    return `<div class="card" data-appt-call-id="${k.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-      <div>
-        <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
-        <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}${k.progetto?' · '+esc(k.progetto):''}</div>
-        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
-        ${hasNote ? `<div style="font-size:13px;margin-top:6px;white-space:pre-wrap;">${esc(k.noteIncontro)}</div>` : `<div style="font-size:12.5px;margin-top:6px;color:var(--accent);">+ Aggiungi note sull'incontro</div>`}
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;"><div class="followup ok">${fmtDateTime(k.appuntamento)}</div>${inviteBtn(k)}</div>
-    </div>`;
-  })() })), sl, true);
+  if(!met.length && !toReg.length && !sl.length) return `<div class="empty">${apptSearch ? 'Nessun incontro svolto corrisponde alla ricerca.' : 'Nessun incontro ancora svolto.'}</div>`;
+  const head = c=>`<div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
+        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}`;
+  const items = [
+    ...met.map(k=>{ const c = byId[k.contactId] || {}; return { t: k.data+'T'+(k.ora||'00:00'), h: `<div class="card" data-appt-call-id="${k.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div>${head(c)}${k.progetto ? `<div style="font-size:12.5px;color:var(--muted);">${esc(k.progetto)}</div>` : ''}
+        ${k.note ? `<div style="font-size:13px;margin-top:6px;white-space:pre-wrap;">${esc(k.note)}</div>` : '<div style="font-size:12.5px;margin-top:6px;color:var(--muted);">nessuna nota sull\'incontro</div>'}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">${actTag(k)}<div class="followup ok">${fmtDate(k.data)}${k.ora ? ' '+esc(k.ora) : ''}</div></div>
+    </div>` }; }),
+    ...toReg.map(k=>{ const c = byId[k.contactId] || {}; return { t: k.appuntamento, h: `<div class="card meet-todo" data-appt-call-id="${k.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div>${head(c)}<div style="font-size:12.5px;margin-top:6px;color:var(--danger);font-weight:600;">Incontro da registrare</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;"><div class="followup ok">${fmtDateTime(k.appuntamento)}</div>${meetRegisterBtn(k)}</div>
+    </div>` }; })
+  ];
+  return mergeTimed(items, sl, true);
 }
 // Schede di appuntamenti {t, h} e sopralluoghi mescolate per data (desc = dal piu' recente).
 function mergeTimed(items, sopList, desc){
@@ -6641,6 +6897,7 @@ function startOfWeek(d){
   return dt;
 }
 
+function sumCount(buckets){ return buckets.reduce((s, b)=>s + b.count, 0); }
 function weeklyBuckets(predicate, weeksBack){
   const thisMonday = startOfWeek(new Date());
   const buckets = [];
@@ -6651,7 +6908,7 @@ function weeklyBuckets(predicate, weeksBack){
   }
   calls.forEach(k=>{
     if(!k.data) return;
-    if(predicate && !predicate(k)) return;
+    if(predicate ? !predicate(k) : !isPhone(k)) return;   // senza filtro: solo telefonate
     const d = new Date(k.data+'T00:00:00');
     const b = buckets.find(b=> d>=b.start && d<b.end);
     if(b) b.count++;
@@ -6698,7 +6955,7 @@ function dailyBuckets(days, predicate, labelFn){
   const buckets = days.map(d=>({ date:d, count:0, label: labelFn ? labelFn(d) : '' }));
   calls.forEach(k=>{
     if(!k.data) return;
-    if(predicate && !predicate(k)) return;
+    if(predicate ? !predicate(k) : !isPhone(k)) return;   // senza filtro: solo telefonate
     const d = new Date(k.data+'T00:00:00');
     const b = buckets.find(bb=>bb.date.toDateString()===d.toDateString());
     if(b) b.count++;
@@ -6748,7 +7005,7 @@ let lastCallsGroup = 'weekly';
 function dashboardView(){
   if(dashboardDrilldown) return dashboardDrilldownView();
   const header = `<div class="subnav">
-    <button id="dashCallsBtn" class="${CALL_GROUPS[dashboardSubView]?'active':''}">Chiamate</button>
+    <button id="dashCallsBtn" class="${CALL_GROUPS[dashboardSubView]?'active':''}">Attività</button>
     <button id="dashClientsBtn" class="${dashboardSubView==='clients'?'active':''}">Clienti</button>
     <button id="dashProjectsBtn" class="${dashboardSubView==='projects'?'active':''}">Progetti</button>
   </div>`;
@@ -6772,8 +7029,8 @@ function dashboardWeeklyView(){
   return `
     <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultime ${weeksBack} settimane, dalla più vecchia alla più recente · clicca una colonna per il dettaglio giornaliero</div>
     <div class="card">
-      <h3>Chiamate per settimana</h3>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls} · media ${avgCalls} a settimana</div>
+      <h3>Telefonate per settimana</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls} · media ${avgCalls} a settimana · nello stesso periodo ${sumCount(weeklyBuckets(isMeet, weeksBack))} incontri svolti e ${sumCount(weeklyBuckets(isMailAct, weeksBack))} mail</div>
       ${barChartSVG(callBuckets, 'var(--accent)', 'calls')}
     </div>
     <div class="card">
@@ -6793,7 +7050,7 @@ function monthlyBuckets(predicate, monthsBack, year){
   }
   calls.forEach(k=>{
     if(!k.data) return;
-    if(predicate && !predicate(k)) return;
+    if(predicate ? !predicate(k) : !isPhone(k)) return;   // senza filtro: solo telefonate
     const d = new Date(k.data+'T00:00:00');
     const b = buckets.find(bb=>bb.year===d.getFullYear() && bb.month===d.getMonth());
     if(b) b.count++;
@@ -6807,7 +7064,7 @@ function yearlyBuckets(predicate, yearsBack){
   for(let i=yearsBack-1;i>=0;i--){ buckets.push({year: now.getFullYear()-i, count:0}); }
   calls.forEach(k=>{
     if(!k.data) return;
-    if(predicate && !predicate(k)) return;
+    if(predicate ? !predicate(k) : !isPhone(k)) return;   // senza filtro: solo telefonate
     const y = parseInt(k.data.slice(0,4),10);
     const b = buckets.find(bb=>bb.year===y);
     if(b) b.count++;
@@ -6851,8 +7108,8 @@ function dashboardMonthlyView(){
   return `
     <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultimi ${monthsBack} mesi · clicca una colonna per il dettaglio del mese</div>
     <div class="card">
-      <h3>Chiamate per mese</h3>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls}</div>
+      <h3>Telefonate per mese</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls} · nello stesso periodo ${sumCount(monthlyBuckets(isMeet, monthsBack))} incontri svolti e ${sumCount(monthlyBuckets(isMailAct, monthsBack))} mail</div>
       ${simpleBarChartSVG(callBuckets, 'var(--accent)', labelFn, drillFn, 'calls')}
     </div>
     <div class="card">
@@ -6873,8 +7130,8 @@ function dashboardYearlyView(){
   return `
     <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ultimi ${yearsBack} anni · clicca una colonna per vedere i mesi</div>
     <div class="card">
-      <h3>Chiamate per anno</h3>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls}</div>
+      <h3>Telefonate per anno</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalCalls} · nello stesso periodo ${sumCount(yearlyBuckets(isMeet, yearsBack))} incontri svolti e ${sumCount(yearlyBuckets(isMailAct, yearsBack))} mail</div>
       ${simpleBarChartSVG(callBuckets, 'var(--accent)', labelFn, drillFn, 'calls')}
     </div>
     <div class="card">
@@ -6925,10 +7182,11 @@ function clientStatuses(){
   return contacts.map(c=>{
     const cs = (byContact.get(c.id)||[]).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
     let status = 'mai';
-    if(cs.length){
-      if(cs.some(isApptCall)) status = 'incontro';
-      else if(cs.some(k=>!ESITI_NON_RAGGIUNTO.includes(k.esito))) status = 'raggiunto';
-      else if(cs.some(k=>k.esito==='Filtrato dalla segreteria')) status = 'filtro';
+    const phones = cs.filter(isPhone);   // le mail non contano come contatto telefonico
+    if(cs.some(k=>isApptCall(k) || isMeet(k))) status = 'incontro';
+    else if(phones.length){
+      if(phones.some(k=>!ESITI_NON_RAGGIUNTO.includes(k.esito))) status = 'raggiunto';
+      else if(phones.some(k=>k.esito==='Filtrato dalla segreteria')) status = 'filtro';
       else status = 'nonRisponde';
     }
     return { contact:c, calls:cs, status };
@@ -7003,7 +7261,7 @@ function dashboardDrilldownView(){
   if(top.kind==='segment') return clientSegmentView(top);
   if(top.kind==='projEvents' || top.kind==='ordersMonth') return projEventsListView(top);
   const isAppt = dashboardDrilldown.type==='appt';
-  const pred = isAppt ? isApptCall : null;
+  const pred = isAppt ? isApptCall : isPhone;
   const color = isAppt ? 'var(--text)' : 'var(--accent)';
   const what = isAppt ? 'Appuntamenti fissati' : 'Chiamate effettuate';
   const lvl = dashboardDrilldown.stack[dashboardDrilldown.stack.length-1];
@@ -7133,6 +7391,7 @@ function agendaView(){
       <h3>Appuntamenti di oggi (${todayAppts.length + todaySops.length})</h3>
       ${todayAppts.length || !todaySops.length ? apptHtml : ''}${todaySops.map(sopDayRow).join('')}
     </div>
+    ${meetToRegisterCardHtml()}
     ${pendingMailsCardHtml()}
     <div class="card">
       <h3>Follow-up da fare${dueFU.length?` (${dueFU.length} scaduti)`:''}</h3>
@@ -7190,7 +7449,7 @@ function renderCallFlow(){
       .sort((a,b)=>(a.cognome||a.nome||'').localeCompare(b.cognome||b.nome||''));
     main.innerHTML = `
       <div class="card">
-        <h3>Chi hai chiamato?</h3>
+        <h3>Con chi?</h3>
         <input id="callPickSearch" placeholder="Cerca contatto..." value="${esc(q)}">
         <button class="btn block secondary" id="callNewContactBtn">+ Nuovo contatto</button>
       </div>
@@ -7216,22 +7475,28 @@ function renderCallFlow(){
   main.innerHTML = `
     <div class="card">
       <div class="top-actions" style="margin-bottom:4px;"><button class="btn secondary small" id="changeContactBtn">Cambia contatto</button></div>
-      <h3>Chiamata con ${esc(fullName(c))}</h3>
+      <h3>Attività con ${esc(fullName(c))}</h3>
+      ${actTypePills()}
       ${(()=>{ const a = lastActivities(c.id); return a.last ? `<div class="fc-note" style="margin:-4px 0 10px;">Ultimo contatto: ${[a.call && 'telefonata '+fmtDate(a.call.data)+(a.call.esito ? ' ('+esc(a.call.esito)+')' : ''), a.mail && 'mail '+fmtDate(a.mail.data), a.meet && 'incontro '+fmtDate(a.meet.appuntamento.slice(0,10))].filter(Boolean).join(' · ')}</div>` : ''; })()}
       ${isOff(c) ? `<div class="pdf-warn" style="margin:-4px 0 10px;">Contatto spento (${esc(spentoLabel(c))}): se torna attuale riattivalo dalla sua scheda.</div>` : ''}
       ${(c.cellulare||c.telefono)?`<div style="margin:-6px 0 12px;font-size:15px;">${phoneLinks(c)}</div>`:''}
       <div class="field-row">
         <div><label>Data</label><input type="date" id="qcData" value="${todayISO()}"></div>
-        <div><label>Esito</label><select id="qcEsito">
+        <div class="act-sec" data-act-sec="telefonata"><label>Esito</label><select id="qcEsito">
           <option value="">—</option>
           <option>Interessato</option><option>Da richiamare</option><option>Appuntamento fissato</option>
           <option>Non interessato</option><option>Nessuna risposta</option><option>Filtrato dalla segreteria</option><option>Altro</option>
         </select></div>
       </div>
+      ${actMeetHtml('qc', c)}
+      ${actMailHtml('qc')}
+      <div class="act-sec" data-act-sec="telefonata">
       <label>Progetto / argomento trattato</label>
       <input id="qcProgetto" placeholder="Es. Ristrutturazione Via Roma 12" value="${esc(portalCallValue(c))}">
       ${portalCallSuggestHtml(c, 'qcProgetto')}
-      ${apptProjectsHtml(c.id)}
+      </div>
+      <div class="act-sec" data-act-sec="telefonata incontro">${apptProjectsHtml(c.id)}</div>
+      <div class="act-sec" data-act-sec="telefonata">
       <div style="margin-top:10px;"></div>
       <label>Note</label>
       <textarea id="qcNote" placeholder="Cosa vi siete detti..."></textarea>
@@ -7248,16 +7513,17 @@ function renderCallFlow(){
         ${tripBoxHtml('qcApptDate|qcApptTime||c:'+c.id)}
         <div class="planner" data-planner="qcApptDate|qcApptTime"></div>
       </div>
+      </div>
       <div style="margin-top:10px;"></div>
       <label>Follow up</label>
       <div class="field-row">
         <div><label>Data</label><input type="date" id="qcFollowUpDate" value="${splitDT(clearFollowUpOnEntry?'':(c.followUp||'')).date}"></div>
         <div><label>Ora</label><select id="qcFollowUpTime">${timeOptions(splitDT(clearFollowUpOnEntry?'':(c.followUp||'')).time)}</select></div>
       </div>
-      <button class="btn block" id="saveQcBtn">Salva chiamata</button>
+      <button class="btn block" id="saveQcBtn">Salva telefonata</button>
     </div>
     <div class="card">
-      <h3>Storico chiamate con ${esc(fullName(c))} (${qcHistory.length})</h3>
+      <h3>Storico attività con ${esc(fullName(c))} (${qcHistory.length})</h3>
       ${qcHistory.length? `<div class="table-wrap"><table class="calls-table">
         <thead><tr><th>Data</th><th>Esito</th><th>Progetto</th><th>Note</th></tr></thead>
         <tbody>${qcHistory.map(k=>`<tr data-call-id="${k.id}" class="${isApptCall(k)?'row-appt':''}" style="cursor:pointer;">
@@ -7266,14 +7532,14 @@ function renderCallFlow(){
           <td>${esc(k.progetto||'—')}</td>
           <td>${esc(k.note||'—')}</td>
         </tr>`).join('')}</tbody>
-      </table></div>` : '<div class="empty">Nessuna chiamata precedente con questo contatto — nessun rischio di doppio inserimento.</div>'}
+      </table></div>` : '<div class="empty">Nessuna attività precedente con questo contatto: nessun rischio di doppio inserimento.</div>'}
     </div>`;
   clearFollowUpOnEntry=false;
   document.getElementById('changeContactBtn').addEventListener('click', ()=>{ selectedId=null; callStep='pick'; renderCallFlow(); });
   document.getElementById('qcApptCheck').addEventListener('change', e=>{
     document.getElementById('qcApptWrap').classList.toggle('hidden', !e.target.checked);
   });
-  document.getElementById('saveQcBtn').addEventListener('click', saveQuickCall);
+  bindActForm({ prefix:'qc', date:'qcData', fuDate:'qcFollowUpDate', fuTime:'qcFollowUpTime', saveBtn:'saveQcBtn', phoneSave: saveQuickCall, contactId: ()=>selectedId, done: ()=>{ selectedId=null; callStep='pick'; renderCallFlow(); } });
   bindAutoFollowUp('qcEsito', 'qcFollowUpDate', 'qcFollowUpTime', 'qcData');
   main.querySelectorAll('tr[data-call-id]').forEach(tr=>{
     tr.addEventListener('click', ()=>{ tableDetailCallId=tr.dataset.callId; renderMain(); });
@@ -7321,23 +7587,23 @@ function tableFilterBar(byId){
 function tableView(){
   const byId = Object.fromEntries(contacts.map(c=>[c.id,c]));
   const filterBar = tableFilterBar(byId);
-  if(calls.length===0) return `<h2>Tabella chiamate</h2>${filterBar}<div class="empty">Nessuna chiamata registrata.</div>`;
+  if(calls.length===0) return `<h2>Tabella attività</h2>${filterBar}<div class="empty">Nessuna attività registrata.</div>`;
   const q = tableFilters.search.trim().toLowerCase();
   const filtered = calls.filter(k=>{
     const c = byId[k.contactId] || {};
     if(tableFilters.esito && k.esito!==tableFilters.esito) return false;
     if(tableFilters.professione && c.professione!==tableFilters.professione) return false;
     if(q){
-      const hay = `${k.note||''} ${k.progetto||''} ${fullName(c)}`.toLowerCase();
+      const hay = `${k.note||''} ${k.progetto||''} ${k.oggetto||''} ${fullName(c)}`.toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
   });
-  if(filtered.length===0) return `<h2>Tabella chiamate</h2>${filterBar}<div class="empty">Nessuna chiamata trovata con questi filtri.</div>`;
+  if(filtered.length===0) return `<h2>Tabella attività</h2>${filterBar}<div class="empty">Nessuna attività trovata con questi filtri.</div>`;
   const groups = {};
   filtered.forEach(k=>{ (groups[k.data]=groups[k.data]||[]).push(k); });
   const days = Object.keys(groups).sort((a,b)=>b.localeCompare(a));
-  return `<h2>Tabella chiamate</h2>${filterBar}` + days.map(d=>{
+  return `<h2>Tabella attività</h2>${filterBar}` + days.map(d=>{
     const rows = groups[d].map(k=>{
       const c = byId[k.contactId] || {};
       return `<tr data-call-id="${k.id}" class="${isApptCall(k)?'row-appt':''}" style="cursor:pointer;">
@@ -7361,7 +7627,7 @@ function tableView(){
 }
 function tableDetailView(){
   const k = calls.find(x=>x.id===tableDetailCallId);
-  if(!k) return '<div class="empty">Chiamata non trovata.</div>';
+  if(!k) return '<div class="empty">Attività non trovata.</div>';
   const c = contacts.find(x=>x.id===k.contactId) || {};
   if(editingCallId===k.id) return callEditView(k,c);
   return `
@@ -7372,7 +7638,7 @@ function tableDetailView(){
       </div>
       <div style="display:flex;gap:8px;">
         ${confirmDeleteCallId===k.id ? `
-          <span style="color:var(--danger);font-size:13px;font-weight:600;align-self:center;">Eliminare questa chiamata?</span>
+          <span style="color:var(--danger);font-size:13px;font-weight:600;align-self:center;">Eliminare questa attività?</span>
           <button class="btn small" id="confirmDeleteCallBtn" style="background:var(--danger);color:#fff;">Sì, elimina</button>
           <button class="btn secondary small" id="cancelDeleteCallBtn">Annulla</button>
         ` : `
@@ -7386,7 +7652,7 @@ function tableDetailView(){
       <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
       ${(c.cellulare||c.telefono)?`<div style="margin-top:4px;font-size:14px;">${phoneLinks(c)}</div>`:''}
       ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
-      <div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
+      ${!isPhone(k) ? actDetailBody(k) : `<div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
         <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}</div></div>
         ${k.esito?`<div><label>Esito</label><div style="font-size:14px;">${esc(k.esito)}</div></div>`:''}
         ${k.progetto?`<div><label>Progetto</label><div style="font-size:14px;">${esc(k.progetto)}</div></div>`:''}
@@ -7399,13 +7665,15 @@ function tableDetailView(){
         <div style="font-size:14px;white-space:pre-wrap;">${esc(k.note)||'<span style="color:var(--muted);">Nessuna nota.</span>'}</div>
       </div>
       ${k.appuntamento?`<div style="margin-top:14px;">
-        <label>Note dell'incontro</label>
-        <div style="font-size:14px;white-space:pre-wrap;">${esc(k.noteIncontro)||'<span style="color:var(--muted);">Nessuna nota sull\'incontro.</span>'}</div>
-      </div>`:''}
+        <label>Incontro</label>
+        <div style="font-size:14px;">${(()=>{ const m = meetingOf(k); return m ? `<a href="#" class="addr-link" data-appt-call-id="${m.id}">svolto il ${fmtDate(m.data)}${m.ora ? ' ore '+esc(m.ora) : ''}</a>${m.note ? `<div style="white-space:pre-wrap;margin-top:4px;">${esc(m.note)}</div>` : ''}` : apptToRegister(k) ? `non ancora registrato ${meetRegisterBtn(k)}` : 'in programma'; })()}</div>
+        ${k.noteIncontro ? `<div style="font-size:14px;white-space:pre-wrap;margin-top:6px;">${esc(k.noteIncontro)}</div>` : ''}
+      </div>`:''}`}
     </div>`;
 }
 
 function callEditView(k,c){
+  if(!isPhone(k)) return actEditView(k, c);
   const esitoOpts = ['','Interessato','Da richiamare','Appuntamento fissato','Non interessato','Nessuna risposta','Filtrato dalla segreteria','Altro'];
   return `
     <div class="top-actions"><button class="btn secondary small" id="cancelEditCallBtn">Annulla modifica</button></div>
@@ -7443,10 +7711,11 @@ function callEditView(k,c){
 function bindTableDetail(){
   if(editingCallId===tableDetailCallId){
     document.getElementById('cancelEditCallBtn').addEventListener('click', ()=>{ editingCallId=null; renderMain(); });
-    document.getElementById('ecApptCheck').addEventListener('change', e=>{
+    document.getElementById('ecApptCheck')?.addEventListener('change', e=>{
       document.getElementById('ecApptWrap').classList.toggle('hidden', !e.target.checked);
     });
-    document.getElementById('saveEditCallBtn').addEventListener('click', saveCallEdit);
+    const ek = calls.find(x=>x.id===tableDetailCallId);
+    document.getElementById('saveEditCallBtn').addEventListener('click', ()=>ek && !isPhone(ek) ? saveActEdit(ek) : saveCallEdit());
     return;
   }
   document.getElementById('backToTableBtn').addEventListener('click', ()=>{ tableDetailCallId=null; confirmDeleteCallId=null; renderMain(); });
@@ -8063,6 +8332,8 @@ function exportICS(){
 }
 function isApptCall(k){ return k.esito==='Appuntamento fissato' || !!k.appuntamento; }
 function esitoCell(k){
+  if(isMeet(k)) return `${actTag(k)}${k.ora ? ' '+esc(k.ora) : ''}`;
+  if(isMailAct(k)) return `${actTag(k)}${k.oggetto ? ' '+esc(k.oggetto) : ''}`;
   if(isApptCall(k)) return `<span class="esito-tag appt">${esc(k.esito||'Appuntamento fissato')}</span>`;
   return esc(k.esito||'—');
 }

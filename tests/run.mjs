@@ -655,34 +655,79 @@ await test('mail di presentazione: firma richiesta, poi Outlook con destinatario
   expect(clip.txt.startsWith('Buongiorno, sono Geom. Prova Test, Tecnico Commerciale Schöck GmbH.') && !clip.txt.includes('**'), 'appunti (testo): ' + clip.txt.slice(0, 200));
   expect((await page.textContent('#noticeBar')).includes('copiato con il grassetto'), 'manca l\'indicazione di incollare');
   await pop.close();
-  await page.waitForFunction(() => window.__fake.docs('mails').some(m => m.contactId === 'c1' && m.tipo === 'presentazione' && m.oggetto.includes('Isokorb')));
+  await page.waitForFunction(() => window.__fake.docs('calls').some(m => m.contactId === 'c1' && m.tipo === 'mail' && m.sottotipo === 'presentazione' && m.oggetto.includes('Isokorb')));
   await show_(page, 'detail', "selectedId='c1'");
   await page.waitForFunction(() => /Mail[\s\S]*presentazione/i.test(document.querySelector('.last-card').innerText));
   // registrata per sbaglio: si toglie
   await page.click('.last-mails summary');
   await page.click('.last-mails [data-mail-del]');
   await page.click('.last-mails [data-mail-del-yes]');
-  await page.waitForFunction(() => !window.__fake.docs('mails').some(m => m.contactId === 'c1'));
+  await page.waitForFunction(() => !window.__fake.docs('calls').some(m => m.contactId === 'c1' && m.tipo === 'mail'));
 });
 
 await test('ultimi contatti: la mail conta per i promemoria Da ricontattare', async () => {
   await page.evaluate(([d10, d100, d2]) => {
     window.__fake.put('contacts', 'c7', { nome: 'Solo', cognome: 'Mail' });
-    window.__fake.put('mails', 'm7', { contactId: 'c7', data: d10, ora: '10:00', tipo: 'presentazione', oggetto: 'x' });
+    window.__fake.put('calls', 'm7', { tipo: 'mail', sottotipo: 'presentazione', contactId: 'c7', data: d10, ora: '10:00', oggetto: 'x' });
     window.__fake.put('contacts', 'c8', { nome: 'Vecchio', cognome: 'Cliente' });
     window.__fake.put('calls', 'k8', { contactId: 'c8', data: d100, esito: 'Interessato', note: '' });
   }, [daysAgo(10), daysAgo(100), daysAgo(2)]);
-  await page.waitForFunction(() => mails.some(m => m.id === 'm7') && calls.some(k => k.id === 'k8'));
+  await page.waitForFunction(() => calls.some(m => m.id === 'm7') && calls.some(k => k.id === 'k8'));
   let txt = await show_(page, 'agenda');
   expect(txt.includes('Mail Solo') && txt.includes('mail di presentazione inviata 10 giorni fa'), 'contatto con sola mail non proposto:\n' + txt.slice(0, 2000));
   expect(txt.includes('Cliente Vecchio'), 'il cliente fermo da 100 giorni doveva essere da ricontattare');
-  await page.evaluate(d2 => window.__fake.put('mails', 'm8', { contactId: 'c8', data: d2, ora: '09:00', tipo: 'presentazione', oggetto: 'x' }), daysAgo(2));
-  await page.waitForFunction(() => mails.some(m => m.id === 'm8'));
+  await page.evaluate(d2 => window.__fake.put('calls', 'm8', { tipo: 'mail', sottotipo: 'presentazione', contactId: 'c8', data: d2, ora: '09:00', oggetto: 'x' }), daysAgo(2));
+  await page.waitForFunction(() => calls.some(m => m.id === 'm8'));
   txt = await show_(page, 'agenda');
   expect(!txt.includes('Cliente Vecchio'), 'dopo una mail di 2 giorni fa il cliente non va ancora richiamato');
   await show_(page, 'detail', "selectedId='c8'");
   const last = await page.textContent('.last-card');
   expect(last.includes('Interessato') && /Mail[\s\S]*2 giorni fa/i.test(last), 'riquadro ultimi contatti: ' + last);
+});
+
+await test('attività: conversione dei vecchi incontri, incontro e mail registrati, Registra l\'incontro', async () => {
+  // conversione una tantum: l'appuntamento passato k2 (seme) e' diventato anche un incontro a se'
+  await page.waitForFunction(() => appSettings.attivitaV2);
+  let st = await page.evaluate(() => { const k2 = calls.find(k => k.id === 'k2'); return { k2, m: calls.find(k => k.tipo === 'incontro' && k.daAppuntamento === 'k2') }; });
+  expect(st.k2.incontroId && st.m && st.m.id === st.k2.incontroId && st.m.data === st.k2.appuntamento.slice(0, 10), 'conversione: ' + JSON.stringify(st));
+  // incontro registrato dalla scheda contatto
+  await show_(page, 'detail', "selectedId='c4'");
+  await page.click('#actFormCard [data-act-type="incontro"]');
+  if (shotsDir) await (await page.$('#actFormCard')).screenshot({ path: path.join(shotsDir, 'attivita-incontro.png') });
+  expect(await page.isVisible('#callMeetNote') && !(await page.isVisible('#callEsito')) && (await page.textContent('#saveCallBtn')) === 'Salva incontro', 'sezioni dell\'incontro');
+  await page.fill('#callDate', daysAgo(1));
+  await page.selectOption('#callMeetTime', '15:00');
+  await page.fill('#callMeetNote', 'visto il cantiere, interessati');
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => calls.some(k => k.tipo === 'incontro' && k.note === 'visto il cantiere, interessati'));
+  st = await page.evaluate(() => calls.find(k => k.note === 'visto il cantiere, interessati'));
+  expect(st.contactId === 'c4' && st.data === daysAgo(1) && st.ora === '15:00' && !st.esito, 'incontro salvato: ' + JSON.stringify(st));
+  // mail incollata da Outlook: oggetto, data e ora letti dal testo
+  await page.waitForSelector('#actFormCard [data-act-type="mail"]');
+  await page.click('#actFormCard [data-act-type="mail"]');
+  await page.fill('#callMailPaste', 'Da: Alessandro\nInviato: lunedì 12 ottobre 2026 18:04\nA: info@verdi.it\nOggetto: Offerta Isokorb per Via Roma\n\nBuongiorno, come d\'accordo...');
+  expect(await page.inputValue('#callMailSubj') === 'Offerta Isokorb per Via Roma' && await page.inputValue('#callDate') === '2026-10-12', 'lettura della mail incollata');
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => calls.some(k => k.tipo === 'mail' && k.oggetto === 'Offerta Isokorb per Via Roma'));
+  st = await page.evaluate(() => calls.find(k => k.oggetto === 'Offerta Isokorb per Via Roma'));
+  expect(st.data === '2026-10-12' && st.ora === '18:04' && st.testo.includes('come d\'accordo'), 'mail salvata: ' + JSON.stringify(st));
+  const hist = await page.textContent('#main');
+  expect(hist.includes('Storico attività') && /Incontro/.test(hist) && hist.includes('Offerta Isokorb per Via Roma'), 'storico attività');
+  // appuntamento passato da registrare: da Oggi a "Registra l'incontro" precompilato
+  await page.evaluate(d => window.__fake.put('calls', 'k9a', { contactId: 'c3', data: d, esito: 'Appuntamento fissato', appuntamento: d + 'T11:30', note: '', progetti: ['p2'] }), daysAgo(2));
+  await page.waitForFunction(() => calls.some(k => k.id === 'k9a'));
+  await show_(page, 'agenda');
+  await page.waitForSelector('.meet-reg-card [data-meet-register="k9a"]');
+  await page.click('.meet-reg-card [data-meet-register="k9a"]');
+  await page.waitForFunction(() => view === 'detail' && selectedId === 'c3' && document.querySelector('#actFormCard [data-act-type="incontro"].on'));
+  expect(await page.inputValue('#callDate') === daysAgo(2) && await page.inputValue('#callMeetTime') === '11:30', 'incontro non precompilato');
+  await page.fill('#callMeetNote', 'incontro registrato da Oggi');
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => { const m = calls.find(k => k.note === 'incontro registrato da Oggi'); const a = calls.find(k => k.id === 'k9a'); return m && a && a.incontroId === m.id; });
+  st = await page.evaluate(() => calls.find(k => k.note === 'incontro registrato da Oggi'));
+  expect(st.daAppuntamento === 'k9a' && (st.progetti || []).includes('p2'), 'collegamento con l\'appuntamento: ' + JSON.stringify(st));
+  const ag = await show_(page, 'agenda');
+  expect(!ag.includes('Incontri da registrare') || !(await page.$('[data-meet-register="k9a"]')), 'l\'appuntamento registrato non deve restare da registrare');
 });
 
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {

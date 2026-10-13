@@ -23,7 +23,9 @@ const isLost = (p) => p.esito === 'persa';
 const isWon = (p, today) => !isLost(p) && phaseDone(p, 'confermaOrdine', today);
 
 // Candidati e dati anonimi per Claude (stesse esclusioni della lista "Da ricontattare").
-function buildCandidates(contacts, calls, projects, today, mails = []) {
+// Attivita' in "calls": tipo 'telefonata' (o assente), 'incontro' (svolto), 'mail'.
+const tipo = (k) => k.tipo || 'telefonata';
+function buildCandidates(contacts, calls, projects, today) {
   const now = new Date();
   const yearAgo = new Date(now.getTime() - 365 * 864e5).toISOString().slice(0, 10);
   const byContact = new Map();
@@ -38,12 +40,13 @@ function buildCandidates(contacts, calls, projects, today, mails = []) {
     if (list.some((k) => k.appuntamento && new Date(k.appuntamento) > now)) return;
     const projs = projects.filter((p) => (p.partecipanti || []).some((x) => x.contactId === c.id));
     if (projs.some((p) => !isLost(p) && !isWon(p, today))) return;   // progetto in corso: lo segue il progetto
-    const sorted = list.slice().sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+    const sorted = list.filter((k) => tipo(k) === 'telefonata').sort((a, b) => (b.data || '').localeCompare(a.data || ''));
     if (sorted.some((k) => k.esito === 'Non interessato' && (k.data || '') >= yearAgo)) return;
-    const meetings = list.filter((k) => k.appuntamento && new Date(k.appuntamento) <= now).map((k) => k.appuntamento.slice(0, 10));
+    const meetings = [...list.filter((k) => tipo(k) === 'incontro' && (k.data || '') <= today).map((k) => k.data),
+      ...list.filter((k) => tipo(k) === 'telefonata' && k.appuntamento && new Date(k.appuntamento) <= now && !k.incontroId).map((k) => k.appuntamento.slice(0, 10))];
     // anche le mail di presentazione contano come contatto (collection "mails")
-    const mailDates = mails.filter((m) => m.contactId === c.id).map((m) => m.data || '').concat(c.mailPresentazioneIl ? [c.mailPresentazioneIl] : []);
-    const last = [sorted[0].data || '', ...meetings, ...mailDates].sort().pop();
+    const mailDates = list.filter((k) => tipo(k) === 'mail').map((k) => k.data || '').concat(c.mailPresentazioneIl ? [c.mailPresentazioneIl] : []);
+    const last = [(sorted[0] || {}).data || '', ...meetings, ...mailDates].sort().pop();
     if (!last || days(last, today) < MIN_DAYS) return;
     out.push({
       id: c.id,
@@ -106,9 +109,9 @@ export default async function handler(req) {
     if (runs >= MAX_RUNS_PER_DAY) return json(429, { error: `Oggi hai già chiesto ${runs} analisi: riprova domani.` });
 
     const base = db.collection('users').doc(uid);
-    const [cs, ks, ps, ms] = await Promise.all(['contacts', 'calls', 'projects', 'mails'].map((n) => base.collection(n).get()));
+    const [cs, ks, ps] = await Promise.all(['contacts', 'calls', 'projects'].map((n) => base.collection(n).get()));
     const docs = (s) => s.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const candidates = buildCandidates(docs(cs), docs(ks), docs(ps), today, docs(ms));
+    const candidates = buildCandidates(docs(cs), docs(ks), docs(ps), today);
     if (!candidates.length) {
       const empty = { items: [], data: today, analisi: runs + 1, candidati: 0, creatoIl: Date.now() };
       await ref.set(empty);

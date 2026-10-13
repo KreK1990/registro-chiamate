@@ -22,7 +22,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
   download, "Fai una copia adesso"): backup JSON di
-  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,mails}` (version 2; restano fuori
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi}` (version 2; restano fuori
   `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
   chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
   manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
@@ -95,8 +95,25 @@ Campi principali:
   (`mergeContacts`) riempie i campi vuoti, unisce tag e note, prende il follow-up piu' vicino,
   sposta le chiamate e le partecipazioni ai progetti (senza duplicati) ed elimina gli altri. "Non
   sono doppioni" salva le coppie in `settings.nonDoppioni` ("idA|idB" ordinati).
-- **calls**: contactId, data (YYYY-MM-DD), esito, progetto, note, appuntamento (datetime
-  ISO), noteIncontro, createdAt, mailDaInviare (bool), mailInviataIl (YYYY-MM-DD).
+- **calls** = ATTIVITA' (dal 2026-10-13, voce di menu "Attivita'", ex "Chiamata"; blocco "Attivita'"), campo
+  `tipo`: 'telefonata' (o assente: dati vecchi), 'incontro', 'mail' (`actType`, `isPhone`/`isMeet`/`isMailAct`).
+  Telefonata: contactId, data (YYYY-MM-DD), esito, progetto, note, appuntamento (= incontro FISSATO, datetime
+  ISO), incontroId (incontro svolto che lo chiude), noteIncontro (solo dati vecchi), createdAt, mailDaInviare
+  (bool), mailInviataIl (YYYY-MM-DD). Incontro (SVOLTO, evento a se' con la sua data): data, ora, note,
+  progetti, consegnaOfferta, daAppuntamento (telefonata che l'aveva fissato). Mail: data, ora, oggetto, note,
+  testo (mail incollata), sottotipo 'presentazione'. Modulo con selettore del tipo (scheda contatto e
+  "Attivita'": `actTypePills`, sezioni `[data-act-sec]`, `bindActForm`/`saveActivity`; la telefonata usa
+  ancora `saveCall`/`saveQuickCall`); mail incollata letta da `parsePastedMail` (righe Oggetto/Inviato/A,
+  date italiane o inglesi). Un appuntamento passato senza incontro e' "da registrare" (`apptToRegister`,
+  `meetingOf`): riquadro "Incontri da registrare" in Oggi (ultimi 60 giorni) e Appuntamenti -> Svolti con
+  "Registra l'incontro" (`actPrefill`: incontro precompilato con data, ora, progetti, daAppuntamento).
+  Conversione una tantum `migrateActivities` (settings.attivitaV2; parte solo dopo aver letto calls e dopo
+  una copia di sicurezza POST): ogni appuntamento passato ottiene un incontro `inc_<id telefonata>` (id fisso:
+  sicuro se due dispositivi convertono insieme) con le note dell'incontro; le righe importate da Excel
+  diventano direttamente incontri. Dashboard: "Telefonate" (bucket senza filtro = solo telefonate) piu'
+  totali di incontri e mail; Clienti: incontro = attivita' Incontro o appuntamento; Tabella "attivita'" con il
+  tipo; Excel foglio "Attivita'" con colonna Tipo; l'import da Excel crea incontri per gli appuntamenti
+  passati. `suggest.mjs` legge i tipi (esiti solo dalle telefonate).
   Promemoria "mail informativa" aperto = mailDaInviare && !mailInviataIl: compare in
   Oggi (una riga per cliente, `pendingMailGroups`), nel riepilogo laterale, nel badge di
   "Oggi"/menu e come notifica dalle 17:30. L'email inserita registrando una chiamata
@@ -168,8 +185,8 @@ Campi principali:
   (`data-mail-pres`) apre Outlook web (`outlook.office.com/mail/deeplink/compose`, to/subject/body),
   "con l'app di posta" usa mailto:. Testo `MAIL_PRES_DEFAULT` con `{firma}`; `settings.mailPres` {firma,
   oggetto, testo} in Impostazioni; la firma (nome dell'utente) MAI nel codice, il repo e' pubblico.
-  Senza firma chiede di impostarla. Aprendo la mail la registra nella collection `mails` {contactId, data,
-  ora, tipo:'presentazione', oggetto, createdAt} (`logPresentationMail`; chiude anche la "mail informativa"
+  Senza firma chiede di impostarla. Aprendo la mail la registra come attivita' Mail in `calls` {tipo:'mail',
+  sottotipo:'presentazione', data, ora, oggetto} (`logPresentationMail`; chiude anche la "mail informativa"
   in sospeso del cliente); le vecchie `contacts.mailPresentazioneIl` valgono come una mail (`contactMails`).
   **Ultimi contatti** (blocco "Mail inviate e ultimi contatti"): riquadro nella scheda contatto
   (`lastContactsHtml`: ultima telefonata con esito, ultima mail, ultimo incontro; elenco "Mail inviate" con
