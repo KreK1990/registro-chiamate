@@ -759,7 +759,7 @@ h2{color:var(--accent);font-weight:800;}
 </div>
 
 <script>
-let db=null, contacts=[], calls=[], selectedId=null, view='agenda', sortField='cognome', callStep='pick', confirmDeleteId=null, tableDetailCallId=null, clearFollowUpOnEntry=false, apptSubView='list', apptWeekOffset=0, footerCalDate=new Date(), footerSelectedDay=null, editingCallId=null, confirmDeleteCallId=null, dashboardDrilldown=null, dashboardSubView='weekly', tableFilters={search:'',esito:'',professione:''}, contactsSearchQuery=''; // view: agenda|contactsList|new|detail|table|call|followup|appt|dashboard
+let db=null, contacts=[], calls=[], selectedId=null, view='agenda', sortField='cognome', callStep='pick', confirmDeleteId=null, tableDetailCallId=null, clearFollowUpOnEntry=false, apptSubView='list', apptWeekOffset=0, footerCalDate=new Date(), footerSelectedDay=null, editingCallId=null, confirmDeleteCallId=null, dashboardDrilldown=null, dashboardSubView='weekly', tableFilters={search:'',esito:'',professione:'',tipo:''}, contactsSearchQuery=''; // view: agenda|contactsList|new|detail|table|call|followup|appt|dashboard
 
 function showGate(html){
   document.getElementById('layoutRoot').classList.add('hidden');
@@ -1164,6 +1164,7 @@ function renderMain(){
     }
     const tEsito = document.getElementById('tableEsitoFilter');
     if(tEsito) tEsito.addEventListener('change', e=>{ tableFilters.esito=e.target.value; renderMain(); });
+    document.getElementById('tableTipoFilter')?.addEventListener('change', e=>{ tableFilters.tipo=e.target.value; renderMain(); });
     const tProf = document.getElementById('tableProfFilter');
     if(tProf) tProf.addEventListener('change', e=>{ tableFilters.professione=e.target.value; renderMain(); });
     return;
@@ -6912,6 +6913,21 @@ function startOfWeek(d){
 }
 
 function sumCount(buckets){ return buckets.reduce((s, b)=>s + b.count, 0); }
+const MEET_COLOR = '#7a4fb5', MAIL_COLOR = '#3d4650';   // stessi colori dei segni "Incontro" e "Mail"
+// Grafici di incontri svolti e mail inviate, sotto quelli di telefonate e appuntamenti.
+function meetMailCards(bucketsOf, unit, chart){
+  const mb = bucketsOf(isMeet), lb = bucketsOf(isMailAct);
+  return `<div class="card">
+      <h3>Incontri svolti per ${unit}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${sumCount(mb)}</div>
+      ${chart(mb, MEET_COLOR, 'meet')}
+    </div>
+    <div class="card">
+      <h3>Mail inviate per ${unit}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${sumCount(lb)} · l'elenco completo è in Tabella attività, filtro Tipo = Mail</div>
+      ${chart(lb, MAIL_COLOR, 'mail')}
+    </div>`;
+}
 function weeklyBuckets(predicate, weeksBack){
   const thisMonday = startOfWeek(new Date());
   const buckets = [];
@@ -7051,7 +7067,8 @@ function dashboardWeeklyView(){
       <h3>Appuntamenti fissati per settimana</h3>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalAppts} · media ${avgAppts} a settimana</div>
       ${barChartSVG(apptBuckets, 'var(--text)', 'appt')}
-    </div>`;
+    </div>
+    ${meetMailCards(p=>weeklyBuckets(p, weeksBack), 'settimana', (b, c, t)=>barChartSVG(b, c, t))}`;
 }
 
 function monthlyBuckets(predicate, monthsBack, year){
@@ -7130,7 +7147,8 @@ function dashboardMonthlyView(){
       <h3>Appuntamenti fissati per mese</h3>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalAppts}</div>
       ${simpleBarChartSVG(apptBuckets, 'var(--text)', labelFn, drillFn, 'appt')}
-    </div>`;
+    </div>
+    ${meetMailCards(p=>monthlyBuckets(p, monthsBack), 'mese', (b, c, t)=>simpleBarChartSVG(b, c, labelFn, drillFn, t))}`;
 }
 
 function dashboardYearlyView(){
@@ -7152,7 +7170,8 @@ function dashboardYearlyView(){
       <h3>Appuntamenti fissati per anno</h3>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Totale: ${totalAppts}</div>
       ${simpleBarChartSVG(apptBuckets, 'var(--text)', labelFn, drillFn, 'appt')}
-    </div>`;
+    </div>
+    ${meetMailCards(p=>yearlyBuckets(p, yearsBack), 'anno', (b, c, t)=>simpleBarChartSVG(b, c, labelFn, drillFn, t))}`;
 }
 
 // Dettaglio a livelli: dashboardDrilldown = { type:'calls'|'appt', stack:[livelli] }.
@@ -7274,10 +7293,10 @@ function dashboardDrilldownView(){
   const top = dashboardDrilldown.stack[dashboardDrilldown.stack.length-1];
   if(top.kind==='segment') return clientSegmentView(top);
   if(top.kind==='projEvents' || top.kind==='ordersMonth') return projEventsListView(top);
-  const isAppt = dashboardDrilldown.type==='appt';
-  const pred = isAppt ? isApptCall : isPhone;
-  const color = isAppt ? 'var(--text)' : 'var(--accent)';
-  const what = isAppt ? 'Appuntamenti fissati' : 'Chiamate effettuate';
+  const DRILL = { calls:{ pred:isPhone, color:'var(--accent)', what:'Telefonate' }, appt:{ pred:isApptCall, color:'var(--text)', what:'Appuntamenti fissati' },
+    meet:{ pred:isMeet, color:MEET_COLOR, what:'Incontri svolti' }, mail:{ pred:isMailAct, color:MAIL_COLOR, what:'Mail inviate' } };
+  const dd = DRILL[dashboardDrilldown.type] || DRILL.calls, isAppt = dashboardDrilldown.type==='appt';
+  const pred = dd.pred, color = dd.color, what = dd.what;
   const lvl = dashboardDrilldown.stack[dashboardDrilldown.stack.length-1];
   const back = `<div class="top-actions" style="justify-content:space-between;">
     <button class="btn secondary small" id="drillBackBtn">← ${dashboardDrilldown.stack.length>1 ? 'Indietro' : 'Torna alla dashboard'}</button>
@@ -7585,8 +7604,12 @@ const ESITO_OPTS = ['Interessato','Da richiamare','Appuntamento fissato','Non in
 function tableFilterBar(byId){
   const professioni = [...new Set(contacts.map(c=>c.professione).filter(Boolean))].sort();
   return `<div class="card" style="padding:14px 16px;">
-    <div class="field-row" style="grid-template-columns:2fr 1fr 1fr;">
+    <div class="field-row" style="grid-template-columns:2fr 1fr 1fr 1fr;">
       <div><label>Cerca in note, progetto o cliente</label><input id="tableSearchInput" value="${esc(tableFilters.search)}" placeholder="Es. preventivo, cucina..."></div>
+      <div><label>Tipo</label><select id="tableTipoFilter">
+        <option value="">Tutte</option>
+        ${[['telefonata','Telefonate'],['incontro','Incontri'],['mail','Mail']].map(([k, l])=>`<option value="${k}" ${tableFilters.tipo===k?'selected':''}>${l}</option>`).join('')}
+      </select></div>
       <div><label>Esito</label><select id="tableEsitoFilter">
         <option value="">Tutti</option>
         ${ESITO_OPTS.map(o=>`<option value="${o}" ${tableFilters.esito===o?'selected':''}>${o}</option>`).join('')}
@@ -7605,6 +7628,7 @@ function tableView(){
   const q = tableFilters.search.trim().toLowerCase();
   const filtered = calls.filter(k=>{
     const c = byId[k.contactId] || {};
+    if(tableFilters.tipo && actType(k)!==tableFilters.tipo) return false;
     if(tableFilters.esito && k.esito!==tableFilters.esito) return false;
     if(tableFilters.professione && c.professione!==tableFilters.professione) return false;
     if(q){

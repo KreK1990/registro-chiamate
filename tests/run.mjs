@@ -752,6 +752,26 @@ await test('clic su un appuntamento: oggi -> registra l\'incontro, registrato ->
   await page.evaluate(() => { tableDetailCallId = null; });
 });
 
+await test('riepilogo mail: grafico in Dashboard e filtro Tipo in Tabella attività', async () => {
+  await page.evaluate(d => window.__fake.put('calls', 'mx1', { tipo: 'mail', contactId: 'c3', data: d, ora: '10:00', oggetto: 'Mail di prova per il riepilogo', note: '' }), daysAgo(0));
+  await page.waitForFunction(() => calls.some(k => k.id === 'mx1'));
+  const dash = await show_(page, 'dashboard', "dashboardSubView='weekly'; dashboardDrilldown=null");
+  expect(dash.includes('Mail inviate per settimana') && dash.includes('Incontri svolti per settimana'), 'grafici mancanti:\n' + dash.slice(0, 800));
+  // colonna dell'ultima settimana del grafico delle mail -> elenco del periodo
+  await page.$$eval('.bar-clickable[data-chart-type="mail"]', els => els[els.length - 1].dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await page.waitForFunction(() => dashboardDrilldown && dashboardDrilldown.type === 'mail');
+  expect((await page.textContent('#main')).includes('Mail inviate'), 'titolo del dettaglio');
+  // giorno di oggi nella settimana -> elenco delle mail
+  await page.evaluate(() => { const today = new Date().toDateString(); const el = [...document.querySelectorAll('.bar-clickable[data-drill]')].find(e => { try { const d = JSON.parse(e.dataset.drill); return d.kind === 'day' && d.day === today; } catch (x) { return false; } }); el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+  await page.waitForFunction(() => dashboardDrilldown.stack.length === 2);
+  expect((await page.textContent('#main')).includes('Mail di prova per il riepilogo'), 'dettaglio delle mail della settimana');
+  const tab = await show_(page, 'table', "dashboardDrilldown=null; tableFilters.tipo='mail'");
+  const rows = await page.$$eval('#main tbody tr', trs => trs.map(tr => !!tr.querySelector('.act-tag.mail')));
+  expect(tab.includes('Mail di prova per il riepilogo') && rows.length > 0 && rows.every(Boolean), 'tabella filtrata per Mail: ' + rows.join(','));
+  expect(await page.inputValue('#tableTipoFilter') === 'mail', 'filtro Tipo non selezionato');
+  await page.evaluate(() => { tableFilters.tipo = ''; });
+});
+
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
   await show_(page, 'portal', "portalTab='esamina'");
   await page.waitForSelector('.portal-card[data-pid="9000001"]');

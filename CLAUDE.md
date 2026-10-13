@@ -113,8 +113,9 @@ Campi principali:
   Conversione una tantum `migrateActivities` (settings.attivitaV2; parte solo dopo aver letto calls e dopo
   una copia di sicurezza POST): ogni appuntamento passato ottiene un incontro `inc_<id telefonata>` (id fisso:
   sicuro se due dispositivi convertono insieme) con le note dell'incontro; le righe importate da Excel
-  diventano direttamente incontri. Dashboard: "Telefonate" (bucket senza filtro = solo telefonate) piu'
-  totali di incontri e mail; Clienti: incontro = attivita' Incontro o appuntamento; Tabella "attivita'" con il
+  diventano direttamente incontri. Dashboard: "Telefonate" (bucket senza filtro = solo telefonate), "Appuntamenti
+  fissati", "Incontri svolti" e "Mail inviate" (`meetMailCards`, colori `MEET_COLOR`/`MAIL_COLOR` come i segni;
+  dettaglio per tipo `DRILL` in `dashboardDrilldownView`); Tabella attivita' con filtro Tipo (`tableFilters.tipo`); Clienti: incontro = attivita' Incontro o appuntamento; Tabella "attivita'" con il
   tipo; Excel foglio "Attivita'" con colonna Tipo; l'import da Excel crea incontri per gli appuntamenti
   passati. `suggest.mjs` legge i tipi (esiti solo dalle telefonate).
   Promemoria "mail informativa" aperto = mailDaInviare && !mailInviataIl: compare in
