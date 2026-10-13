@@ -772,6 +772,39 @@ await test('riepilogo mail: grafico in Dashboard e filtro Tipo in Tabella attivi
   await page.evaluate(() => { tableFilters.tipo = ''; });
 });
 
+await test('mail trascinata: file .eml letto (oggetto codificato, quoted-printable, multipart)', async () => {
+  await show_(page, 'detail', "selectedId='c3'");
+  await page.click('#actFormCard [data-act-type="mail"]');
+  const eml = [
+    'From: Alessandro <a@example.it>', 'To: Studio Bianchi <info@studiorossi.it>',
+    'Subject: =?utf-8?Q?Proposta_Isokorb_=E2=80=93_balconi_Via_Po?=', 'Date: Mon, 12 Oct 2026 18:04:00 +0200',
+    'MIME-Version: 1.0', 'Content-Type: multipart/alternative; boundary="XYZ"', '',
+    '--XYZ', 'Content-Type: text/plain; charset="utf-8"', 'Content-Transfer-Encoding: quoted-printable', '',
+    'Buongiorno, le invio la proposta per i balconi. Cos=C3=AC risolviamo il ponte termico.=', '', 'Cordiali saluti',
+    '--XYZ', 'Content-Type: text/html; charset="utf-8"', '', '<p>html</p>', '--XYZ--', ''].join('\r\n');
+  await page.evaluate(src => {
+    const dt = new DataTransfer(); dt.items.add(new File([src], 'Proposta.eml', { type: 'message/rfc822' }));
+    const z = document.querySelector('[data-mail-drop="call"]');
+    z.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    z.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, eml);
+  await page.waitForFunction(() => /Letto dalla mail/.test(document.getElementById('callMailParsed').textContent));
+  const st = await page.evaluate(() => ({ subj: callMailSubj.value, date: callDate.value, ora: callMailPaste.dataset.ora, testo: callMailPaste.value }));
+  expect(st.subj === 'Proposta Isokorb – balconi Via Po', 'oggetto: ' + st.subj);
+  expect(st.date === '2026-10-12' && st.ora === '18:04', 'data/ora: ' + st.date + ' ' + st.ora);
+  expect(st.testo.startsWith('Buongiorno, le invio la proposta per i balconi. Così risolviamo il ponte termico.') && st.testo.includes('Cordiali saluti') && !st.testo.includes('<p>'), 'testo: ' + st.testo);
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => calls.some(k => k.tipo === 'mail' && k.oggetto === 'Proposta Isokorb – balconi Via Po' && k.ora === '18:04'));
+  // file .msg di Outlook: la libreria si carica e legge l'oggetto (file di prova fuori dal repository)
+  if (fs.existsSync(path.join(fixtures, 'prova.msg'))) {
+    await page.waitForSelector('#actFormCard [data-act-type="mail"]');
+    await page.click('#actFormCard [data-act-type="mail"]');
+    await page.evaluate(async () => { const b = await (await fetch('/__fixtures/prova.msg')).blob(); await takeMailFile('call', new File([b], 'prova.msg')); });
+    const s = await page.evaluate(() => ({ subj: callMailSubj.value, msg: callMailParsed.textContent }));
+    expect(s.subj.trim() === 'Offerta balconi Via Nizza', 'lettura del .msg: ' + JSON.stringify(s));
+  }
+});
+
 await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi', async () => {
   await show_(page, 'portal', "portalTab='esamina'");
   await page.waitForSelector('.portal-card[data-pid="9000001"]');

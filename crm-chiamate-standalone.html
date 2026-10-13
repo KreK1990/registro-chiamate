@@ -357,6 +357,9 @@ body.foto-open{overflow:hidden;}
 .act-tag{display:inline-block;padding:1px 7px;border-radius:2px;font-size:11.5px;font-weight:600;color:#fff;background:#00487E;}
 .act-tag.incontro{background:#7a4fb5;}
 .act-tag.mail{background:#3d4650;}
+.mail-drop{margin:4px 0 8px;padding:12px;border:2px dashed var(--border-strong);border-radius:2px;background:var(--bg);font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;}
+.mail-drop strong{color:var(--text);}
+.mail-drop.drop-on{border-color:var(--accent);background:var(--accent-soft);}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
 .attach-main .name-link{font-weight:600;cursor:pointer;word-break:break-word;}
@@ -3827,6 +3830,8 @@ function actMeetHtml(prefix, c){
 }
 function actMailHtml(prefix){
   return `<div class="act-sec" data-act-sec="mail">
+    <div class="mail-drop" data-mail-drop="${prefix}"><strong>Trascina qui la mail da Outlook</strong> (.msg o .eml): oggetto, data e testo si compilano da soli
+      <button type="button" class="btn secondary small" data-mail-file="${prefix}">Scegli il file</button></div>
     <label>Oggetto</label><input id="${prefix}MailSubj" placeholder="Oggetto della mail">
     <label>Note</label><textarea id="${prefix}MailNote" placeholder="Due righe su cosa hai scritto o ricevuto…"></textarea>
     <label>Oppure incolla qui la mail (facoltativo)</label>
@@ -4025,6 +4030,121 @@ async function saveActEdit(k){
     editingCallId = null; renderMain();
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
 }
+
+// ---------------------------------------------------------------------------
+// Mail trascinata o scelta come file (attivita' Mail): .msg di Outlook (letto con @kenjiuno/msgreader,
+// Apache-2.0, caricato da jsDelivr solo al bisogno) o .eml (letto qui: intestazioni, parole codificate,
+// multipart, quoted-printable/base64). Compila oggetto, data, ora e testo; anche il testo trascinato
+// finisce nel riquadro "incolla". Tutto avviene sul dispositivo: la mail non viene inviata a nessuno.
+// ---------------------------------------------------------------------------
+const MSGREADER_URL = 'https://cdn.jsdelivr.net/npm/@kenjiuno/msgreader@1.28.0/+esm';
+function mailBytes(s){ return Uint8Array.from(s, c=>c.charCodeAt(0) & 255); }
+function decodeWords(s){
+  return String(s||'').replace(/\?=\s+=\?/g, '?==?').replace(/=\?([^?]+)\?([BQbq])\?([^?]*)\?=/g, (m, cs, enc, txt)=>{
+    try{
+      const bytes = enc.toUpperCase()==='B' ? mailBytes(atob(txt)) : mailBytes(txt.replace(/_/g, ' ').replace(/=([0-9A-F]{2})/gi, (x, h)=>String.fromCharCode(parseInt(h, 16))));
+      return new TextDecoder(cs).decode(bytes);
+    }catch(e){ return txt; }
+  });
+}
+function mailHeaders(block){
+  const h = {};
+  block.replace(/\r?\n[ \t]+/g, ' ').split(/\r?\n/).forEach(l=>{ const i = l.indexOf(':'); if(i>0){ const k = l.slice(0, i).trim().toLowerCase(); if(!(k in h)) h[k] = l.slice(i+1).trim(); } });
+  return h;
+}
+function decodeMailBody(b, cte, ct){
+  const cs = (/charset="?([^";\s]+)"?/i.exec(ct||'') || [])[1] || 'utf-8';
+  let bytes;
+  if(/base64/i.test(cte||'')) bytes = mailBytes(atob(b.replace(/\s+/g, '')));
+  else if(/quoted-printable/i.test(cte||'')) bytes = mailBytes(b.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/gi, (x, h)=>String.fromCharCode(parseInt(h, 16))));
+  else return b;
+  try{ return new TextDecoder(cs).decode(bytes); }catch(e){ return new TextDecoder().decode(bytes); }
+}
+function htmlMailText(h){
+  const d = new DOMParser().parseFromString(String(h).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|li|h\d)>/gi, '\n'), 'text/html');
+  return (d.body ? d.body.textContent : '').replace(/\n{3,}/g, '\n\n').trim();
+}
+function emlText(ct, cte, body){
+  const bm = /boundary="?([^";]+)"?/i.exec(ct||'');
+  if(/multipart\//i.test(ct||'') && bm){
+    let html = '';
+    for(const part of body.split('--'+bm[1]).slice(1)){
+      if(part.startsWith('--')) break;
+      const p = part.replace(/^\r?\n/, ''), cut = p.search(/\r?\n\r?\n/);
+      const hh = mailHeaders(cut<0 ? p : p.slice(0, cut)), pb = cut<0 ? '' : p.slice(cut).replace(/^\r?\n\r?\n/, '');
+      const pct = hh['content-type'] || 'text/plain';
+      if(/attachment/i.test(hh['content-disposition']||'')) continue;
+      if(/multipart\//i.test(pct)){ const t = emlText(pct, hh['content-transfer-encoding'], pb); if(t) return t; continue; }
+      if(/text\/plain/i.test(pct)) return decodeMailBody(pb, hh['content-transfer-encoding'], pct).trim();
+      if(/text\/html/i.test(pct) && !html) html = htmlMailText(decodeMailBody(pb, hh['content-transfer-encoding'], pct));
+    }
+    return html;
+  }
+  const t = decodeMailBody(body, cte, ct);
+  return (/text\/html/i.test(ct||'') ? htmlMailText(t) : t).trim();
+}
+function parseEml(raw){
+  const cut = raw.search(/\r?\n\r?\n/);
+  const h = mailHeaders(cut<0 ? raw : raw.slice(0, cut)), body = cut<0 ? '' : raw.slice(cut).replace(/^\r?\n\r?\n/, '');
+  const when = h.date ? new Date(h.date) : null;
+  return { oggetto: decodeWords(h.subject).trim(), a: decodeWords(h.to).trim(), when: when && !isNaN(when) ? when : null, testo: emlText(h['content-type'], h['content-transfer-encoding'], body) };
+}
+async function readMailFile(file){
+  const n = (file.name||'').toLowerCase();
+  if(n.endsWith('.msg')){
+    const mod = await import(MSGREADER_URL);
+    const MsgReader = mod.default && mod.default.default ? mod.default.default : mod.default;
+    const d = new MsgReader(new Uint8Array(await file.arrayBuffer())).getFileData();
+    if(d.error) throw new Error(d.error);
+    const hdr = d.headers ? parseEml(d.headers.trim()+'\r\n\r\n') : {};
+    const ws = d.clientSubmitTime || d.messageDeliveryTime || d.creationTime, w = ws ? new Date(ws) : null;
+    const a = (d.recipients||[]).filter(r=>!r.recipType || r.recipType==='to').map(r=>r.name || r.email || r.smtpAddress).filter(Boolean).join(', ');
+    return { oggetto: (d.subject||'').trim(), a: a || (d.displayTo||'').trim(), when: w && !isNaN(w) ? w : hdr.when || null, testo: (d.body||'').trim() || (d.bodyHtml ? htmlMailText(d.bodyHtml) : '') };
+  }
+  if(n.endsWith('.eml') || /^message\/rfc822/.test(file.type||'')) return parseEml(await file.text());
+  throw new Error('trascina una mail di Outlook (.msg) o un file .eml');
+}
+function applyMailData(prefix, r){
+  const pad = n=>String(n).padStart(2,'0');
+  const subj = document.getElementById(prefix+'MailSubj'), paste = document.getElementById(prefix+'MailPaste'), dateIn = document.getElementById(prefix==='qc' ? 'qcData' : 'callDate');
+  if(!subj || !paste) return;
+  if(r.oggetto) subj.value = r.oggetto;
+  if(r.testo) paste.value = r.testo;
+  if(r.when){ dateIn.value = `${r.when.getFullYear()}-${pad(r.when.getMonth()+1)}-${pad(r.when.getDate())}`; paste.dataset.ora = `${pad(r.when.getHours())}:${pad(r.when.getMinutes())}`; }
+  document.getElementById(prefix+'MailParsed').textContent = `Letto dalla mail: ${[r.oggetto && 'oggetto', r.when && 'data '+fmtDate(dateIn.value)+' ore '+paste.dataset.ora, r.a && 'a '+r.a, r.testo && 'testo'].filter(Boolean).join(' · ')}.`;
+}
+async function takeMailFile(prefix, file){
+  const msg = document.getElementById(prefix+'MailParsed');
+  if(msg) msg.textContent = 'Leggo la mail…';
+  try{ applyMailData(prefix, await readMailFile(file)); }
+  catch(e){ if(msg) msg.textContent = 'Non riesco a leggere la mail: '+(e.message||e)+'. In alternativa copia il testo e incollalo qui sotto.'; }
+}
+document.addEventListener('dragover', e=>{
+  const z = e.target.closest && e.target.closest('[data-mail-drop]');
+  if(!z) return;
+  e.preventDefault(); z.classList.add('drop-on');
+});
+document.addEventListener('dragleave', e=>{ const z = e.target.closest && e.target.closest('[data-mail-drop]'); if(z && !z.contains(e.relatedTarget)) z.classList.remove('drop-on'); });
+document.addEventListener('drop', e=>{
+  const z = e.target.closest && e.target.closest('[data-mail-drop]');
+  if(!z) return;
+  e.preventDefault(); z.classList.remove('drop-on');
+  const prefix = z.dataset.mailDrop, files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
+  if(files.length) return takeMailFile(prefix, files[0]);
+  const txt = e.dataTransfer && (e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text'));
+  const paste = document.getElementById(prefix+'MailPaste');
+  if(txt && paste){ paste.value = txt; paste.dispatchEvent(new Event('input', { bubbles:true })); return; }
+  const msg = document.getElementById(prefix+'MailParsed');
+  if(msg) msg.textContent = 'Da qui non arriva nessun file: da Outlook sul web trascina la mail sul desktop o in una cartella e poi qui, oppure copia il testo e incollalo.';
+});
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-mail-file]');
+  if(!b) return;
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.msg,.eml,message/rfc822';
+  input.addEventListener('change', ()=>{ if(input.files && input.files[0]) takeMailFile(b.dataset.mailFile, input.files[0]); });
+  input.click();
+});
 
 // ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello

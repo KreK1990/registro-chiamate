@@ -104,7 +104,12 @@ Campi principali:
   testo (mail incollata), sottotipo 'presentazione'. Modulo con selettore del tipo (scheda contatto e
   "Attivita'": `actTypePills`, sezioni `[data-act-sec]`, `bindActForm`/`saveActivity`; la telefonata usa
   ancora `saveCall`/`saveQuickCall`); mail incollata letta da `parsePastedMail` (righe Oggetto/Inviato/A,
-  date italiane o inglesi). Un appuntamento passato senza incontro e' "da registrare" (`apptToRegister`,
+  date italiane o inglesi). Trascinamento della mail (riquadro `[data-mail-drop]` o "Scegli il file", blocco
+  "Mail trascinata"): .msg di Outlook letto con `@kenjiuno/msgreader` 1.28.0 (Apache-2.0) importato al bisogno
+  da jsDelivr (+esm), .eml letto da `parseEml` (intestazioni, parole codificate, multipart, QP/base64, html ->
+  testo); compila oggetto, data, ora e testo (`applyMailData`). Tutto sul dispositivo. Test: .eml completo;
+  .msg solo l'oggetto (il file di prova `../test-fixtures/prova.msg` e' generato con il Burner della
+  libreria, che scrive male i flussi piccoli). Un appuntamento passato senza incontro e' "da registrare" (`apptToRegister`,
   `meetingOf`): riquadro "Incontri da registrare" in Oggi (ultimi 60 giorni) e Appuntamenti -> Svolti con
   "Registra l'incontro" (`actPrefill`: incontro precompilato con data, ora, progetti, daAppuntamento).
   Clic su un appuntamento (Oggi, riepilogo, calendari, Appuntamenti; ascoltatore in cattura su document):
