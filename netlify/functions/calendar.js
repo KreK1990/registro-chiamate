@@ -127,7 +127,7 @@ exports.handler = async function (event) {
     const now = new Date();
     const dtstamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
 
-    let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Registro Chiamate//IT\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Appuntamenti Registro\r\nX-WR-TIMEZONE:Europe/Rome\r\nREFRESH-INTERVAL;VALUE=DURATION:PT1H\r\n';
+    let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Registro Chiamate//IT\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Appuntamenti Registro\r\nX-WR-TIMEZONE:Europe/Rome\r\nREFRESH-INTERVAL;VALUE=DURATION:PT1H\r\nX-PUBLISHED-TTL:PT1H\r\n';   // X-PUBLISHED-TTL: lo legge Outlook
     ics += VTIMEZONE;
 
     events.forEach((k) => {
