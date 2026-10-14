@@ -237,6 +237,12 @@ Campi principali:
   "Annulla consegna" la toglie (e svuota merceCantiere se era quella data e nessun altro ordine).
   Badge `delBadge` (e nel menu) = consegne di oggi o in ritardo non segnate (`deliveriesDue`).
   `delEdit` = modulo aperto (blocca i ridisegni automatici in `canAutoRender`).
+- **Torna indietro** (blocco "Torna indietro: cronologia delle schermate visitate", 2026-10-14): `navTrack` (all'inizio di
+  `renderMain` e `renderCallFlow`) confronta la posizione (`navKey`: vista, contatto, attivita', progetto, passo e
+  sotto-viste) con l'attuale; se cambia mette la precedente (con scorrimento di #main e voce di menu) in `navStack`
+  (max 40). `navBack` la ripristina. Pulsante `[data-nav-back]`: su PC barra `#navBackBar` sopra #main ("← Oggi",
+  `navLabel`: nome del cliente, del progetto...), sul telefono freccia nella barra in alto. Un modulo Attivita'
+  appena salvato (entry -> pick) non entra nella pila. #main ora sta dentro `.main-col` (min-height:0 serve al telefono).
 - **Riquadri di Oggi richiudibili** (blocco "Riquadri di Oggi richiudibili e barra del portale che ricompare
   risalendo", 2026-10-14): `foldTodayCards` dopo il disegno di Oggi rende ogni `.card` figlia di #main con un h3
   apribile/chiudibile toccando il titolo (freccia `.fold-head`, `.folded` nasconde tutto tranne il primo figlio);

@@ -863,6 +863,32 @@ await test('chiamata registrata senza "Follow-up effettuato": il follow-up di og
   expect(await page.inputValue('#qcFollowUpDate') === daysAgo(-3), 'il follow-up futuro deve restare nel modulo');
 });
 
+await test('torna indietro: Oggi -> cliente -> chiamata registrata -> di nuovo Oggi, stesso punto', async () => {
+  await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T08:00' }), daysAgo(0));
+  await page.waitForFunction(() => contacts.find(c => c.id === 'c4').followUp);
+  await page.evaluate(() => document.getElementById('navAgenda').click());
+  await settle(page);
+  await page.evaluate(() => { const m = document.getElementById('main'); m.scrollTop = 300; });
+  const y0 = await page.evaluate(() => document.getElementById('main').scrollTop);
+  const n0 = await page.evaluate(() => { navStack.length = 0; return 0; });
+  await page.evaluate(() => document.querySelector('#main [data-contact-id="c4"]').click());
+  await settle(page);
+  expect(await page.evaluate(() => view) === 'detail', 'non si apre la scheda del cliente');
+  const lbl = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-nav-back]')].find(x => x.offsetParent); return b ? b.title : ''; });
+  expect(lbl === 'Torna a: Oggi', 'tasto indietro assente o sbagliato: ' + lbl);
+  await page.fill('#callNote', 'giro indietro');
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => window.__fake.docs('calls').some(k => k.note === 'giro indietro'));
+  await settle(page);
+  await page.evaluate(() => [...document.querySelectorAll('[data-nav-back]')].find(x => x.offsetParent).click());
+  await settle(page);
+  const st = await page.evaluate(() => ({ view, y: document.getElementById('main').scrollTop, tab: document.getElementById('navAgenda').classList.contains('active'), fu: !!document.querySelector('#main [data-contact-id="c4"][style*="cursor"]') }));
+  expect(st.view === 'agenda' && st.tab, 'non torna a Oggi: ' + JSON.stringify(st));
+  expect(Math.abs(st.y - y0) < 5, `scorrimento non ripristinato (${st.y} invece di ${y0})`);
+  expect(!st.fu, 'il follow-up del cliente chiamato e\' ancora in Oggi');
+  expect(await page.evaluate(() => navStack.length) === n0, 'la cronologia non torna come prima ');
+});
+
 await ctx.close();
 await browser.close();
 server.close();
