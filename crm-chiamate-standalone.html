@@ -80,6 +80,39 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .call-item .esito{display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px;}
 .call-item .note{font-size:14px;margin-top:4px;white-space:pre-wrap;}
 .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px;}
+.rep-group{font-family:var(--serif);font-weight:700;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px;}
+.rep-proj{margin:0 0 10px;padding-left:10px;border-left:3px solid var(--border-strong);}
+.rep-proj-title{font-weight:600;font-size:14px;margin-bottom:4px;}
+.rep-note{margin:0 0 8px;}
+.rep-note.off{opacity:.55;}
+.rep-note-head input{width:auto;min-height:0;margin:0;flex:none;}
+.rep-note-head{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;margin:0 0 4px;font-size:13.5px;font-weight:400;cursor:pointer;}
+.rep-note textarea{min-height:44px;resize:vertical;font-size:13.5px;overflow:hidden;}
+.rep-sales-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:baseline;font-size:13.5px;padding:7px 0;border-bottom:1px solid var(--border);}
+.rep-sales-row small{display:block;font-size:11.5px;color:var(--muted);}
+.rep-sales-h{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;padding-top:0;}
+.rep-li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;}
+.rep-li .fc-note{grid-column:1/-1;}
+.rep-list{margin-top:10px;}
+.rep-saved{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:2px;}
+/* Report in PDF: sempre chiaro, A4 verticale */
+.wr-report{width:720px;background:#fff;color:#1d2733;font-family:var(--sans);font-size:12px;line-height:1.45;padding:4px;}
+.wr-head{border-bottom:3px solid #00487E;padding-bottom:8px;margin-bottom:6px;}
+.wr-title{font-family:var(--serif);font-weight:700;font-size:22px;color:#00487E;}
+.wr-date{color:#5b6b7b;font-size:11px;}
+.wr-report h3{font-family:var(--serif);font-weight:700;font-size:15px;color:#00487E;margin:14px 0 6px;}
+.wr-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;}
+.wr-kv{border:1px solid #c9d3dd;padding:6px 8px;}
+.wr-k{font-size:10px;text-transform:uppercase;color:#5b6b7b;}
+.wr-v{font-size:16px;font-weight:700;}
+.wr-n{font-size:10.5px;color:#5b6b7b;}
+.wr-tr{display:grid;grid-template-columns:1.6fr 1fr .8fr 1fr .8fr;gap:6px;padding:4px 0;border-bottom:1px solid #e1e7ed;}
+.wr-tr.wr-tr3{grid-template-columns:2fr 1fr 1.6fr;}
+.wr-th{font-size:10px;text-transform:uppercase;color:#5b6b7b;}
+.wr-sub{font-weight:700;font-size:11px;text-transform:uppercase;color:#5b6b7b;margin:10px 0 4px;}
+.wr-proj{font-weight:700;margin:6px 0 2px;}
+.wr-note{margin:0 0 6px;padding-left:8px;border-left:2px solid #c9d3dd;}
+.wr-note-h{font-size:10.5px;color:#5b6b7b;}
 .fold-head{cursor:pointer;user-select:none;}
 .fold-head::before{content:'';display:inline-block;width:7px;height:7px;margin:0 9px 2px 1px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .15s;}
 .fold-card.folded .fold-head::before{transform:rotate(-45deg);}
@@ -1066,6 +1099,7 @@ function startApp(uid){
   unsubscribers.push(db.collection('portale').onSnapshot(onPortalSnapshot, showDataError));
   unsubscribers.push(db.collection('settings').onSnapshot(onSettingsSnapshot, showDataError));
   unsubscribers.push(db.collection('sopralluoghi').onSnapshot(onSopSnapshot, showDataError));
+  unsubscribers.push(db.collection('report').onSnapshot(onReportSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -1140,6 +1174,7 @@ function renderMain(){
       btn.addEventListener('click', ()=>{ btn.disabled = true; markMailSent(btn.dataset.mailDone); });
     });
     bindTodo(main);
+    document.getElementById('repGoBtn')?.addEventListener('click', ()=>{ repSetPeriod('week'); dashboardDrilldown = null; dashboardSubView = 'report'; view = 'dashboard'; setActiveTab('navDashboard'); renderMain(); });
     foldTodayCards(main);
     return;
   }
@@ -1208,6 +1243,8 @@ function renderMain(){
     document.getElementById('clientsPeriod')?.addEventListener('change', e=>{ dashboardClientsPeriod = e.target.value; renderMain(); });
     document.getElementById('dashProjectsBtn')?.addEventListener('click', ()=>{ dashboardSubView='projects'; renderMain(); });
     document.getElementById('dashProjPeriod')?.addEventListener('change', e=>{ dashProjPeriod = e.target.value; renderMain(); });
+    document.getElementById('dashReportBtn')?.addEventListener('click', ()=>{ dashboardSubView='report'; renderMain(); });
+    if(dashboardSubView==='report') bindReport(main);
     main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
     main.querySelectorAll('.call-item[data-contact-id]').forEach(el=>{
       el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; view='detail'; confirmDeleteId=null; tableDetailCallId=null; setActiveTab('navContacts'); renderMain(); });
@@ -2341,7 +2378,7 @@ function attachmentsCardHtml(p){
       <div class="attach-main"><span class="name-link" data-attach-open="${a.id}">${esc(a.nome)}</span>
         <span class="fc-note">${a.tag==='ordine' ? 'ordine · ' : a.tag ? esc(phaseLabel(a.tag))+' · ' : ''}${fmtDate(a.caricatoIl)} · ${fmtSize(a.size||0)}</span></div>
       <div class="todo-actions">${confirmDeleteAttachId===a.id ? `
-        <span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare il file?</span>
+        <span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare il file? (resta ${TRASH_DAYS} giorni nel cestino)</span>
         <button class="btn small" data-attach-del-yes="${a.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button>
         <button class="btn secondary small" data-attach-del-no>No</button>` : `<button class="btn secondary small" data-attach-del="${a.id}">Elimina</button>`}</div>
     </div>`).join('') : '<div class="empty" style="padding:4px 0;">Nessun documento. Allega offerte, disegni, conferme d\'ordine (PDF, immagini, Excel, fino a 20 MB l\'uno).</div>'}
@@ -2372,10 +2409,7 @@ function bindAttachments(p, fail){
   document.querySelector('[data-attach-del-yes]')?.addEventListener('click', async e=>{
     const a = (p.allegati||[]).find(x=>x.id===e.target.dataset.attachDelYes); confirmDeleteAttachId = null;
     if(!a) return renderMain();
-    try{
-      await firebase.storage().ref(a.path).delete().catch(err=>{ if(err.code!=='storage/object-not-found') throw err; });
-      await db.collection('projects').doc(p.id).update({ allegati: (p.allegati||[]).filter(x=>x.id!==a.id), updatedAt: Date.now() });
-    }catch(err){ fail(err); }
+    try{ await moveToTrash(p, 'allegato', a); }catch(err){ fail(err); }
   });
 }
 
@@ -2477,11 +2511,7 @@ async function updatePhoto(projectId, id, fields){
 async function deletePhoto(projectId, id){
   const p = projects.find(x=>x.id===projectId); if(!p) return;
   const f = (p.foto||[]).find(x=>x.id===id); if(!f) return;
-  for(const path of [f.path, f.thumb].filter(Boolean)){
-    await firebase.storage().ref(path).delete().catch(err=>{ if(err.code!=='storage/object-not-found') throw err; });
-    fotoUrls.delete(path);
-  }
-  await db.collection('projects').doc(projectId).update({ foto: (p.foto||[]).filter(x=>x.id!==id), updatedAt: Date.now() });
+  await moveToTrash(p, 'foto', f);   // il file resta: si ripristina dal cestino per 30 giorni
 }
 function photosCardHtml(p){
   if(!storageAvailable()) return '';
@@ -2561,7 +2591,7 @@ function renderFotoViewer(){
       </div>
       <div class="todo-actions" style="margin-top:8px;align-items:center;">
         <button class="btn secondary small" data-fv="orig">Apri a piena dimensione</button>
-        ${fotoViewer.confirmDel ? `<span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare la foto?</span>
+        ${fotoViewer.confirmDel ? `<span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare la foto? (resta ${TRASH_DAYS} giorni nel cestino)</span>
           <button class="btn small" data-fv="del-yes" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì, elimina</button>
           <button class="btn secondary small" data-fv="del-no">No</button>` : '<button class="btn secondary small" data-fv="del">Elimina</button>'}
         <span class="fc-note">${f.w && f.h ? `${f.w}×${f.h} px · ` : ''}${fmtSize(f.size||0)}</span>
@@ -4387,6 +4417,348 @@ function soldArticlesHtml(range){
 }
 
 // ---------------------------------------------------------------------------
+// Report del periodo (Dashboard -> Report)
+// Riepilogo pronto da rivedere: attivita' del periodo, note salienti (si scelgono e si correggono),
+// venduto rispetto all'obiettivo annuale riportato sui 12 mesi (conferme d'ordine e fatturato),
+// cicli aperti e offerte fuori, commesse in chiusura, commento. "Salva PDF" crea il PDF (html2pdf),
+// lo carica in Storage (users/<uid>/report/<id>.pdf) e lo registra nella collection `report`;
+// da li' si apre, si condivide (foglio di condivisione del telefono o link) o si elimina.
+// Le modifiche restano in bozza su questo dispositivo finche' non si salva.
+// ---------------------------------------------------------------------------
+const REP_PERIODS = { week:'Questa settimana', lastweek:'Settimana scorsa', month:'Questo mese', lastmonth:'Mese scorso', custom:'Date a scelta' };
+let rep = null, reports = [], repConfirmDel = null;
+function weekStartISO(d){ const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return isoDay(x); }
+function repRange(per){
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+  if(per==='week'){ const s = weekStartISO(now), e = new Date(s+'T12:00'); e.setDate(e.getDate() + 6); return [s, isoDay(e)]; }
+  if(per==='lastweek'){ const s = new Date(weekStartISO(now)+'T12:00'); s.setDate(s.getDate() - 7); const e = new Date(s); e.setDate(e.getDate() + 6); return [isoDay(s), isoDay(e)]; }
+  if(per==='month') return [isoDay(new Date(y, m, 1)), isoDay(new Date(y, m + 1, 0))];
+  if(per==='lastmonth') return [isoDay(new Date(y, m - 1, 1)), isoDay(new Date(y, m, 0))];
+  return [rep ? rep.from : todayISO(), rep ? rep.to : todayISO()];
+}
+function repDraftLoad(){ try{ return JSON.parse(localStorage.getItem('reportBozza') || 'null'); }catch(e){ return null; } }
+function repDraftSave(){ try{ localStorage.setItem('reportBozza', JSON.stringify({ from: rep.from, to: rep.to, exclude: rep.exclude, edits: rep.edits, commento: rep.commento })); }catch(e){} }
+function repSetPeriod(per, from, to){
+  const [f, t] = per==='custom' ? [from, to] : repRange(per);
+  rep = { per, from: f, to: t, exclude: [], edits: {}, commento: '', busy: '', msg: '', saved: null };
+  const d = repDraftLoad();
+  if(d && d.from===f && d.to===t){ rep.exclude = d.exclude || []; rep.edits = d.edits || {}; rep.commento = d.commento || ''; }
+}
+function repTitle(from, to){
+  const a = new Date(from+'T12:00'), b = new Date(to+'T12:00');
+  if(from.slice(8)==='01' && isoDay(new Date(b.getFullYear(), b.getMonth() + 1, 0))===to && from.slice(0,7)===to.slice(0,7)) return 'Report di '+monthLabel(from.slice(0,7));
+  const sameM = a.getMonth()===b.getMonth() && a.getFullYear()===b.getFullYear();
+  return `Report dal ${a.getDate()}${sameM ? '' : ' '+MONTHS_LONG[a.getMonth()]+(a.getFullYear()!==b.getFullYear() ? ' '+a.getFullYear() : '')} al ${b.getDate()} ${MONTHS_LONG[b.getMonth()]} ${b.getFullYear()}`;
+}
+// Commessa a cui appartiene un'attivita': quelle indicate, o l'unica commessa non persa del cliente.
+function repActProject(k){
+  const ids = (k.progetti || []).filter(id=>projects.some(p=>p.id===id));
+  if(ids.length) return projects.find(p=>p.id===ids[0]);
+  const mine = projects.filter(p=>!isLost(p) && (p.partecipanti || []).some(x=>x.contactId===k.contactId));
+  return mine.length===1 ? mine[0] : null;
+}
+function repData(){
+  const { from, to } = rep, inR = d=>!!d && d>=from && d<=to;
+  const byId = Object.fromEntries(contacts.map(c=>[c.id, c]));
+  const phone = calls.filter(k=>isPhone(k) && inR(k.data)), meets = calls.filter(k=>isMeet(k) && inR(k.data)), mails = calls.filter(k=>isMailAct(k) && inR(k.data));
+  const appts = phone.filter(k=>k.appuntamento);
+  const sopN = sops.filter(s=>inR((s.quando || '').slice(0,10))).length;
+  const reached = new Set([...phone.filter(k=>!ESITI_NON_RAGGIUNTO.includes(k.esito)), ...meets].map(k=>k.contactId)).size;
+  const range = [from, to];
+  const ev = { richiesta: projEvents('richiesta', range), offerta: projEvents('offerta', range), conferma: projEvents('conferma', range), persa: projEvents('persa', range) };
+  // note salienti: telefonate e incontri con note, divisi per commessa
+  const notes = [...phone, ...meets].filter(k=>(k.note || k.noteIncontro || '').trim()).sort((a,b)=>(a.data||'').localeCompare(b.data||'') || (a.ora||'').localeCompare(b.ora||''));
+  const groups = { won: new Map(), open: new Map(), other: [] };
+  notes.forEach(k=>{
+    const p = repActProject(k), item = { k, c: byId[k.contactId] || {}, p };
+    if(p && isWon(p)) (groups.won.get(p.id) || groups.won.set(p.id, []).get(p.id)).push(item);
+    else if(p && !isLost(p)) (groups.open.get(p.id) || groups.open.set(p.id, []).get(p.id)).push(item);
+    else groups.other.push(item);
+  });
+  // venduto rispetto all'obiettivo
+  const year = to.slice(0,4), budget = budgetOf(year);
+  const cutoff = to < todayISO() ? to : todayISO();
+  const conf = projects.filter(p=>isWon(p) && (p.fasi.confermaOrdine || '').startsWith(year) && p.fasi.confermaOrdine <= cutoff).reduce((s,p)=>s+(Number(projectAmount(p))||0), 0);
+  const fatt = projects.filter(p=>!isLost(p)).reduce((s,p)=>s+(p.ordini || []).filter(o=>(o.data||'').startsWith(year) && o.data <= cutoff).reduce((a,o)=>a+(Number(o.importo)||0), 0), 0);
+  const y0 = new Date(+year, 0, 1), y1 = new Date(+year + 1, 0, 1), c = new Date(cutoff+'T12:00');
+  const frac = Math.min(1, Math.max(1/365, (c - y0) / (y1 - y0)));
+  // cicli aperti e commesse in chiusura
+  const open = openForecastProjects();
+  const offers = open.filter(p=>phaseDone(p, 'offertaPresentata')).sort((a,b)=>(Number(b.importoOfferta)||0) - (Number(a.importoOfferta)||0));
+  const lim = new Date(+to.slice(0,4), +to.slice(5,7) - 1 + 2, 1), limYM = `${lim.getFullYear()}-${String(lim.getMonth()+1).padStart(2,'0')}`;
+  const closing = open.filter(p=>p.chiusuraPrevista && p.chiusuraPrevista <= limYM).sort((a,b)=>a.chiusuraPrevista.localeCompare(b.chiusuraPrevista) || forecastWeighted(b) - forecastWeighted(a));
+  return { phone, meets, mails, appts, sopN, reached, ev, groups, notesN: notes.length, year, budget, conf, fatt, frac, cutoff, open, offers, closing, limYM };
+}
+function repNoteText(k){ return rep.edits[k.id] != null ? rep.edits[k.id] : [k.note, k.noteIncontro].filter(Boolean).join('\n'); }
+function repActLabel(k){ return `${fmtDate(k.data)} · ${isMeet(k) ? 'Incontro' : k.appuntamento ? 'Telefonata, fissato appuntamento' : 'Telefonata'+(k.esito ? ' ('+k.esito+')' : '')}`; }
+function repSalesRows(d){
+  const pct = (v, b)=>b ? Math.round(v * 100 / b)+'%' : '—';
+  return [['Conferme d\'ordine', d.conf], ['Fatturato (merce spedita)', d.fatt]].map(([l, v])=>({ l, v, pct: pct(v, d.budget), proj: v / d.frac, projPct: pct(v / d.frac, d.budget) }));
+}
+function reportView(){
+  if(!rep) repSetPeriod('week');
+  const d = repData();
+  const tile = (label, value, note)=>`<div class="fc-tile"><div class="fc-label">${label}</div><div class="fc-value">${value}</div>${note ? `<div class="fc-note">${note}</div>` : ''}</div>`;
+  const noteItem = it=>{ const k = it.k, inc = !rep.exclude.includes(k.id);
+    return `<div class="rep-note ${inc ? '' : 'off'}">
+      <label class="rep-note-head"><input type="checkbox" data-rep-inc="${k.id}" ${inc ? 'checked' : ''}> <strong>${esc(fullName(it.c))}</strong> <span class="fc-note">${esc(repActLabel(k))}</span></label>
+      ${inc ? `<textarea data-rep-note="${k.id}" rows="2">${esc(repNoteText(k))}</textarea>` : ''}
+    </div>`; };
+  const projGroup = (map)=>[...map.entries()].map(([pid, items])=>{ const p = projects.find(x=>x.id===pid);
+    return `<div class="rep-proj"><div class="rep-proj-title">${esc(projectTitle(p))}${p.importoOfferta!=null || p.importoDeliberato!=null ? ` <span class="fc-note">${fmtEuro(projectAmount(p) || p.importoOfferta)}</span>` : ''}</div>${items.map(noteItem).join('')}</div>`; }).join('');
+  const g = d.groups;
+  const sales = repSalesRows(d);
+  const saved = reports.slice().sort((a,b)=>(b.creatoIl||0) - (a.creatoIl||0));
+  return `<div class="card">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <label style="margin:0;font-size:13px;color:var(--muted);">Periodo</label>
+        <select id="repPer" style="width:auto;">${Object.entries(REP_PERIODS).map(([v,l])=>`<option value="${v}" ${rep.per===v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${rep.per==='custom' ? `<input type="date" id="repFrom" value="${rep.from}" style="width:auto;"> <input type="date" id="repTo" value="${rep.to}" style="width:auto;">` : ''}
+      </div>
+      <h2 style="margin:12px 0 2px;">${esc(repTitle(rep.from, rep.to))}</h2>
+      <div class="fc-note">Rivedi le note, togli quelle che non servono, aggiungi un commento e salva il PDF: resta nell'app e lo puoi condividere.</div>
+    </div>
+    <div class="card"><h3>Attività</h3>
+      <div class="fc-tiles">
+        ${tile('Telefonate', d.phone.length, `${d.reached} clienti raggiunti`)}
+        ${tile('Appuntamenti fissati', d.appts.length, d.phone.length ? `${Math.round(d.appts.length * 100 / d.phone.length)}% delle telefonate` : '')}
+        ${tile('Incontri svolti', d.meets.length, d.sopN ? `+ ${d.sopN} sopralluoghi` : '')}
+        ${tile('Mail inviate', d.mails.length, '')}
+      </div>
+      <div class="fc-tiles" style="margin-top:10px;">
+        ${tile('Nuove richieste', d.ev.richiesta.length, '')}
+        ${tile('Offerte presentate', d.ev.offerta.length, fmtEuro(d.ev.offerta.reduce((s,p)=>s+(Number(p.importoOfferta)||0), 0)))}
+        ${tile('Conferme d\'ordine', d.ev.conferma.length, fmtEuro(d.ev.conferma.reduce((s,p)=>s+(Number(projectAmount(p))||0), 0)))}
+        ${tile('Commesse perse', d.ev.persa.length, '')}
+      </div>
+    </div>
+    <div class="card"><h3>Note salienti (${d.notesN})</h3>
+      ${d.notesN ? '' : '<div class="empty">Nessuna telefonata o incontro con note nel periodo.</div>'}
+      ${g.open.size ? `<div class="rep-group">Trattative aperte</div>${projGroup(g.open)}` : ''}
+      ${g.won.size ? `<div class="rep-group">Commesse acquisite</div>${projGroup(g.won)}` : ''}
+      ${g.other.length ? `<div class="rep-group">Altri contatti</div>${g.other.map(noteItem).join('')}` : ''}
+    </div>
+    <div class="card"><h3>Venduto ${d.year} rispetto all'obiettivo${d.budget ? ` di ${fmtEuro(d.budget)}` : ''}</h3>
+      ${d.budget ? '' : '<div class="fc-note" style="color:var(--danger);">Obiettivo annuale non impostato: inseriscilo nel Forecast (Budget di fatturato).</div>'}
+      <div class="rep-sales">
+        <div class="rep-sales-row rep-sales-h"><span></span><span>A oggi</span><span>Sui 12 mesi</span></div>
+        ${sales.map(s=>`<div class="rep-sales-row"><span>${s.l}</span><span><strong>${fmtEuro(s.v)}</strong>${d.budget ? `<small>${s.pct} dell'obiettivo</small>` : ''}</span><span><strong>${fmtEuro(s.proj)}</strong>${d.budget ? `<small>${s.projPct} dell'obiettivo</small>` : ''}</span></div>`).join('')}
+      </div>
+      <div class="fc-note" style="margin-top:6px;">Al ${fmtDate(d.cutoff)} è trascorso il ${Math.round(d.frac * 100)}% dell'anno${d.budget ? `: in proporzione l'obiettivo sarebbe ${fmtEuro(d.budget * d.frac)}` : ''}. "Sui 12 mesi" = valore a oggi riportato all'anno intero allo stesso ritmo.</div>
+    </div>
+    <div class="card"><h3>Cicli aperti</h3>
+      <div class="fc-tiles">
+        ${tile('Commesse aperte', d.open.length, fmtEuro(d.open.reduce((s,p)=>s+(Number(p.importoOfferta)||0), 0))+' in offerta o da quotare')}
+        ${tile('Offerte fuori', d.offers.length, fmtEuro(d.offers.reduce((s,p)=>s+(Number(p.importoOfferta)||0), 0)))}
+        ${tile('Ponderato offerte', fmtEuro(d.offers.reduce((s,p)=>s+forecastWeighted(p), 0)), 'importo × probabilità')}
+      </div>
+      ${d.offers.length ? `<div class="rep-list">${d.offers.map(p=>`<div class="rep-li"><span data-open-project="${p.id}" class="name-link">${esc(projectTitle(p))}</span><span>${fmtEuro(p.importoOfferta)}</span><span class="fc-note">presentata il ${fmtDate(p.fasi.offertaPresentata)} · ${forecastProb(p).value}%</span></div>`).join('')}</div>` : ''}
+    </div>
+    <div class="card"><h3>In chiusura entro ${esc(monthLabel(d.limYM))}</h3>
+      ${d.closing.length ? `<div class="rep-list">${d.closing.map(p=>`<div class="rep-li"><span data-open-project="${p.id}" class="name-link">${esc(projectTitle(p))}</span><span>${fmtEuro(p.importoOfferta)}</span><span class="fc-note">${p.chiusuraPrevista < todayISO().slice(0,7) ? '<strong style="color:var(--danger);">chiusura prevista superata</strong>: ' : ''}${esc(monthLabel(p.chiusuraPrevista))} · ${forecastProb(p).value}% · ponderato ${fmtEuro(forecastWeighted(p))}</span></div>`).join('')}</div>`
+        : '<div class="empty">Nessuna commessa aperta con chiusura prevista in questi mesi (si imposta nel Forecast).</div>'}
+    </div>
+    <div class="card"><h3>Commento</h3>
+      <textarea id="repCommento" rows="4" placeholder="Considerazioni, priorità della prossima settimana, richieste…">${esc(rep.commento)}</textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+        <button class="btn" id="repSaveBtn" ${rep.busy ? 'disabled' : ''}>${rep.busy ? esc(rep.busy) : 'Salva PDF'}</button>
+        <button class="btn secondary" id="repResetBtn" type="button">Annulla le modifiche</button>
+        <span class="fc-note" id="repMsg">${rep.msg}</span>
+      </div>
+      ${rep.saved ? `<div class="rep-saved"><strong>Report salvato.</strong>
+        <button class="btn small" data-rep-share-new>Condividi</button>
+        <button class="btn secondary small" data-rep-dl-new>Scarica</button></div>` : ''}
+    </div>
+    <div class="card"><h3>Report salvati (${saved.length})</h3>
+      ${saved.length ? saved.map(r=>`<div class="attach-row">
+        <div class="attach-main"><span class="name-link" data-rep-open="${r.id}">${esc(r.titolo || 'Report')}</span>
+          <span class="fc-note">salvato il ${new Date(r.creatoIl).toLocaleDateString('it-IT')}${r.size ? ' · '+fmtSize(r.size) : ''}</span></div>
+        <div class="todo-actions">${repConfirmDel===r.id ? `
+          <span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare il report?</span>
+          <button class="btn small" data-rep-del-yes="${r.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button>
+          <button class="btn secondary small" data-rep-del-no>No</button>` : `<button class="btn secondary small" data-rep-share="${r.id}">Condividi</button><button class="btn secondary small" data-rep-del="${r.id}">Elimina</button>`}</div>
+      </div>`).join('') : '<div class="empty" style="padding:4px 0;">Nessun report salvato.</div>'}
+    </div>`;
+}
+// Versione da stampare (A4 verticale, sempre chiara).
+function reportPdfHtml(){
+  const d = repData();
+  const inc = it=>!rep.exclude.includes(it.k.id) && repNoteText(it.k).trim();
+  const noteRow = it=>`<div class="wr-note"><div class="wr-note-h"><strong>${esc(fullName(it.c))}</strong> · ${esc(repActLabel(it.k))}</div><div>${esc(repNoteText(it.k)).replace(/\n/g, '<br>')}</div></div>`;
+  // il titolo del gruppo resta sulla stessa pagina della prima commessa
+  const grp = (title, map)=>[...map.entries()].map(([pid, items])=>({ p: projects.find(x=>x.id===pid), its: items.filter(inc) })).filter(x=>x.its.length)
+    .map((x, i)=>`<div class="wr-keep">${i ? '' : `<div class="wr-sub">${title}</div>`}<div class="wr-proj">${esc(projectTitle(x.p))}</div>${x.its.map(noteRow).join('')}</div>`).join('');
+  const others = d.groups.other.filter(inc);
+  const kv = (l, v, n)=>`<div class="wr-kv"><div class="wr-k">${l}</div><div class="wr-v">${v}</div>${n ? `<div class="wr-n">${n}</div>` : ''}</div>`;
+  const notesHtml = grp('Trattative aperte', d.groups.open) + grp('Commesse acquisite', d.groups.won) + (others.length ? `<div class="wr-sub">Altri contatti</div>${others.map(n=>`<div class="wr-keep">${noteRow(n)}</div>`).join('')}` : '');
+  return `<div class="wr-report">
+    <div class="wr-head"><div><div class="wr-title">${esc(repTitle(rep.from, rep.to))}</div><div class="wr-date">dal ${fmtDate(rep.from)} al ${fmtDate(rep.to)} · creato il ${fmtDate(todayISO())}</div></div></div>
+    <h3>Attività</h3>
+    <div class="wr-grid">${kv('Telefonate', d.phone.length, d.reached+' clienti raggiunti')}${kv('Appuntamenti fissati', d.appts.length)}${kv('Incontri svolti', d.meets.length, d.sopN ? '+ '+d.sopN+' sopralluoghi' : '')}${kv('Mail inviate', d.mails.length)}</div>
+    <div class="wr-grid">${kv('Nuove richieste', d.ev.richiesta.length)}${kv('Offerte presentate', d.ev.offerta.length, fmtEuro(d.ev.offerta.reduce((s,p)=>s+(Number(p.importoOfferta)||0), 0)))}${kv('Conferme d\'ordine', d.ev.conferma.length, fmtEuro(d.ev.conferma.reduce((s,p)=>s+(Number(projectAmount(p))||0), 0)))}${kv('Commesse perse', d.ev.persa.length)}</div>
+    <div class="wr-keep"><h3>Venduto ${d.year} rispetto all'obiettivo${d.budget ? ` di ${fmtEuro(d.budget)}` : ''}</h3>
+    <div class="wr-table"><div class="wr-tr wr-th"><span></span><span>A oggi</span><span>% obiettivo</span><span>Sui 12 mesi</span><span>% obiettivo</span></div>
+      ${repSalesRows(d).map(s=>`<div class="wr-tr"><span>${s.l}</span><span>${fmtEuro(s.v)}</span><span>${s.pct}</span><span>${fmtEuro(s.proj)}</span><span>${s.projPct}</span></div>`).join('')}</div>
+    <div class="wr-n">Trascorso il ${Math.round(d.frac * 100)}% dell'anno al ${fmtDate(d.cutoff)}${d.budget ? `; obiettivo in proporzione ${fmtEuro(d.budget * d.frac)}` : ''}.</div></div>
+    <div class="wr-keep"><h3>Cicli aperti</h3>
+    <div class="wr-grid">${kv('Commesse aperte', d.open.length)}${kv('Offerte fuori', d.offers.length, fmtEuro(d.offers.reduce((s,p)=>s+(Number(p.importoOfferta)||0), 0)))}${kv('Ponderato offerte', fmtEuro(d.offers.reduce((s,p)=>s+forecastWeighted(p), 0)))}</div></div>
+    ${d.offers.length ? `<div class="wr-table">${d.offers.map(p=>`<div class="wr-tr wr-tr3"><span>${esc(projectTitle(p))}</span><span>${fmtEuro(p.importoOfferta)}</span><span>dal ${fmtDate(p.fasi.offertaPresentata)} · ${forecastProb(p).value}%</span></div>`).join('')}</div>` : ''}
+    <div class="wr-keep"><h3>In chiusura entro ${esc(monthLabel(d.limYM))}</h3>
+    ${d.closing.length ? `<div class="wr-table">${d.closing.map(p=>`<div class="wr-tr wr-tr3"><span>${esc(projectTitle(p))}</span><span>${fmtEuro(p.importoOfferta)}</span><span>${esc(monthLabel(p.chiusuraPrevista))} · ${forecastProb(p).value}% · ${fmtEuro(forecastWeighted(p))}</span></div>`).join('')}</div>` : '<div class="wr-n">Nessuna commessa in chiusura.</div>'}</div>
+    ${notesHtml ? `<h3>Note salienti</h3>${notesHtml}` : ''}
+    ${rep.commento.trim() ? `<div class="wr-keep"><h3>Commento</h3><div>${esc(rep.commento).replace(/\n/g, '<br>')}</div></div>` : ''}
+  </div>`;
+}
+async function reportPdfBlob(){
+  await loadHtml2Pdf();
+  const el = document.createElement('div');
+  el.innerHTML = reportPdfHtml();
+  return html2pdf().set({
+    margin: [10, 10, 12, 10], image: { type:'jpeg', quality:0.95 },
+    html2canvas: { scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:0 },
+    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+    pagebreak: { mode:['css', 'legacy'], avoid:['.wr-keep', '.wr-note', '.wr-tr', '.wr-grid', 'h3'] }
+  }).from(el.firstElementChild).outputPdf('blob');
+}
+function repFileName(r){ return (r.titolo || 'report').replace(/[^\w\- àèéìòù]/gi, '').replace(/\s+/g, '-').toLowerCase() + '.pdf'; }
+async function saveReport(){
+  rep.busy = 'Preparazione PDF…'; rep.msg = ''; renderMain();
+  try{
+    const blob = await reportPdfBlob();
+    const titolo = repTitle(rep.from, rep.to), id = 'r'+Date.now().toString(36);
+    let path = '';
+    if(storageAvailable()){
+      rep.busy = 'Salvataggio…'; renderMain();
+      path = `users/${firebase.auth().currentUser.uid}/report/${id}.pdf`;
+      await firebase.storage().ref(path).put(blob, { contentType:'application/pdf' });
+    }
+    const rec = { titolo, dal: rep.from, al: rep.to, creatoIl: Date.now(), path, size: blob.size, commento: rep.commento };
+    if(path) await db.collection('report').doc(id).set(rec);
+    rep.saved = { blob, titolo, id };
+    rep.busy = ''; rep.msg = path ? '' : 'Salvataggio online non disponibile: il PDF si può solo scaricare.';
+    try{ localStorage.removeItem('reportBozza'); }catch(e){}
+  }catch(e){ rep.busy = ''; rep.msg = 'Impossibile creare il PDF: '+esc(e.message || e); }
+  renderMain();
+}
+function downloadBlob(blob, name){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 30000); }
+async function shareReport(r, blob){
+  const name = repFileName(r);
+  if(blob){
+    const file = new File([blob], name, { type:'application/pdf' });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){ try{ await navigator.share({ files:[file], title: r.titolo }); }catch(e){} return; }
+  }
+  try{
+    const url = await firebase.storage().ref(r.path).getDownloadURL();
+    if(navigator.share){ try{ await navigator.share({ title: r.titolo, url }); }catch(e){} return; }
+    await navigator.clipboard.writeText(url);
+    showNotice(`Link del report copiato: incollalo in una mail o in un messaggio. <button class="btn secondary small" id="noticeClose">Chiudi</button>`);
+  }catch(e){ if(blob) downloadBlob(blob, name); else alert('Impossibile condividere il report: '+(e.message||e)); }
+}
+function bindReport(main){
+  const redraw = ()=>renderMain();
+  main.querySelector('#repPer')?.addEventListener('change', e=>{ const per = e.target.value; repSetPeriod(per, rep.from, rep.to); redraw(); });
+  const dates = ()=>{ const f = main.querySelector('#repFrom').value, t = main.querySelector('#repTo').value; if(f && t && f<=t){ repSetPeriod('custom', f, t); redraw(); } };
+  main.querySelector('#repFrom')?.addEventListener('change', dates);
+  main.querySelector('#repTo')?.addEventListener('change', dates);
+  main.querySelectorAll('[data-rep-inc]').forEach(cb=>cb.addEventListener('change', ()=>{
+    const id = cb.dataset.repInc; rep.exclude = rep.exclude.filter(x=>x!==id); if(!cb.checked) rep.exclude.push(id); repDraftSave(); redraw(); }));
+  const grow = t=>{ t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2)+'px'; };
+  main.querySelectorAll('[data-rep-note]').forEach(t=>{ grow(t); t.addEventListener('input', ()=>{ rep.edits[t.dataset.repNote] = t.value; grow(t); repDraftSave(); }); });
+  main.querySelector('#repCommento')?.addEventListener('input', e=>{ rep.commento = e.target.value; repDraftSave(); });
+  main.querySelector('#repSaveBtn')?.addEventListener('click', saveReport);
+  main.querySelector('#repResetBtn')?.addEventListener('click', ()=>{ try{ localStorage.removeItem('reportBozza'); }catch(e){} repSetPeriod(rep.per, rep.from, rep.to); redraw(); });
+  main.querySelector('[data-rep-share-new]')?.addEventListener('click', ()=>shareReport({ titolo: rep.saved.titolo, path: reports.find(r=>r.id===rep.saved.id)?.path }, rep.saved.blob));
+  main.querySelector('[data-rep-dl-new]')?.addEventListener('click', ()=>downloadBlob(rep.saved.blob, repFileName({ titolo: rep.saved.titolo })));
+  main.querySelectorAll('[data-rep-open]').forEach(el=>el.addEventListener('click', async ()=>{
+    const r = reports.find(x=>x.id===el.dataset.repOpen); if(!r) return;
+    const win = window.open('', '_blank');
+    try{ const url = await firebase.storage().ref(r.path).getDownloadURL(); if(win) win.location = url; else location.href = url; }
+    catch(e){ if(win) win.close(); alert('Impossibile aprire il report: '+(e.message||e)); }
+  }));
+  main.querySelectorAll('[data-rep-share]').forEach(b=>b.addEventListener('click', ()=>{ const r = reports.find(x=>x.id===b.dataset.repShare); if(r) shareReport(r, null); }));
+  main.querySelectorAll('[data-rep-del]').forEach(b=>b.addEventListener('click', ()=>{ repConfirmDel = b.dataset.repDel; redraw(); }));
+  main.querySelector('[data-rep-del-no]')?.addEventListener('click', ()=>{ repConfirmDel = null; redraw(); });
+  main.querySelector('[data-rep-del-yes]')?.addEventListener('click', async e=>{
+    const r = reports.find(x=>x.id===e.currentTarget.dataset.repDelYes); repConfirmDel = null; if(!r) return redraw();
+    try{ if(r.path) await firebase.storage().ref(r.path).delete().catch(()=>{}); await db.collection('report').doc(r.id).delete(); }
+    catch(err){ alert('Errore nell\'eliminazione: '+(err.message||err.code||'')); }
+    redraw();
+  });
+}
+function onReportSnapshot(snap){
+  reports = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  if(view==='dashboard' && dashboardSubView==='report' && canAutoRender()) renderMain();
+  if(view==='agenda' && canAutoRender()) renderMain();
+}
+// In Oggi, il venerdi' e nel fine settimana: promemoria del report della settimana se non e' ancora salvato.
+function reportReminderHtml(){
+  const day = new Date().getDay();
+  if(day!==5 && day!==6 && day!==0) return '';
+  const ws = weekStartISO(new Date());
+  if(reports.some(r=>r.dal===ws)) return '';
+  return `<div class="card"><h3>Report della settimana</h3>
+    <div class="fc-note" style="margin-bottom:8px;">Attività, note salienti, venduto rispetto all'obiettivo e commesse in chiusura: rivedilo e salvalo in PDF.</div>
+    <button class="btn small" id="repGoBtn">Prepara il report</button></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Cestino di foto e documenti
+// Eliminare una foto o un documento non cancella subito il file: la voce passa in `projects.cestino`
+// [{ tipo:'foto'|'allegato', dati, eliminatoIl }] e si puo' ripristinare per TRASH_DAYS giorni dalla
+// scheda del progetto; poi il file viene cancellato da Storage (una volta per sessione, `purgeTrash`).
+// I backup notturni contengono l'elenco (anche del cestino); i file restano in Firebase Storage.
+// ---------------------------------------------------------------------------
+const TRASH_DAYS = 30;
+let trashPurged = false;
+function trashDaysLeft(t){ return Math.max(0, TRASH_DAYS - daysBetween(t.eliminatoIl, todayISO())); }
+async function moveToTrash(p, tipo, item){
+  const fresh = projects.find(x=>x.id===p.id) || p;
+  const key = tipo==='foto' ? 'foto' : 'allegati';
+  await db.collection('projects').doc(p.id).update({
+    [key]: (fresh[key] || []).filter(x=>x.id!==item.id),
+    cestino: [...(fresh.cestino || []), { tipo, dati: item, eliminatoIl: todayISO() }],
+    updatedAt: Date.now() });
+}
+async function restoreFromTrash(projectId, id){
+  const p = projects.find(x=>x.id===projectId); if(!p) return;
+  const t = (p.cestino || []).find(x=>x.dati && x.dati.id===id); if(!t) return;
+  const key = t.tipo==='foto' ? 'foto' : 'allegati';
+  await db.collection('projects').doc(p.id).update({
+    [key]: [...(p[key] || []).filter(x=>x.id!==id), t.dati],
+    cestino: (p.cestino || []).filter(x=>x!==t),
+    updatedAt: Date.now() });
+}
+async function purgeTrash(){
+  if(trashPurged || !storageAvailable()) return;
+  trashPurged = true;
+  for(const p of projects){
+    const old = (p.cestino || []).filter(t=>trashDaysLeft(t)===0);
+    if(!old.length) continue;
+    try{
+      for(const t of old) for(const path of [t.dati.path, t.dati.thumb].filter(Boolean))
+        await firebase.storage().ref(path).delete().catch(err=>{ if(err.code!=='storage/object-not-found') throw err; });
+      await db.collection('projects').doc(p.id).update({ cestino: (p.cestino || []).filter(t=>!old.includes(t)) });
+    }catch(e){ console.warn('Cestino non svuotato', e); }
+  }
+}
+function trashCardHtml(p){
+  const list = (p.cestino || []).slice().sort((a,b)=>(b.eliminatoIl||'').localeCompare(a.eliminatoIl||''));
+  if(!list.length || !storageAvailable()) return '';
+  return `<details class="card trash-card"><summary><strong>Cestino (${list.length})</strong> <span class="fc-note">foto e documenti eliminati: si possono ripristinare per ${TRASH_DAYS} giorni</span></summary>
+    ${list.map(t=>{ const d = t.dati || {}, left = trashDaysLeft(t);
+      return `<div class="attach-row"><div class="attach-main"><span>${t.tipo==='foto' ? 'Foto'+(d.data ? ' del '+fmtDate(d.data) : '')+(d.nota ? ' · '+esc(d.nota) : '') : esc(d.nome || 'Documento')}</span>
+        <span class="fc-note">eliminato il ${fmtDate(t.eliminatoIl)} · ${left ? `ancora ${left} ${left===1 ? 'giorno' : 'giorni'}` : 'in cancellazione'}</span></div>
+        <div class="todo-actions"><button class="btn secondary small" data-trash-restore="${esc(d.id)}" data-trash-project="${p.id}">Ripristina</button></div></div>`; }).join('')}
+  </details>`;
+}
+document.addEventListener('click', async e=>{
+  const b = e.target.closest('[data-trash-restore]'); if(!b) return;
+  b.disabled = true;
+  try{ await restoreFromTrash(b.dataset.trashProject, b.dataset.trashRestore); }
+  catch(err){ b.disabled = false; alert('Ripristino non riuscito: '+(err.message||err.code||'')); }
+});
+
+// ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
 // stesso studio stanno in un solo punto) e cantieri (quadrati: in corso / confermati /
 // persi). Leaflet + OpenStreetMap da cdnjs. Coordinate da Nominatim (OpenStreetMap),
@@ -5978,13 +6350,16 @@ const PROJECT_ROLES = ['Progettazione architettonica','Progettazione strutturale
 // Gli aggiornamenti in tempo reale non ridisegnano i moduli mentre si scrive.
 // Nel Forecast non si ridisegna mentre si sta scrivendo in un campo (le cifre si aggiornano a parte).
 function canAutoRender(){
-  const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main input, #main textarea');
-  return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && view!=='sop' && !spegniFormId && !(geoEdit && document.getElementById('geoEditMap')) && !(view==='call' && callStep==='entry') && !((view==='forecast' || view==='portal' || view==='agenda') && typing)
+  // mentre si scrive in un campo di testo (o si sceglie in un elenco) nessun ridisegno automatico, in nessuna pagina:
+  // un aggiornamento arrivato in quel momento (altro dispositivo, follow-up chiuso da solo...) cancellerebbe il testo
+  const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('#main textarea, #main select, #main input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=file])');
+  return view!=='new' && view!=='projectForm' && view!=='settings' && view!=='map' && view!=='sop' && !spegniFormId && !(geoEdit && document.getElementById('geoEditMap')) && !(view==='call' && callStep==='entry') && !typing
     && !(view==='projectDetail' && (orderEdit || loseFormProjectId)) && !(view==='deliveries' && delEdit) && Date.now() > plannerHold;
 }
 function onProjectsSnapshot(snap){
   projects = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   projectsSeen = true; scheduleForecastSnapshot();
+  setTimeout(purgeTrash, 5000);
   if(canAutoRender()) renderMain();
   updateNavBadges();
 }
@@ -6381,6 +6756,7 @@ function projectDetailView(){
     ${projectSopsHtml(p)}
     ${photosCardHtml(p)}
     ${attachmentsCardHtml(p)}
+    ${trashCardHtml(p)}
     ${projectPortalCardHtml(p)}
     <div class="card">
       <h3>Chiamate e incontri collegati (${linked.length})</h3>
@@ -7400,7 +7776,9 @@ function dashboardView(){
     <button id="dashCallsBtn" class="${CALL_GROUPS[dashboardSubView]?'active':''}">Attività</button>
     <button id="dashClientsBtn" class="${dashboardSubView==='clients'?'active':''}">Clienti</button>
     <button id="dashProjectsBtn" class="${dashboardSubView==='projects'?'active':''}">Progetti</button>
+    <button id="dashReportBtn" class="${dashboardSubView==='report'?'active':''}">Report</button>
   </div>`;
+  if(dashboardSubView==='report') return `<h2 style="margin-bottom:16px;">Dashboard attività</h2>${header}${reportView()}`;
   const body = dashboardSubView==='monthly' ? dashboardMonthlyView() : dashboardSubView==='yearly' ? dashboardYearlyView() : dashboardSubView==='clients' ? dashboardClientsView() : dashboardSubView==='projects' ? dashboardProjectsView() : dashboardWeeklyView();
   // Le viste delle chiamate (settimana/mese/anno) sono un'unica scheda con selettore.
   const callsSel = CALL_GROUPS[dashboardSubView] ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
@@ -7786,6 +8164,7 @@ function agendaView(){
       <h3>Appuntamenti di oggi (${todayAppts.length + todaySops.length})</h3>
       ${todayAppts.length || !todaySops.length ? apptHtml : ''}${todaySops.map(sopDayRow).join('')}
     </div>
+    ${reportReminderHtml()}
     ${meetToRegisterCardHtml()}
     ${pendingMailsCardHtml()}
     <div class="card">

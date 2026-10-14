@@ -22,7 +22,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
   download, "Fai una copia adesso"): backup JSON di
-  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi}` (version 2; restano fuori
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report}` (version 2; restano fuori
   `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
   chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
   manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
@@ -340,6 +340,23 @@ Campi principali:
   `articleCategory` ("Isokorb XT tipo K" dalla sigla), `articleMeters` (1 m a pezzo, scelta dell'utente; -L500- =
   0,5 m; U.m. M/ML = metri). Riquadro "Articoli venduti" in Dashboard -> Progetti (periodo della pagina): metri,
   pezzi, valore per categoria e serie; gli ordini senza righe si completano rileggendo il PDF (stesso numero = aggiorna).
+- **Report del periodo** (Dashboard -> "Report", blocco "Report del periodo", 2026-10-14): periodo (questa
+  settimana, scorsa, mese, mese scorso, date a scelta; `rep`, `repSetPeriod`); attivita' (telefonate, clienti
+  raggiunti, appuntamenti fissati, incontri, sopralluoghi, mail; richieste/offerte/conferme/perse con `projEvents`);
+  note salienti di telefonate e incontri divise in Trattative aperte / Commesse acquisite / Altri contatti
+  (`repActProject`: progetti indicati o unica commessa del cliente), ognuna da includere o no e modificabile;
+  venduto dell'anno (scelta dell'utente: ENTRAMBI conferme d'ordine e fatturato/ordinato) rispetto a `budgetOf`,
+  % e proiezione sui 12 mesi (valore / frazione d'anno trascorsa); cicli aperti, offerte fuori, commesse con
+  chiusura prevista entro 2 mesi dopo la fine del periodo (anche superate); commento. Bozza in localStorage
+  `reportBozza`. "Salva PDF": html2pdf A4 verticale (`reportPdfHtml`, classi `.wr-*` sempre chiare) -> Storage
+  `users/<uid>/report/<id>.pdf` + collection `report` {titolo, dal, al, creatoIl, path, size, commento} (nei backup).
+  Condividi: Web Share con il file appena creato, altrimenti link (getDownloadURL) via share o appunti. In Oggi
+  venerdi'-domenica il promemoria `reportReminderHtml` se la settimana non ha un report salvato.
+- **Cestino di foto e documenti** (blocco omonimo, 2026-10-14): eliminare sposta la voce in `projects.cestino`
+  [{tipo:'foto'|'allegato', dati, eliminatoIl}] senza cancellare il file; "Ripristina" nella scheda progetto
+  (riquadro Cestino) per `TRASH_DAYS` (30) giorni; poi `purgeTrash` (una volta per sessione) cancella i file.
+- **Nessun ridisegno mentre si scrive** (2026-10-14): `canAutoRender` blocca i ridisegni automatici in tutte le
+  pagine quando il fuoco e' in un campo di testo/elenco di #main (prima solo Forecast, portale, Oggi).
 - **Invito Outlook** (blocco "Invito Outlook"): pulsante "Invia invito Outlook" sugli
   appuntamenti futuri (elenco Appuntamenti, dettaglio della chiamata) e proposta nella barra in
   alto dopo aver fissato un appuntamento (solo versione online, `offerOutlookInvite`). Apre il

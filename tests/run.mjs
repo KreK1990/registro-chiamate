@@ -198,6 +198,7 @@ await test('Oggi -> Da fare: offerta da sollecitare', async () => {
 });
 
 await test('registrare una chiamata', async () => {
+  await page.waitForFunction(() => appSettings && appSettings.attivitaV2);   // la conversione iniziale delle attivita' aggiunge documenti: si conta dopo
   const n0 = await page.evaluate(() => window.__fake.docs('calls').length);
   await show_(page, 'detail', "selectedId='c4'");
   await page.fill('#callNote', 'chiamata di prova');
@@ -273,8 +274,22 @@ await test('foto del cantiere: riduzione, caricamento, nota, eliminazione', asyn
   await page.click('[data-fv="del"]');
   await page.click('[data-fv="del-yes"]');
   await page.waitForFunction(() => !document.getElementById('fotoViewer'));
-  st = await page.evaluate(() => ({ n: window.__fake.docs('projects').find(p => p.id === 'p1').foto.length, files: window.__fake.files.size }));
-  expect(st.n === 0 && st.files === 0, 'foto non eliminata: ' + JSON.stringify(st));
+  const pdoc = () => window.__fake.docs('projects').find(p => p.id === 'p1');
+  st = await page.evaluate(() => { const p = window.__fake.docs('projects').find(p => p.id === 'p1'); return { n: p.foto.length, trash: (p.cestino || []).length, files: window.__fake.files.size }; });
+  expect(st.n === 0 && st.trash === 1 && st.files === 2, 'foto non spostata nel cestino: ' + JSON.stringify(st));
+  // ripristino dal cestino della scheda
+  await show_(page, 'projectDetail', "selectedProjectId='p1'");
+  await page.click('.trash-card summary');
+  await page.click('[data-trash-restore]');
+  await page.waitForFunction(() => { const p = window.__fake.docs('projects').find(p => p.id === 'p1'); return p.foto.length === 1 && !(p.cestino || []).length; });
+  // eliminata di nuovo e scaduti i 30 giorni: il file viene cancellato davvero
+  await page.evaluate(async () => { await deletePhoto('p1', projects.find(p => p.id === 'p1').foto[0].id); });
+  await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p1').cestino || []).length === 1);
+  await page.evaluate(async d => { const p = projects.find(p => p.id === 'p1'); await db.collection('projects').doc('p1').update({ cestino: p.cestino.map(t => ({ ...t, eliminatoIl: d })) }); }, daysAgo(31));
+  await page.waitForFunction(d => projects.find(p => p.id === 'p1').cestino[0].eliminatoIl === d, daysAgo(31));
+  await page.evaluate(async () => { trashPurged = false; await purgeTrash(); });
+  st = await page.evaluate(() => ({ trash: (window.__fake.docs('projects').find(p => p.id === 'p1').cestino || []).length, files: window.__fake.files.size }));
+  expect(st.trash === 0 && st.files === 0, 'cestino non svuotato dopo 30 giorni: ' + JSON.stringify(st));
   // qualita' alta da Impostazioni
   await show_(page, 'settings');
   await page.check('input[name=fotoQ][value=alta]');
@@ -356,7 +371,7 @@ await ctx.close();
 await page.evaluate(() => new Promise(r => navigator.geolocation.getCurrentPosition(r, r, { timeout: 5000 })));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"]];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"]];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
@@ -911,6 +926,51 @@ await test('controllo incrociato: follow-up di oggi chiuso da una chiamata gia\'
   await page.evaluate(([id, d]) => db.collection('contacts').doc(id).update({ followUp: d + 'T16:00', followUpSetAt: Date.now() }), [id, daysAgo(0)]);
   await page.waitForTimeout(800);
   expect(await fu(id) === daysAgo(0) + 'T16:00', 'il follow-up appena fissato non doveva chiudersi');
+});
+
+await test('report del periodo: attività, note modificabili, obiettivo, PDF salvato e condivisibile', async () => {
+  const d0 = daysAgo(0);
+  await page.evaluate(d => Promise.all([
+    db.collection('calls').add({ contactId: 'c4', data: d, esito: 'Appuntamento fissato', appuntamento: d + 'T18:00', note: 'Nota del report: vuole il preventivo', createdAt: Date.now() }),
+    db.collection('calls').add({ contactId: 'c4', data: d, esito: 'Interessato', note: 'Nota da togliere', createdAt: Date.now() }),
+  ]), d0);
+  await page.waitForFunction(() => calls.some(k => k.note === 'Nota da togliere'));
+  await page.evaluate(() => { try { localStorage.removeItem('reportBozza'); } catch (e) {} rep = null; });
+  let txt = await show_(page, 'dashboard', "dashboardDrilldown=null; dashboardSubView='report'");
+  expect(/Report dal/.test(txt) && /Telefonate/.test(txt) && /Appuntamenti fissati/.test(txt) && /Sui 12 mesi/.test(txt) && /Cicli aperti/.test(txt), 'sezioni del report mancanti');
+  const id = await page.evaluate(() => calls.find(k => k.note === 'Nota da togliere').id);
+  expect(await page.inputValue(`[data-rep-note="${id}"]`) === 'Nota da togliere', 'le note del periodo non compaiono');
+  await page.click(`[data-rep-inc="${id}"]`);
+  const keep = await page.evaluate(() => calls.find(k => k.note === 'Nota del report: vuole il preventivo').id);
+  await page.fill(`[data-rep-note="${keep}"]`, 'Nota corretta a mano');
+  await page.fill('#repCommento', 'Commento della settimana');
+  // dopo un ridisegno le modifiche restano
+  await page.evaluate(() => renderMain());
+  expect(await page.inputValue(`[data-rep-note="${keep}"]`) === 'Nota corretta a mano' && await page.inputValue('#repCommento') === 'Commento della settimana', 'modifiche perse al ridisegno');
+  const pdfHtml = await page.evaluate(() => reportPdfHtml());
+  expect(pdfHtml.includes('Nota corretta a mano') && !pdfHtml.includes('Nota da togliere') && pdfHtml.includes('Commento della settimana'), 'il PDF non rispecchia le scelte');
+  // PDF: libreria vera se raggiungibile, altrimenti una finta
+  const real = await page.evaluate(() => Promise.race([loadHtml2Pdf().then(() => true, () => false), new Promise(r => setTimeout(() => r(false), 15000))]));
+  if (!real) await page.evaluate(() => { window.html2pdf = () => ({ set() { return this; }, from() { return this; }, outputPdf: async () => new Blob(['%PDF-1.4 finto'], { type: 'application/pdf' }) }); });
+  await page.click('#repSaveBtn');
+  await page.waitForFunction(() => window.__fake.docs('report').length === 1, null, { timeout: 30000 });
+  const r = await page.evaluate(() => window.__fake.docs('report')[0]);
+  expect(/^users\/.+\/report\/r.+\.pdf$/.test(r.path) && r.size > 0 && /^Report dal/.test(r.titolo), 'report salvato male: ' + JSON.stringify(r));
+  if (real) expect(r.size > 5000, 'PDF troppo piccolo: ' + r.size);
+  await page.waitForSelector('[data-rep-share-new]');
+  console.log('       PDF ' + (real ? 'vero' : 'finto') + ', ' + r.size + ' byte');
+  if (shotsDir) {
+    const b64 = await page.evaluate(async () => { const buf = new Uint8Array(await rep.saved.blob.arrayBuffer()); let s = ''; buf.forEach(x => s += String.fromCharCode(x)); return btoa(s); });
+    fs.writeFileSync(path.join(shotsDir, 'report.pdf'), Buffer.from(b64, 'base64'));
+    await page.evaluate(() => { for (let el = document.getElementById('main'); el; el = el.parentElement) { el.style.height = 'auto'; el.style.maxHeight = 'none'; el.style.overflow = 'visible'; } });
+    await page.screenshot({ path: path.join(shotsDir, 'report.png'), fullPage: true });
+    await page.evaluate(() => { for (let el = document.getElementById('main'); el; el = el.parentElement) el.removeAttribute('style'); });
+  }
+  txt = await page.evaluate(() => document.getElementById('main').innerText);
+  expect(/Report salvati \(1\)/.test(txt), 'il report non compare tra i salvati');
+  await page.click('[data-rep-del]');
+  await page.click('[data-rep-del-yes]');
+  await page.waitForFunction(() => window.__fake.docs('report').length === 0);
 });
 
 await ctx.close();
