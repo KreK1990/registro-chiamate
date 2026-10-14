@@ -334,6 +334,12 @@ Campi principali:
   `orderEdit.info`), importo = solo Totale merce (senza trasporto e IVA; se manca resta vuoto, mai l'Imponibile); se il n° ordine e'
   gia' registrato si modifica quello. Si salva sempre a mano. Formato provato su una conferma
   d'ordine reale del 2026-10 (PDF con testo; le scansioni non sono leggibili).
+- **Articoli venduti** (blocco omonimo, 2026-10-14): `parseOrderLines` legge le righe della conferma d'ordine (dopo
+  "Pos. Codice articolo": riga "pos codice", descrizione su piu' righe, riga con qta, U.m., prezzo, totale; fino a
+  "Totale merce") -> `ordini[].righe` [{codice, descrizione, qta, um, prezzo, totale}], salvate con "Salva ordine".
+  `articleCategory` ("Isokorb XT tipo K" dalla sigla), `articleMeters` (1 m a pezzo, scelta dell'utente; -L500- =
+  0,5 m; U.m. M/ML = metri). Riquadro "Articoli venduti" in Dashboard -> Progetti (periodo della pagina): metri,
+  pezzi, valore per categoria e serie; gli ordini senza righe si completano rileggendo il PDF (stesso numero = aggiorna).
 - **Invito Outlook** (blocco "Invito Outlook"): pulsante "Invia invito Outlook" sugli
   appuntamenti futuri (elenco Appuntamenti, dettaglio della chiamata) e proposta nella barra in
   alto dopo aver fissato un appuntamento (solo versione online, `offerOutlookInvite`). Apre il

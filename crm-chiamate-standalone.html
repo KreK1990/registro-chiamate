@@ -1616,6 +1616,7 @@ function dashboardProjectsView(){
       ${groupedBarsSVG(months, ordSeries, compactEuro)}
       <div style="font-size:12px;color:var(--muted);margin-top:6px;">Somma degli ordini per data dell'ordine · clicca una colonna per l'elenco degli ordini</div>
     </div>
+    ${soldArticlesHtml(range)}
     <div class="card">
       <h3>Motivi delle commesse perse</h3>
       ${reasonRows.length ? reasonRows.map(([k,r])=>`<div class="fc-q-row">
@@ -2195,7 +2196,8 @@ function parseOrderConfirmation(lines){
     totaleMerce: num(find(/Totale merce\s+([\d.]+,\d{2})/)),
     trasporto: num(find(/Spese di trasporto\s+([\d.]+,\d{2})/)),
     imponibile: num(find(/Imponibile\s+([\d.]+,\d{2})/)),
-    confermaOrdine: /Conferma d'ordine/i.test(text)
+    confermaOrdine: /Conferma d'ordine/i.test(text),
+    righe: parseOrderLines(lines)
   };
 }
 async function readOrderPdf(file){
@@ -2238,6 +2240,7 @@ function pdfInfoHtml(info){
     <div><strong>Letto dal PDF</strong> ${esc(info.fileName||'')}${info.confermaOrdine ? '' : ' (non sembra una conferma d\'ordine: controlla bene i dati)'}</div>
     ${info.otherProject ? `<div class="pdf-warn">Attenzione: il PDF è del progetto ${esc(info.otherProject)}, non di questo.</div>` : ''}
     ${info.existing ? `<div class="pdf-warn">L'ordine n° ${esc(info.numero)} è già registrato: salvando ne aggiorni i dati.</div>` : ''}
+    ${(info.righe||[]).length ? `<div class="fc-note">Articoli: ${orderLinesSummary(info.righe)}</div>` : '<div class="fc-note">Articoli non trovati nel PDF: l\'ordine non entrerà nei metri venduti.</div>'}
     <div class="fc-note">${info.totaleMerce!=null ? 'Importo: totale merce, senza trasporto e IVA.' : '<span class="pdf-warn">Totale merce non trovato nel PDF: scrivi l\'importo della sola merce.</span>'}</div>
     ${storageAvailable() ? `<label class="pdf-attach"><input type="checkbox" id="ordAttachPdf" ${info.existing ? '' : 'checked'}> Allega il PDF ai documenti del progetto</label>` : ''}
     <div class="fc-note">Controlla i campi e premi "Salva ordine".</div>
@@ -4310,6 +4313,80 @@ function scheduleFollowUpCheck(){
 }
 
 // ---------------------------------------------------------------------------
+// Articoli venduti: righe della conferma d'ordine (codice, descrizione, quantita', importo)
+// salvate sull'ordine (`ordini[].righe`) e riassunte per categoria in Dashboard -> Progetti.
+// Metri lineari: 1 m per pezzo (scelta dell'utente 2026-10-14), salvo una lunghezza nella sigla
+// (-L500- = 0,5 m) o un'unita' gia' in metri (M, ML).
+// ---------------------------------------------------------------------------
+function parseOrderLines(lines){
+  const num = s=>Number(String(s).replace(/\./g,'').replace(',', '.'));
+  const start = lines.findIndex(l=>/^Pos\.\s*Codice articolo/i.test(l));
+  if(start < 0) return [];
+  const skip = /^(SCHOECK|Pagina \d|Ordine nr\.\/Data|Pos\.\s*Codice|Descrizione netto|Enrico Fermi|\d{5} Bo|Amministratore|Eco Contributo|www\.)/i;
+  const out = []; let cur = null;
+  for(const l of lines.slice(start + 1)){
+    if(/^Totale merce/i.test(l)) break;
+    let m = /^(\d{1,4})\s+(\d{5,})$/.exec(l);
+    if(m){ cur = { codice: m[2], desc: [] }; continue; }
+    if(!cur || skip.test(l)) continue;
+    m = /(\d+(?:[.,]\d+)?)\s+([A-Za-z]{1,3})\s+([\d.]+,\d{2})\s+(-?[\d.]+,\d{2})$/.exec(l);
+    if(m){
+      out.push({ codice: cur.codice, descrizione: cur.desc.join(' ').replace(/\s+-/g, '-').replace(/-\s+/g, '-').replace(/\s+/g, ' ').trim(),
+        qta: num(m[1]), um: m[2].toUpperCase(), prezzo: num(m[3]), totale: num(m[4]) });
+      cur = null; continue;
+    }
+    if(cur.desc.length < 6) cur.desc.push(l);
+  }
+  return out;
+}
+const UM_METRI = /^(M|ML|LM|MT)$/;
+function articleCategory(r){
+  const d = (r.descrizione || '').replace(/®/g, ' ').replace(/\s+/g, ' ');
+  const m = /Isokorb\s+([A-Z]{1,4})\s+([A-Z]{1,3})(?=[-\s+]|$)/.exec(d);
+  if(m) return { serie: 'Isokorb '+m[1], label: `Isokorb ${m[1]} tipo ${m[2]}` };
+  const w = d.trim().split(' ').slice(0, 2).join(' ') || ('Articolo '+r.codice);
+  return { serie: w, label: w };
+}
+function articleMeters(r){
+  if(UM_METRI.test(r.um)) return Number(r.qta) || 0;
+  const m = /(?:^|-)L(\d{3,4})(?=-|$)/.exec((r.descrizione || '').replace(/\s/g, ''));
+  return (Number(r.qta) || 0) * (m ? Number(m[1]) / 1000 : 1);
+}
+function fmtQty(v){ return (Math.round(v * 10) / 10).toLocaleString('it-IT'); }
+function orderLinesSummary(righe){
+  const pz = righe.filter(r=>!UM_METRI.test(r.um)).reduce((s,r)=>s+(Number(r.qta)||0), 0), m = righe.reduce((s,r)=>s+articleMeters(r), 0);
+  const cats = [...new Set(righe.map(r=>articleCategory(r).label))];
+  return `${pz ? fmtQty(pz)+' pz · ' : ''}${fmtQty(m)} m · ${esc(cats.slice(0, 3).join(', '))}${cats.length > 3 ? ` e altri ${cats.length - 3}` : ''}`;
+}
+function soldArticlesHtml(range){
+  const ord = ordersIn(range), withL = ord.filter(x=>(x.o.righe || []).length), noL = ord.length - withL.length;
+  const cats = new Map(), series = new Map();
+  withL.forEach(({ o })=>o.righe.forEach(r=>{
+    const c = articleCategory(r), m = articleMeters(r), pz = UM_METRI.test(r.um) ? 0 : (Number(r.qta) || 0), eur = Number(r.totale) || 0;
+    const e = cats.get(c.label) || { label: c.label, pz: 0, m: 0, eur: 0, ord: new Set() };
+    e.pz += pz; e.m += m; e.eur += eur; e.ord.add(o.id); cats.set(c.label, e);
+    const s = series.get(c.serie) || { m: 0, eur: 0 }; s.m += m; s.eur += eur; series.set(c.serie, s);
+  }));
+  const rows = [...cats.values()].sort((a,b)=>b.m - a.m || b.eur - a.eur);
+  const totM = rows.reduce((s,r)=>s+r.m, 0), totPz = rows.reduce((s,r)=>s+r.pz, 0), totE = rows.reduce((s,r)=>s+r.eur, 0);
+  const maxM = Math.max(1, ...rows.map(r=>r.m));
+  return `<div class="card" id="soldArticles">
+    <h3>Articoli venduti</h3>
+    ${rows.length ? `<div class="fc-tiles" style="margin-bottom:12px;">
+        <div class="fc-tile"><div class="fc-label">Metri lineari</div><div class="fc-value">${fmtQty(totM)} m</div><div class="fc-note">${fmtQty(totPz)} pezzi</div></div>
+        <div class="fc-tile"><div class="fc-label">Valore merce</div><div class="fc-value">${fmtEuro(totE)}</div><div class="fc-note">${withL.length} ${withL.length===1 ? 'ordine' : 'ordini'} con il dettaglio</div></div>
+        ${[...series.entries()].sort((a,b)=>b[1].m - a[1].m).slice(0, 2).map(([k,s])=>`<div class="fc-tile"><div class="fc-label">${esc(k)}</div><div class="fc-value">${fmtQty(s.m)} m</div><div class="fc-note">${fmtEuro(s.eur)}</div></div>`).join('')}
+      </div>
+      ${rows.map(r=>`<div class="fc-q-row">
+        <div class="fc-q-label">${esc(r.label)} <span>${r.pz ? fmtQty(r.pz)+' pz · ' : ''}${r.ord.size} ${r.ord.size===1 ? 'ordine' : 'ordini'}</span></div>
+        <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round(r.m * 100 / maxM))}%;"></div></div>
+        <div class="fc-q-num"><strong>${fmtQty(r.m)} m</strong> <span class="fc-note">${fmtEuro(r.eur)}</span></div></div>`).join('')}`
+      : '<div class="empty">Nessun ordine del periodo ha il dettaglio degli articoli.</div>'}
+    <div class="fc-note" style="margin-top:8px;">Dalle righe delle conferme d'ordine lette da PDF; 1 m per pezzo salvo lunghezza nella sigla (es. L500 = 0,5 m).${noL ? ` ${noL} ${noL===1 ? 'ordine del periodo non ha' : 'ordini del periodo non hanno'} il dettaglio: rileggi la conferma con "Leggi da PDF" nel progetto (l'ordine con lo stesso numero si aggiorna, non si duplica).` : ''}</div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
 // stesso studio stanno in un solo punto) e cantieri (quadrati: in corso / confermati /
 // persi). Leaflet + OpenStreetMap da cdnjs. Coordinate da Nominatim (OpenStreetMap),
@@ -6364,6 +6441,7 @@ function ordersCardHtml(p){
         <span class="order-amount">${fmtEuro(o.importo)}</span>
         <span class="order-meta">ordine del ${fmtDate(o.data)}${o.numero ? ` · n° ${esc(o.numero)}` : ''}</span>
       </div>
+      ${(o.righe||[]).length ? `<div class="order-sub">${orderLinesSummary(o.righe)}</div>` : ''}
       <div class="order-sub">${o.consegnatoIl ? `<strong>Consegnato il ${fmtDate(o.consegnatoIl)}</strong>` : o.consegna ? `Consegna ${o.consegna < today ? '<strong style="color:var(--danger);">in ritardo</strong>, prevista' : 'prevista'}: ${fmtDate(o.consegna)}` : 'Consegna da definire'}${o.rinvii ? ` · rinviata ${o.rinvii===1 ? 'una volta' : o.rinvii+' volte'}` : ''}${o.note ? ` · ${esc(o.note)}` : ''}</div>
       <div class="order-actions">${confirmDeleteOrderId===o.id ? `
         <span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare questo ordine?</span>
@@ -6412,6 +6490,7 @@ function bindOrders(p, fail){
     if(importo===null || Number.isNaN(importo) || importo<=0){ errEl.textContent = 'Indica l\'importo dell\'ordine (es. 18.500,00).'; return; }
     const rec = { id: orderEdit.id==='new' ? 'o'+Date.now().toString(36)+Math.random().toString(36).slice(2,6) : orderEdit.id,
       data, numero: document.getElementById('ordNumero').value.trim(), importo, consegna, note: document.getElementById('ordNote').value.trim() };
+    if(orderEdit.info && (orderEdit.info.righe||[]).length) rec.righe = orderEdit.info.righe;   // articoli letti dal PDF
     const prev = (p.ordini||[]).find(o=>o.id===rec.id);
     const ordini = (p.ordini||[]).filter(o=>o.id!==rec.id).concat(prev ? { ...prev, ...rec } : rec);
     const pdfFile = orderEdit.file && document.getElementById('ordAttachPdf')?.checked ? orderEdit.file : null;

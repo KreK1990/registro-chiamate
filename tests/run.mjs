@@ -296,6 +296,15 @@ await test('conferma d\'ordine da PDF', async () => {
   expect(r.progetto === '4840879', 'progetto: ' + r.progetto);
   expect(r.consegna === '2026-10-13', 'consegna: ' + r.consegna);
   expect(r.totaleMerce === 1201.09 && r.trasporto === 290 && r.imponibile === 1491.09, `importi: merce ${r.totaleMerce}, trasporto ${r.trasporto}, imponibile ${r.imponibile}`);
+  expect(r.righe && r.righe.length === 1 && r.righe[0].qta === 11 && r.righe[0].um === 'PZ' && r.righe[0].totale === 1201.09, 'righe: ' + JSON.stringify(r.righe));
+  expect(r.righe[0].descrizione === 'Isokorb® XT K-O-M1-V1-REI120-CV35-LR145-X120-H160-7.2', 'descrizione: ' + r.righe[0].descrizione);
+  const cat = await page.evaluate(r => [articleCategory(r).label, articleMeters(r), articleMeters({ ...r, descrizione: 'Isokorb T Q-VV1-L500-H200' })], r.righe[0]);
+  expect(cat[0] === 'Isokorb XT tipo K' && cat[1] === 11 && cat[2] === 5.5, 'categoria/metri: ' + JSON.stringify(cat));
+  const pid = await page.evaluate(() => projects[0].id);
+  await page.evaluate(([pid, righe]) => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'oart', data: new Date().toISOString().slice(0, 10), numero: '2078251', importo: 1201.09, righe }] }), [pid, r.righe]);
+  await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'oart'), pid);
+  const txt = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
+  expect(/Articoli venduti[\s\S]*11 m[\s\S]*Isokorb XT tipo K/.test(txt), 'Dashboard: articoli venduti mancanti');
 });
 
 const portalPdf = path.join(fixtures, 'portale.pdf');
