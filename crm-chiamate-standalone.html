@@ -75,6 +75,17 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .call-item .esito{display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px;}
 .call-item .note{font-size:14px;margin-top:4px;white-space:pre-wrap;}
 .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px;}
+.fold-head{cursor:pointer;user-select:none;}
+.fold-head::before{content:'';display:inline-block;width:7px;height:7px;margin:0 9px 2px 1px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .15s;}
+.fold-card.folded .fold-head::before{transform:rotate(-45deg);}
+.fold-card.folded{padding-bottom:6px;}
+.fold-card.folded > :not(:first-child){display:none !important;}
+.fold-card.folded > :first-child{margin-bottom:0;}
+.fold-card.folded h3{margin-bottom:0;}
+.page-top{display:none;}
+.page-bar.stuck{position:sticky;top:-28px;z-index:20;margin:-28px -32px 12px;padding:10px 32px;background:var(--panel);border-bottom:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.08);animation:barIn .18s ease-out;}
+.page-bar.stuck .page-top{display:inline-flex;}
+@keyframes barIn{from{transform:translateY(-100%);}to{transform:none;}}
 .followup{display:inline-block;font-size:11.5px;font-weight:500;padding:3px 9px;border-radius:4px;margin-top:8px;border:1px solid transparent;}
 .followup.ok{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);}
 .followup.due{background:#F8E1DF;color:var(--danger);border-color:var(--danger);}
@@ -663,6 +674,7 @@ h2{color:var(--accent);font-weight:800;}
   .day-group{margin-bottom:16px;}
   .subnav{margin-bottom:12px;flex-wrap:wrap;}
   .top-actions{margin-bottom:8px;}
+  .page-bar.stuck{top:-12px;margin:-12px -12px 8px;padding:8px 12px;}
   .map-embed{height:200px;}
   .imp-map{grid-template-columns:1fr;gap:3px;}
   .funnel-row{grid-template-columns:1fr auto;grid-template-areas:"label num" "track track" "note note";gap:4px 10px;}
@@ -1113,6 +1125,7 @@ function renderMain(){
       btn.addEventListener('click', ()=>{ btn.disabled = true; markMailSent(btn.dataset.mailDone); });
     });
     bindTodo(main);
+    foldTodayCards(main);
     return;
   }
   if(view==='followup'){
@@ -1226,7 +1239,7 @@ function renderMain(){
   if(view==='forecast'){ main.innerHTML = forecastView(); bindForecast(); return; }
   if(view==='settings'){ main.innerHTML = settingsView(); bindSettings(); return; }
   if(view==='map'){ main.innerHTML = mapView(); bindMap(); return; }
-  if(view==='portal'){ main.innerHTML = portalView(); bindPortal(); return; }
+  if(view==='portal'){ main.innerHTML = portalView(); bindPortal(); bindPageBar(main); return; }
   if(view==='dups'){ main.innerHTML = dupsView(); bindDups(); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
@@ -4147,6 +4160,50 @@ document.addEventListener('click', e=>{
 });
 
 // ---------------------------------------------------------------------------
+// Riquadri di Oggi richiudibili e barra del portale che ricompare risalendo
+// Ogni riquadro di Oggi con un titolo si chiude/apre toccando il titolo; i chiusi si ricordano su
+// questo dispositivo (per titolo, senza i numeri tra parentesi). I riquadri <details> si chiudevano gia'.
+let foldedToday = new Set();
+try{ foldedToday = new Set(JSON.parse(localStorage.getItem('oggiChiusi') || '[]')); }catch(e){}
+function foldKey(h){ return h.textContent.replace(/\(.*?\)/g, '').replace(/\d+/g, '').trim(); }
+function foldTodayCards(main){
+  main.querySelectorAll(':scope > .card').forEach(card=>{
+    if(card.tagName==='DETAILS') return;
+    const h = card.querySelector('h3'); if(!h) return;
+    const key = foldKey(h);
+    card.classList.add('fold-card'); h.classList.add('fold-head');
+    h.setAttribute('role', 'button'); h.tabIndex = 0;
+    const set = closed=>{ card.classList.toggle('folded', closed); h.setAttribute('aria-expanded', String(!closed)); };
+    set(foldedToday.has(key));
+    const toggle = ()=>{
+      const closed = !card.classList.contains('folded');
+      set(closed);
+      if(closed) foldedToday.add(key); else foldedToday.delete(key);
+      try{ localStorage.setItem('oggiChiusi', JSON.stringify([...foldedToday])); }catch(e){}
+      if(!closed) queueMicrotask(()=>{ mountZoneMap(); });   // la mappa del giro va ridisegnata se era nascosta
+    };
+    h.addEventListener('click', toggle);
+    h.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); toggle(); } });
+  });
+}
+// Cantieri dal portale: l'elenco e' lungo; risalendo la pagina ricompare in alto la barra con
+// "← Progetti" e "Torna su", scendendo sparisce.
+let pageBarY = 0;
+function bindPageBar(main){
+  const bar = main.querySelector('.page-bar'); if(!bar) return;
+  pageBarY = main.scrollTop;
+  if(main._pageBarBound) return;
+  main._pageBarBound = true;
+  main.addEventListener('scroll', ()=>{
+    const b = main.querySelector('.page-bar'); if(!b) return;
+    const y = main.scrollTop, d = y - pageBarY;
+    if(Math.abs(d) < 8) return;
+    b.classList.toggle('stuck', d < 0 && y > 150);
+    pageBarY = y;
+  }, { passive:true });
+}
+
+// ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
 // stesso studio stanno in un solo punto) e cantieri (quadrati: in corso / confermati /
 // persi). Leaflet + OpenStreetMap da cdnjs. Coordinate da Nominatim (OpenStreetMap),
@@ -4819,8 +4876,8 @@ function portalView(){
   else if(portalTab==='esamina' && !portalImport.size) body = '<div class="card"><h3>Nessuna importazione</h3><div class="fc-note">Carica il PDF scaricato dal portale: resta salvato finché non ne carichi uno nuovo.</div></div>';
   else body = filters + (shown.map(portalCardHtml).join('') || `<div class="empty">${portalTab==='seguiti' && !follow.length ? 'Nessun cantiere seguito: in "Da esaminare" premi "Da seguire" sui cantieri interessanti.' : 'Nessun cantiere con questi filtri.'}</div>`)
     + (list.length > shown.length ? `<button class="btn secondary" id="portalMoreBtn">Mostra altri (${list.length - shown.length})</button>` : '');
-  return `<div class="top-actions" style="justify-content:space-between;">
-      <button class="btn secondary small" id="portalBackBtn">← Progetti</button>
+  return `<div class="top-actions page-bar" style="justify-content:space-between;">
+      <span style="display:flex;gap:8px;"><button class="btn secondary small" id="portalBackBtn">← Progetti</button><button class="btn secondary small page-top" type="button" onclick="document.getElementById('main').scrollTo({top:0,behavior:'smooth'})">↑ Torna su</button></span>
       <button class="btn small" id="portalLoadBtn" ${portalBusy ? 'disabled' : ''}>${portalImport && portalImport.size ? 'Carica un nuovo PDF' : 'Carica il PDF del portale'}</button>
     </div>
     <h2 style="margin-bottom:4px;">Cantieri dal portale</h2>

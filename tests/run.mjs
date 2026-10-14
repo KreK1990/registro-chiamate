@@ -822,6 +822,29 @@ await test('cantieri dal portale: "Mostra tutto" apre testo e contatti completi'
   expect(!(await vis()).open, '"Riduci" non chiude la scheda');
 });
 
+await test('Oggi: riquadri richiudibili; portale: barra in alto risalendo', async () => {
+  await show_(page, 'agenda');
+  const fu = () => page.evaluate(() => { const h = [...document.querySelectorAll('#main > .card h3')].find(x => x.textContent.startsWith('Follow-up da fare')); const c = h.closest('.card'); return { folded: c.classList.contains('folded'), hidden: [...c.children].slice(1).every(e => e.offsetHeight === 0) }; });
+  await page.evaluate(() => [...document.querySelectorAll('#main > .card h3')].find(x => x.textContent.startsWith('Follow-up da fare')).click());
+  let s = await fu();
+  expect(s.folded && s.hidden, 'il riquadro Follow-up non si chiude toccando il titolo ');
+  await show_(page, 'agenda');
+  expect((await fu()).folded, 'il riquadro chiuso si riapre da solo dopo il ridisegno');
+  await page.evaluate(() => [...document.querySelectorAll('#main > .card h3')].find(x => x.textContent.startsWith('Follow-up da fare')).click());
+  expect(!(await fu()).folded, 'il riquadro non si riapre');
+  await show_(page, 'portal', "portalTab='esamina'");
+  const bar = () => page.evaluate(() => { const m = document.getElementById('main'), b = m.querySelector('.page-bar'); return { stuck: b.classList.contains('stuck'), off: Math.round(b.getBoundingClientRect().top - m.getBoundingClientRect().top) }; });
+  await page.evaluate(() => { const d = document.createElement('div'); d.style.height = '4000px'; document.getElementById('main').appendChild(d); });
+  const scroll = y => page.evaluate(y => { const m = document.getElementById('main'); m.scrollTop = y; m.dispatchEvent(new Event('scroll')); }, y);
+  await scroll(2000); await page.waitForTimeout(50);
+  expect(!(await bar()).stuck, 'scendendo la barra non dovrebbe comparire');
+  await scroll(1700); await page.waitForTimeout(400);
+  s = await bar();
+  expect(s.stuck && Math.abs(s.off) <= 2, `risalendo la barra non torna in cima (${JSON.stringify(s)})`);
+  await scroll(1900); await page.waitForTimeout(50);
+  expect(!(await bar()).stuck, 'scendendo di nuovo la barra resta');
+});
+
 await ctx.close();
 await browser.close();
 server.close();

@@ -234,6 +234,14 @@ Campi principali:
   "Annulla consegna" la toglie (e svuota merceCantiere se era quella data e nessun altro ordine).
   Badge `delBadge` (e nel menu) = consegne di oggi o in ritardo non segnate (`deliveriesDue`).
   `delEdit` = modulo aperto (blocca i ridisegni automatici in `canAutoRender`).
+- **Riquadri di Oggi richiudibili** (blocco "Riquadri di Oggi richiudibili e barra del portale che ricompare
+  risalendo", 2026-10-14): `foldTodayCards` dopo il disegno di Oggi rende ogni `.card` figlia di #main con un h3
+  apribile/chiudibile toccando il titolo (freccia `.fold-head`, `.folded` nasconde tutto tranne il primo figlio);
+  i chiusi si ricordano su questo dispositivo in localStorage `oggiChiusi`, per titolo senza numeri
+  (`foldKey`). I riquadri `<details>` (attese, dati da completare) restano come prima.
+  **Barra del portale**: in "Cantieri dal portale" la riga in alto (`.page-bar`: "← Progetti", "Torna su")
+  diventa fissa in cima (`.stuck`, sticky con top = -padding di #main) quando si risale oltre 150 px e
+  sparisce scendendo (`bindPageBar`, un solo ascoltatore di scroll su #main).
 - **Ritorno alla mappa** (blocco "Ritorno alla mappa"): aprendo dalla mappa un progetto, un contatto
   o un cantiere del portale (`noteMapReturn` salva centro e zoom in `mapReturn`) compare il pulsante
   fisso `#mapReturnBtn` "Torna alla mappa" (in basso a destra, appeso a body, gestito da
