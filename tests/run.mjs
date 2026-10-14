@@ -845,6 +845,24 @@ await test('Oggi: riquadri richiudibili; portale: barra in alto risalendo', asyn
   expect(!(await bar()).stuck, 'scendendo di nuovo la barra resta');
 });
 
+await test('chiamata registrata senza "Follow-up effettuato": il follow-up di oggi si chiude, quelli futuri restano', async () => {
+  const fu = () => page.evaluate(() => (window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).followUp);
+  await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T08:00' }), daysAgo(0));
+  await page.waitForFunction(() => contacts.find(c => c.id === 'c4').followUp);
+  await show_(page, 'detail', "selectedId='c4'");
+  expect(await page.inputValue('#callFollowUpDate') === '', 'il follow-up di oggi non dovrebbe essere riproposto');
+  await page.selectOption('#callEsito', 'Appuntamento fissato').catch(() => page.selectOption('#callEsito', 'Interessato'));
+  await page.fill('#callNote', 'chiusura follow-up');
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => window.__fake.docs('calls').some(k => k.note === 'chiusura follow-up'));
+  await page.waitForFunction(() => !(window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).followUp).catch(() => {});
+  expect(!(await fu()), 'il follow-up di oggi e\' rimasto: ' + await fu());
+  await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T10:00' }), daysAgo(-3));
+  await page.waitForFunction(() => contacts.find(c => c.id === 'c4').followUp);
+  await show_(page, 'call', "selectedId='c4'; callStep='entry'");
+  expect(await page.inputValue('#qcFollowUpDate') === daysAgo(-3), 'il follow-up futuro deve restare nel modulo');
+});
+
 await ctx.close();
 await browser.close();
 server.close();

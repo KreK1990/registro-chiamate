@@ -127,6 +127,9 @@ Campi principali:
   Oggi (una riga per cliente, `pendingMailGroups`), nel riepilogo laterale, nel badge di
   "Oggi"/menu e come notifica dalle 17:30. L'email inserita registrando una chiamata
   aggiorna `contacts.email`.
+  **Follow-up chiuso registrando** (2026-10-14): i moduli di registrazione (scheda contatto e Attivita') non
+  ripropongono un follow-up scaduto o di oggi (`fuToKeep`), quindi salvando qualunque attivita' senza toccarlo il
+  follow-up si chiude come con "Follow-up effettuato"; quelli dei giorni seguenti restano.
   Esiti: Interessato, Da richiamare, Appuntamento fissato, Non interessato, Nessuna
   risposta, Filtrato dalla segreteria, Altro (liste nei moduli, `ESITO_OPTS` e
   `callEditView`). Dashboard → "Clienti" (`clientStatuses`): conta clienti, non chiamate;

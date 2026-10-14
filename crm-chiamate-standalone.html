@@ -1330,8 +1330,8 @@ function renderMain(){
         </div>
         <label style="margin-top:10px;">Prossimo follow-up (opzionale)</label>
         <div class="field-row">
-          <div><label>Data</label><input type="date" id="callFollowUpDate" value="${splitDT(c.followUp).date}"></div>
-          <div><label>Ora</label><select id="callFollowUpTime">${timeOptions(splitDT(c.followUp).time)}</select></div>
+          <div><label>Data</label><input type="date" id="callFollowUpDate" value="${splitDT(fuToKeep(c)).date}"></div>
+          <div><label>Ora</label><select id="callFollowUpTime">${timeOptions(splitDT(fuToKeep(c)).time)}</select></div>
         </div>
         <button class="btn block" id="saveCallBtn">Salva telefonata</button>
       </div>`;
@@ -7687,7 +7687,7 @@ function renderCallFlow(){
       <div class="top-actions" style="margin-bottom:4px;"><button class="btn secondary small" id="changeContactBtn">Cambia contatto</button></div>
       <h3>Attività con ${esc(fullName(c))}</h3>
       ${actTypePills()}
-      ${(()=>{ const a = lastActivities(c.id); return a.last ? `<div class="fc-note" style="margin:-4px 0 10px;">Ultimo contatto: ${[a.call && 'telefonata '+fmtDate(a.call.data)+(a.call.esito ? ' ('+esc(a.call.esito)+')' : ''), a.mail && 'mail '+fmtDate(a.mail.data), a.meet && 'incontro '+fmtDate(a.meet.appuntamento.slice(0,10))].filter(Boolean).join(' · ')}</div>` : ''; })()}
+      ${(()=>{ const a = lastActivities(c.id); return a.last ? `<div class="fc-note" style="margin:-4px 0 10px;">Ultimo contatto: ${[a.call && 'telefonata '+fmtDate(a.call.data)+(a.call.esito ? ' ('+esc(a.call.esito)+')' : ''), a.mail && 'mail '+fmtDate(a.mail.data), a.meet && 'incontro '+fmtDate(meetDate(a.meet))].filter(Boolean).join(' · ')}</div>` : ''; })()}
       ${isOff(c) ? `<div class="pdf-warn" style="margin:-4px 0 10px;">Contatto spento (${esc(spentoLabel(c))}): se torna attuale riattivalo dalla sua scheda.</div>` : ''}
       ${(c.cellulare||c.telefono)?`<div style="margin:-6px 0 12px;font-size:15px;">${phoneLinks(c)}</div>`:''}
       <div class="field-row">
@@ -7727,8 +7727,8 @@ function renderCallFlow(){
       <div style="margin-top:10px;"></div>
       <label>Follow up</label>
       <div class="field-row">
-        <div><label>Data</label><input type="date" id="qcFollowUpDate" value="${splitDT(clearFollowUpOnEntry?'':(c.followUp||'')).date}"></div>
-        <div><label>Ora</label><select id="qcFollowUpTime">${timeOptions(splitDT(clearFollowUpOnEntry?'':(c.followUp||'')).time)}</select></div>
+        <div><label>Data</label><input type="date" id="qcFollowUpDate" value="${splitDT(clearFollowUpOnEntry?'':fuToKeep(c)).date}"></div>
+        <div><label>Ora</label><select id="qcFollowUpTime">${timeOptions(splitDT(clearFollowUpOnEntry?'':fuToKeep(c)).time)}</select></div>
       </div>
       <button class="btn block" id="saveQcBtn">Salva telefonata</button>
     </div>
@@ -8265,6 +8265,9 @@ function readCallMailFields(emailId, checkId){
   if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alert('L\'email non sembra valida: controllala.'); return null; }
   return { email, todo: document.getElementById(checkId).checked };
 }
+// Registrando un'attivita' il follow-up gia' scaduto o di oggi si considera fatto: il modulo non lo ripropone
+// (se serve richiamare si indica una nuova data). Quelli dei giorni seguenti restano.
+function fuToKeep(c){ const f = c.followUp || ''; return f && f.slice(0,10) <= todayISO() ? '' : f; }
 function contactUpdateAfterCall(contactId, followUp, email){
   const upd = { followUp: followUp||'' };
   const c = contacts.find(x=>x.id===contactId);
