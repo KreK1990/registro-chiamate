@@ -889,6 +889,21 @@ await test('torna indietro: Oggi -> cliente -> chiamata registrata -> di nuovo O
   expect(await page.evaluate(() => navStack.length) === n0, 'la cronologia non torna come prima ');
 });
 
+await test('controllo incrociato: follow-up di oggi chiuso da una chiamata gia\' registrata, non da quella che lo ha fissato', async () => {
+  const fu = id => page.evaluate(id => (window.__fake.docs('contacts').find(c => c.id === id) || {}).followUp, id);
+  // c4: follow-up fissato ieri per oggi alle 18; oggi telefonata con appuntamento registrata senza "Follow-up effettuato"
+  await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T18:00', followUpSetAt: Date.now() - 86400000 }), daysAgo(0));
+  await page.evaluate(d => db.collection('calls').add({ contactId: 'c4', data: d, esito: 'Appuntamento fissato', appuntamento: d + 'T19:00', note: 'incrocio', createdAt: Date.now() }), daysAgo(0));
+  await page.waitForFunction(() => !(window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).followUp, null, { timeout: 3000 }).catch(() => {});
+  expect(!(await fu('c4')), 'il follow-up di oggi resta nonostante la telefonata: ' + await fu('c4'));
+  // c5: la chiamata di stamattina ha fissato "richiamare alle 16": resta
+  const id = await page.evaluate(() => contacts.find(c => c.id !== 'c4' && !c.spento).id);
+  await page.evaluate(([id, d]) => db.collection('calls').add({ contactId: id, data: d, esito: 'Da richiamare', note: 'fissa fu', createdAt: Date.now() - 2000 }), [id, daysAgo(0)]);
+  await page.evaluate(([id, d]) => db.collection('contacts').doc(id).update({ followUp: d + 'T16:00', followUpSetAt: Date.now() }), [id, daysAgo(0)]);
+  await page.waitForTimeout(800);
+  expect(await fu(id) === daysAgo(0) + 'T16:00', 'il follow-up appena fissato non doveva chiudersi');
+});
+
 await ctx.close();
 await browser.close();
 server.close();

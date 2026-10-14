@@ -1051,10 +1051,12 @@ function startApp(uid){
     renderFooter();
     renderSidebarToday();
     updateNavBadges();
+    scheduleFollowUpCheck();
   }, showDataError));
   unsubscribers.push(db.collection('calls').onSnapshot(snap=>{
     calls = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
     callsSeen = true;
+    scheduleFollowUpCheck();
     if(canAutoRender()) renderMain();
     renderFooter();
     renderSidebarToday();
@@ -3928,7 +3930,7 @@ async function saveActivity(cfg){
       await db.collection('calls').add({ tipo:'mail', contactId, data, ora: (paste && paste.dataset.ora) || `${pad(now.getHours())}:${pad(now.getMinutes())}`,
         oggetto: v(cfg.prefix+'MailSubj').trim(), note: v(cfg.prefix+'MailNote').trim(), testo: v(cfg.prefix+'MailPaste').trim(), createdAt: Date.now() });
     }
-    await db.collection('contacts').doc(contactId).update({ followUp: followUp || '' });
+    await db.collection('contacts').doc(contactId).update({ followUp: followUp || '', followUpSetAt: Date.now() });
     actPrefill = null; actFormType = 'telefonata';
     cfg.done();
   }catch(e){ btn.disabled = false; alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
@@ -4280,6 +4282,32 @@ function navBack(){
   updateNavBack();
 }
 document.addEventListener('click', e=>{ if(e.target.closest('[data-nav-back]')){ e.preventDefault(); navBack(); } });
+
+// ---------------------------------------------------------------------------
+// Follow-up chiusi da un'attivita' gia' registrata
+// Controllo incrociato: un follow-up di oggi o scaduto si chiude da solo se nel giorno del follow-up o dopo
+// e' stata registrata un'attivita' con quel cliente (telefonata, appuntamento fissato, incontro o mail), anche
+// senza "Follow-up effettuato". Non conta l'attivita' durante la quale il follow-up e' stato fissato
+// (followUpSetAt, scritto da ogni modulo che imposta il follow-up): "richiamare alle 16" resta.
+const fuClosing = new Set();
+function followUpDoneBy(c){
+  if(!c.followUp) return null;
+  const day = c.followUp.slice(0,10);
+  if(day > todayISO()) return null;
+  const setAt = c.followUpSetAt || 0;
+  return calls.find(k=>k.contactId===c.id && (k.data || '') >= day && (!setAt || (k.createdAt || 0) > setAt + 5000)) || null;
+}
+let fuCheckTimer = null;
+function scheduleFollowUpCheck(){
+  clearTimeout(fuCheckTimer);
+  fuCheckTimer = setTimeout(()=>{
+    if(!db || !callsSeen) return;
+    contacts.filter(c=>!fuClosing.has(c.id+'|'+c.followUp) && followUpDoneBy(c)).forEach(c=>{
+      fuClosing.add(c.id+'|'+c.followUp);
+      db.collection('contacts').doc(c.id).update({ followUp: '' }).catch(e=>console.warn('Follow-up non chiuso', e));
+    });
+  }, 400);
+}
 
 // ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
@@ -8054,7 +8082,7 @@ async function saveCallEdit(){
     const apptProj = readApptProjects(appuntamento);
     await db.collection('calls').doc(tableDetailCallId).update({ data, esito, progetto, note, appuntamento, noteIncontro, progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta });
     await markOfferPresented(apptProj, appuntamento);
-    if(k) await db.collection('contacts').doc(k.contactId).update({ followUp });
+    if(k) await db.collection('contacts').doc(k.contactId).update({ followUp, followUpSetAt: Date.now() });
     editingCallId=null; renderMain();
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
 }
@@ -8276,6 +8304,7 @@ async function saveContact(){
     tag: document.getElementById('fTag').value.trim(),
     note: document.getElementById('fNote').value.trim()
   };
+  if(data.followUp && data.followUp !== (editing && editing.followUp)) data.followUpSetAt = Date.now();   // vedi "Follow-up chiusi da un'attivita'"
   // Studio gia' presente: stesso nome degli altri contatti, dati mancanti presi dallo
   // studio; se indirizzo/telefono cambiano, si chiede se aggiornare anche gli altri.
   const studio = findStudio(data.azienda, editing && editing.id);
@@ -8348,7 +8377,7 @@ function readCallMailFields(emailId, checkId){
 // (se serve richiamare si indica una nuova data). Quelli dei giorni seguenti restano.
 function fuToKeep(c){ const f = c.followUp || ''; return f && f.slice(0,10) <= todayISO() ? '' : f; }
 function contactUpdateAfterCall(contactId, followUp, email){
-  const upd = { followUp: followUp||'' };
+  const upd = { followUp: followUp||'', followUpSetAt: Date.now() };
   const c = contacts.find(x=>x.id===contactId);
   if(email && email!==(c && c.email)) upd.email = email;   // la mail detta al telefono va nella scheda
   return upd;

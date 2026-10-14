@@ -130,6 +130,10 @@ Campi principali:
   **Follow-up chiuso registrando** (2026-10-14): i moduli di registrazione (scheda contatto e Attivita') non
   ripropongono un follow-up scaduto o di oggi (`fuToKeep`), quindi salvando qualunque attivita' senza toccarlo il
   follow-up si chiude come con "Follow-up effettuato"; quelli dei giorni seguenti restano.
+  **Follow-up chiusi da un'attivita'** (blocco omonimo, 2026-10-14): controllo incrociato a ogni aggiornamento di
+  contatti/attivita' (`scheduleFollowUpCheck`): un follow-up di oggi o scaduto si chiude (followUp '') se c'e' un'attivita'
+  del cliente con data >= giorno del follow-up, esclusa quella durante cui e' stato fissato: `contacts.followUpSetAt`
+  (ms) scritto da ogni modulo che imposta il follow-up; l'attivita' conta se createdAt > followUpSetAt + 5 s.
   Esiti: Interessato, Da richiamare, Appuntamento fissato, Non interessato, Nessuna
   risposta, Filtrato dalla segreteria, Altro (liste nei moduli, `ESITO_OPTS` e
   `callEditView`). Dashboard → "Clienti" (`clientStatuses`): conta clienti, non chiamate;
