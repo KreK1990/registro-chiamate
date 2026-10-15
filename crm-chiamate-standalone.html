@@ -3729,18 +3729,8 @@ function vcardText(c){
   lines.push('END:VCARD');
   return lines.join('\r\n') + '\r\n';
 }
-// Su iPhone/iPad il file scaricato non si salva in rubrica (vedi netlify/functions/vcard.mjs): il vCard
-// passa dalla function con un modulo POST e Safari lo apre come scheda da aggiungere ai contatti.
-function isIOSDevice(){ return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints > 1); }
 function downloadVCard(c){
   const name = (fullName(c) || 'contatto').replace(/[\\/:*?"<>|]+/g, ' ').trim();
-  if(isIOSDevice() && location.protocol.startsWith('http')){
-    const f = document.createElement('form');
-    f.method = 'POST'; f.action = '/.netlify/functions/vcard'; f.target = '_blank'; f.style.display = 'none';
-    [['v', vcardText(c)], ['n', name]].forEach(([k, val])=>{ const i = document.createElement('textarea'); i.name = k; i.value = val; f.appendChild(i); });
-    document.body.appendChild(f); f.submit(); f.remove();
-    return;
-  }
   const blob = new Blob([vcardText(c)], { type:'text/vcard;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = name+'.vcf';
