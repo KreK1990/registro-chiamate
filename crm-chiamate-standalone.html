@@ -4404,10 +4404,18 @@ function articleCategory(r){
   const d = (r.descrizione || '').replace(/®/g, ' ').replace(/\s+/g, ' ');
   const g = boleGeometry(d);
   if(g) return { serie: g.tipo==='HDB' || g.tipo==='PSB' || g.tipo==='JDA' ? g.tipo : 'Bole', label: `${['HDB','PSB','JDA'].includes(g.tipo) ? g.tipo : 'Bole '+g.tipo} Ø${g.d}` };
-  const m = /Isokorb\s+([A-Z]{1,4})\s+([A-Z]{1,3})(?=[-\s+]|$)/.exec(d);
-  if(m) return { serie: 'Isokorb '+m[1], label: `Isokorb ${m[1]} tipo ${m[2]}` };
+  const m = /Isokorb\s+([A-Z]{1,4})[\s_]+([A-Z]{1,3})(?=[-\s+_]|$)/.exec(d);
+  if(m) return { serie: 'Isokorb '+m[1], tipo: m[2], label: `Isokorb ${m[1]} tipo ${m[2]}`, resto: d.slice(m.index + m[0].length) };
   const w = d.trim().split(' ').slice(0, 2).join(' ') || ('Articolo '+r.codice);
   return { serie: w, label: w };
+}
+// Unita' con cui si conta l'articolo: kg (Bole e simili), pezzi (Isokorb tipo S e SK, elementi puntuali:
+// non sviluppano metri, scelta dell'utente 2026-10-15), metri (tutti gli altri Isokorb).
+const ISOKORB_PUNTUALI = /^(S|SK)$/;
+function articleUnit(r){
+  if(boleGeometry(r.descrizione)) return 'kg';
+  const c = articleCategory(r);
+  return c.tipo && ISOKORB_PUNTUALI.test(c.tipo) ? 'pz' : 'm';
 }
 function articleMeters(r){
   if(UM_METRI.test(r.um)) return Number(r.qta) || 0;
@@ -4446,7 +4454,7 @@ function boleElementKg(g, P){
 function articleKg(r){ const g = boleGeometry(r.descrizione); return g ? (Number(r.qta) || 0) * boleElementKg(g) : null; }
 function fmtKg(v){ return Math.round(v).toLocaleString('it-IT')+' kg'; }
 function orderLinesSummary(righe){
-  const kgL = righe.filter(r=>articleKg(r)!=null), mL = righe.filter(r=>articleKg(r)==null);
+  const kgL = righe.filter(r=>articleUnit(r)==='kg'), mL = righe.filter(r=>articleUnit(r)==='m');
   const pz = righe.filter(r=>!UM_METRI.test(r.um)).reduce((s,r)=>s+(Number(r.qta)||0), 0);
   const m = mL.reduce((s,r)=>s+articleMeters(r), 0), kg = kgL.reduce((s,r)=>s+articleKg(r), 0);
   const cats = [...new Set(righe.map(r=>articleCategory(r).label))];
@@ -4458,7 +4466,10 @@ function articleVariant(r){
   const g = boleGeometry(r.descrizione);
   if(g) return `${g.d}-${g.h}-${g.n}/${g.L}`;
   const m = /(?:^|-)(M\d{1,2})(?=-|$)/.exec((r.descrizione || '').replace(/\s/g, ''));
-  return m ? m[1] : (r.codice || 'altro');
+  if(m) return m[1];
+  const c = articleCategory(r);
+  if(c.resto != null){ const v = c.resto.replace(/\s/g, '').split(/[-_]/).filter(t=>t && !/^H\d+$/.test(t)).join('-'); if(v) return v; }
+  return r.codice || 'altro';
 }
 function variantOrder(a, b){
   const na = /^M(\d+)$/.exec(a), nb = /^M(\d+)$/.exec(b);
@@ -4482,33 +4493,34 @@ function soldArticlesHtml(range){
   const ord = ordersIn(range), withL = ord.filter(x=>(x.o.righe || []).length), noL = ord.length - withL.length;
   const cats = new Map(), series = new Map();
   withL.forEach(({ p, o })=>o.righe.forEach(r=>{
-    const c = articleCategory(r), kg = articleKg(r), isKg = kg!=null;
-    const x = { p, o, r, pz: UM_METRI.test(r.um) ? 0 : (Number(r.qta) || 0), m: isKg ? 0 : articleMeters(r), kg: kg || 0, eur: Number(r.totale) || 0 };
-    const e = cats.get(c.label) || Object.assign(soldStat(), { label: c.label, serie: c.serie, isKg, vars: new Map() });
+    const c = articleCategory(r), unit = articleUnit(r), isKg = unit==='kg', kg = isKg ? articleKg(r) : 0;
+    const x = { p, o, r, pz: UM_METRI.test(r.um) ? 0 : (Number(r.qta) || 0), m: unit==='m' ? articleMeters(r) : 0, kg, eur: Number(r.totale) || 0 };
+    const e = cats.get(c.label) || Object.assign(soldStat(), { label: c.label, serie: c.serie, unit, isKg, vars: new Map() });
     soldAdd(e, x); cats.set(c.label, e);
     const vk = articleVariant(r), v = e.vars.get(vk) || soldStat(); soldAdd(v, x); e.vars.set(vk, v);
-    const s = series.get(c.serie) || { m: 0, kg: 0, isKg, eur: 0 }; s.m += x.m; s.kg += x.kg; s.eur += x.eur; series.set(c.serie, s);
+    if(unit==='m'){ const s = series.get(c.serie) || { m: 0, eur: 0 }; s.m += x.m; s.eur += x.eur; series.set(c.serie, s); }
   }));
-  const rows = [...cats.values()].sort((a,b)=>(a.isKg - b.isKg) || (b.isKg ? b.kg - a.kg : b.m - a.m) || b.eur - a.eur);
-  const mRows = rows.filter(r=>!r.isKg), kRows = rows.filter(r=>r.isKg);
-  const totM = mRows.reduce((s,r)=>s+r.m, 0), totKg = kRows.reduce((s,r)=>s+r.kg, 0), totE = rows.reduce((s,r)=>s+r.eur, 0);
-  const maxM = Math.max(1, ...mRows.map(r=>r.m)), maxKg = Math.max(1, ...kRows.map(r=>r.kg));
+  const rows = [...cats.values()].sort((a,b)=>b.m - a.m || b.kg - a.kg || b.pz - a.pz || b.eur - a.eur);
+  const mRows = rows.filter(r=>r.unit==='m'), pRows = rows.filter(r=>r.unit==='pz'), kRows = rows.filter(r=>r.unit==='kg');
+  const totM = mRows.reduce((s,r)=>s+r.m, 0), totKg = kRows.reduce((s,r)=>s+r.kg, 0), totP = pRows.reduce((s,r)=>s+r.pz, 0), totE = rows.reduce((s,r)=>s+r.eur, 0);
+  const maxOf = { m: Math.max(1, ...mRows.map(r=>r.m)), pz: Math.max(1, ...pRows.map(r=>r.pz)), kg: Math.max(1, ...kRows.map(r=>r.kg)) };
+  const amount = (e, unit)=>unit==='kg' ? e.kg : unit==='pz' ? e.pz : e.m;
   const P = boleParams();
-  const qty = (e, isKg)=>isKg ? fmtKg(e.kg) : fmtQty(e.m)+' m';
+  const qty = (e, unit)=>unit==='kg' ? fmtKg(e.kg) : unit==='pz' ? fmtQty(e.pz)+' pz' : fmtQty(e.m)+' m';
   const catHtml = e=>{
     const vars = [...e.vars.entries()].sort((a,b)=>variantOrder(a[0], b[0]));
     const lines = e.lines.slice().sort((a,b)=>(b.o.data || '').localeCompare(a.o.data || '')).slice(0, 40);
     return `<details class="sold-cat" data-sold-cat="${esc(e.label)}" ${soldOpen.has(e.label) ? 'open' : ''}>
       <summary class="fc-q-row">
         <div class="fc-q-label">${esc(e.label)} <span>${e.pz ? fmtQty(e.pz)+' pz · ' : ''}${e.ord.size} ${e.ord.size===1 ? 'ordine' : 'ordini'}</span>
-          <div class="sold-avg">${soldAvgHtml(e, e.isKg)}</div></div>
-        <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round((e.isKg ? e.kg / maxKg : e.m / maxM) * 100))}%;"></div></div>
-        <div class="fc-q-num"><strong>${qty(e, e.isKg)}</strong> <span>${fmtEuro(e.eur)}</span></div>
+          <div class="sold-avg">${soldAvgHtml(e, e.unit==='kg')}</div></div>
+        <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round(amount(e, e.unit) / maxOf[e.unit] * 100))}%;"></div></div>
+        <div class="fc-q-num"><strong>${qty(e, e.unit)}</strong> <span>${fmtEuro(e.eur)}</span></div>
       </summary>
       <div class="sold-detail">
         <div class="sold-vars">
-          <div class="sold-var sold-var-h"><span>${e.isKg ? 'Elemento' : 'Classe'}</span><span>Pezzi</span><span>${e.isKg ? 'Peso' : 'Metri'}</span><span>Valore</span><span>Prezzo medio</span></div>
-          ${vars.map(([k, v])=>`<div class="sold-var"><span><strong>${esc(k)}</strong></span><span>${fmtQty(v.pz)} pz</span><span>${qty(v, e.isKg)}</span><span>${fmtEuro(v.eur)}</span><span>${v.pz ? fmtPrice(v.eur / v.pz)+'/pz' : '—'}${e.isKg && v.kg ? ` · ${fmtPrice(v.eur / v.kg)}/kg` : ''}${v.min < Infinity && v.max > v.min ? `<small>da ${fmtPrice(v.min)} a ${fmtPrice(v.max)}</small>` : ''}</span></div>`).join('')}
+          <div class="sold-var sold-var-h"><span>${e.unit==='m' ? 'Classe' : 'Elemento'}</span><span>Pezzi</span><span>${e.unit==='kg' ? 'Peso' : e.unit==='pz' ? 'Ordini' : 'Metri'}</span><span>Valore</span><span>Prezzo medio</span></div>
+          ${vars.map(([k, v])=>`<div class="sold-var"><span><strong>${esc(k)}</strong></span><span>${fmtQty(v.pz)} pz</span><span>${e.unit==='pz' ? v.ord.size+(v.ord.size===1 ? ' ordine' : ' ordini') : qty(v, e.unit)}</span><span>${fmtEuro(v.eur)}</span><span>${v.pz ? fmtPrice(v.eur / v.pz)+'/pz' : '—'}${e.isKg && v.kg ? ` · ${fmtPrice(v.eur / v.kg)}/kg` : ''}${v.min < Infinity && v.max > v.min ? `<small>da ${fmtPrice(v.min)} a ${fmtPrice(v.max)}</small>` : ''}</span></div>`).join('')}
         </div>
         <div class="sold-lines-h">Prezzi per ordine${e.lines.length > lines.length ? ` (ultimi ${lines.length})` : ''}</div>
         ${lines.map(x=>`<div class="sold-line"><span>${fmtDate(x.o.data)}</span><span class="name-link" data-open-project="${x.p.id}">${esc(projectTitle(x.p))}</span><span>${esc(articleVariant(x.r))} · ${fmtQty(x.r.qta)} ${esc((x.r.um || '').toLowerCase())}</span><span><strong>${fmtPrice(Number(x.r.prezzo))}</strong></span></div>`).join('')}
@@ -4538,12 +4550,13 @@ function soldArticlesHtml(range){
         ${mRows.length ? `<div class="fc-tile"><div class="fc-label">Metri lineari</div><div class="fc-value">${fmtQty(totM)} m</div><div class="fc-note">${fmtQty(mRows.reduce((s,r)=>s+r.pz, 0))} pezzi</div></div>` : ''}
         ${kRows.length ? `<div class="fc-tile"><div class="fc-label">Ferro Bole</div><div class="fc-value">${fmtKg(totKg)}</div><div class="fc-note">${fmtQty(kRows.reduce((s,r)=>s+r.pz, 0))} elementi</div></div>` : ''}
         <div class="fc-tile"><div class="fc-label">Valore merce</div><div class="fc-value">${fmtEuro(totE)}</div><div class="fc-note">${withL.length} ${withL.length===1 ? 'ordine' : 'ordini'} con il dettaglio</div></div>
-        ${[...series.entries()].filter(([,s])=>!s.isKg).sort((a,b)=>b[1].m - a[1].m).slice(0, 2).map(([k,s])=>`<div class="fc-tile"><div class="fc-label">${esc(k)}</div><div class="fc-value">${fmtQty(s.m)} m</div><div class="fc-note">${fmtEuro(s.eur)}</div></div>`).join('')}
+        ${[...series.entries()].sort((a,b)=>b[1].m - a[1].m).map(([k,s])=>`<div class="fc-tile"><div class="fc-label">${esc(k)}</div><div class="fc-value">${fmtQty(s.m)} m</div><div class="fc-note">${fmtEuro(s.eur)}</div></div>`).join('')}
+        ${pRows.length ? `<div class="fc-tile"><div class="fc-label">Isokorb ${[...new Set(pRows.map(r=>r.label.replace(/^.* tipo /, '')))].join(' / ')}</div><div class="fc-value">${fmtQty(totP)} pz</div><div class="fc-note">${fmtEuro(pRows.reduce((s,r)=>s+r.eur, 0))}</div></div>` : ''}
       </div>
       <div class="fc-note" style="margin-bottom:4px;">Tocca una categoria per il dettaglio per classe (M1, M2…) o per elemento e i prezzi unitari di ogni ordine.</div>
-      ${mRows.map(catHtml).join('')}${groupHtml(kRows)}`
+      ${mRows.map(catHtml).join('')}${pRows.map(catHtml).join('')}${groupHtml(kRows)}`
       : '<div class="empty">Nessun ordine del periodo ha il dettaglio degli articoli.</div>'}
-    <div class="fc-note" style="margin-top:8px;">Dalle righe delle conferme d'ordine lette da PDF. Isokorb: 1 m per pezzo salvo lunghezza nella sigla (es. L500 = 0,5 m). Bole: kg di ferro calcolati dalla sigla (diametro, altezza, pioli, listello). Prezzo medio = valore diviso pezzi (prezzi netti delle conferme).${noL ? ` ${noL} ${noL===1 ? 'ordine del periodo non ha' : 'ordini del periodo non hanno'} il dettaglio: rileggi la conferma con "Leggi da PDF" nel progetto (l'ordine con lo stesso numero si aggiorna, non si duplica).` : ''}</div>
+    <div class="fc-note" style="margin-top:8px;">Dalle righe delle conferme d'ordine lette da PDF. Isokorb: 1 m per pezzo salvo lunghezza nella sigla (es. L500 = 0,5 m); i tipi S e SK sono elementi puntuali e si contano a pezzi, fuori dai metri lineari. Bole: kg di ferro calcolati dalla sigla (diametro, altezza, pioli, listello). Prezzo medio = valore diviso pezzi (prezzi netti delle conferme).${noL ? ` ${noL} ${noL===1 ? 'ordine del periodo non ha' : 'ordini del periodo non hanno'} il dettaglio: rileggi la conferma con "Leggi da PDF" nel progetto (l'ordine con lo stesso numero si aggiorna, non si duplica).` : ''}</div>
     <details class="bole-params" ${boleOpen ? 'open' : ''}><summary class="name-link">Ipotesi di calcolo del peso delle Bole</summary>
       <div class="fc-note" style="margin:6px 0;">Peso di un elemento = pioli × (gambo sull'altezza + 2 teste) × densità + listello × lunghezza. Testa e listello sono ipotesi: confronta con i valori del produttore e correggi qui.</div>
       <div class="bole-grid">${Object.keys(BOLE_DEF).map(k=>`<label>${BOLE_LABELS[k]}<input data-bole-param="${k}" inputmode="decimal" value="${String(P[k]).replace('.', ',')}"></label>`).join('')}</div>

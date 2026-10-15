@@ -329,6 +329,12 @@ await test('conferma d\'ordine da PDF', async () => {
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'obole'), pid);
   const txt2 = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
   expect(/Ferro Bole\s*137 kg/.test(txt2) && /Metri lineari\s*11 m/.test(txt2), 'Dashboard: kg delle Bole mancanti');
+  // Isokorb tipo S / SK: elementi puntuali, a pezzi e fuori dai metri lineari
+  await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'os', data: new Date().toISOString().slice(0, 10), numero: '11', importo: 848.12, righe: [{ codice: '1300001', descrizione: 'Isokorb® T_S-N-R0-D16-2.0', qta: 26, um: 'PZ', prezzo: 32.62, totale: 848.12 }] }] }), pid);
+  await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'os'), pid);
+  const txt3 = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
+  expect(/Metri lineari\s*11 m/.test(txt3) && /Isokorb S\s*26 pz/.test(txt3) && /Isokorb T tipo S[\s\S]*26 pz/.test(txt3) && !/T_S/.test(txt3), 'tipo S non trattato come elemento puntuale:\n' + txt3.slice(txt3.indexOf('Articoli venduti'), txt3.indexOf('Articoli venduti') + 700));
+  expect(await page.evaluate(() => articleVariant({ descrizione: 'Isokorb® T_S-N-R0-D16-2.0' })) === 'N-R0-D16-2.0', 'variante del tipo S');
   // dettaglio per classe M1...M14 e prezzi medi
   await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'om4', data: new Date().toISOString().slice(0, 10), numero: '10', importo: 650, righe: [{ codice: '1215190', descrizione: 'Isokorb® XT K-O-M4-V1-REI120-CV35-LR145-X120-H180-7.2', qta: 5, um: 'PZ', prezzo: 130, totale: 650 }] }] }), pid);
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'om4'), pid);
