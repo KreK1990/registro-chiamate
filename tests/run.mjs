@@ -283,6 +283,7 @@ await test('foto del cantiere: riduzione, caricamento, nota, eliminazione', asyn
   await page.click('[data-trash-restore]');
   await page.waitForFunction(() => { const p = window.__fake.docs('projects').find(p => p.id === 'p1'); return p.foto.length === 1 && !(p.cestino || []).length; });
   // eliminata di nuovo e scaduti i 30 giorni: il file viene cancellato davvero
+  await page.waitForFunction(() => (projects.find(p => p.id === 'p1').foto || []).length === 1);
   await page.evaluate(async () => { await deletePhoto('p1', projects.find(p => p.id === 'p1').foto[0].id); });
   await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p1').cestino || []).length === 1);
   await page.evaluate(async d => { const p = projects.find(p => p.id === 'p1'); await db.collection('projects').doc('p1').update({ cestino: p.cestino.map(t => ({ ...t, eliminatoIl: d })) }); }, daysAgo(31));
@@ -320,6 +321,14 @@ await test('conferma d\'ordine da PDF', async () => {
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'oart'), pid);
   const txt = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
   expect(/Articoli venduti[\s\S]*11 m[\s\S]*Isokorb XT tipo K/.test(txt), 'Dashboard: articoli venduti mancanti');
+  // Bole: kg di ferro dalla sigla (diametro, altezza, pioli, listello)
+  const bole = await page.evaluate(() => { const rr = parseOrderLines(['Pos. Codice articolo Qtà. U.m. Prezzo unitario Totale netto', '10 1056928', 'BOLE O/U 12-330-2/450', '150-200-100', 'Prezzo netto 14 PZ 50,00 700,00', '20 1056983', 'BOLE O/U 14-330-2/405', '150-170-85', 'Prezzo netto 96 PZ 60,00 5.760,00', 'Totale merce 6.460,00']); return { rr, cat: rr.map(r => articleCategory(r).label), kg: rr.map(r => Math.round(articleKg(r) * 10) / 10) }; });
+  expect(bole.rr.length === 2 && bole.cat[0] === 'Bole O/U Ø12' && bole.cat[1] === 'Bole O/U Ø14', 'Bole lette male: ' + JSON.stringify(bole));
+  expect(bole.kg[0] === 13.7 && bole.kg[1] === 123.1, 'peso Bole: ' + JSON.stringify(bole.kg));
+  await page.evaluate(([pid, righe]) => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'obole', data: new Date().toISOString().slice(0, 10), numero: '9', importo: 6460, righe }] }), [pid, bole.rr]);
+  await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'obole'), pid);
+  const txt2 = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
+  expect(/Ferro Bole\s*137 kg/.test(txt2) && /Bole O\/U Ø14[\s\S]*123 kg/.test(txt2) && /Metri lineari\s*11 m/.test(txt2), 'Dashboard: kg delle Bole mancanti');
 });
 
 const portalPdf = path.join(fixtures, 'portale.pdf');
@@ -603,6 +612,7 @@ await test('fasi: in attesa di Michael, file allegato alla fase dalla timeline e
   await page.waitForFunction(() => (window.__fake.docs('projects').find(p => p.id === 'p4').fasi || {}).propostaTecnica, null, { timeout: 15000 }).catch(async e => { throw new Error('passo 1 (proposta): ' + JSON.stringify(await page.evaluate(() => ({ p4: window.__fake.docs('projects').find(p => p.id === 'p4'), files: [...window.__fake.files.keys()], notice: document.getElementById('noticeBar').innerText, view })))); });
   let p4 = await page.evaluate(() => window.__fake.docs('projects').find(p => p.id === 'p4'));
   expect(p4.fasi.propostaTecnica === daysAgo(0) && (p4.allegati || []).some(a => a.tag === 'propostaTecnica' && a.nome === 'proposta-tecnica.pdf'), 'file o fase non registrati: ' + JSON.stringify(p4));
+  await page.waitForFunction(() => (projects.find(p => p.id === 'p4').fasi || {}).propostaTecnica);   // l'app riceve l'aggiornamento un attimo dopo
   txt = await show_(page, 'agenda');
   expect(!txt.includes('Torre Delta'), 'dopo l\'arrivo la commessa non deve essere piu\' in attesa');
   expect(await page.$('#waitingCard:not([open])'), 'senza commesse in attesa il riquadro deve restare chiuso');

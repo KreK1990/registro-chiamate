@@ -340,6 +340,10 @@ Campi principali:
   `articleCategory` ("Isokorb XT tipo K" dalla sigla), `articleMeters` (1 m a pezzo, scelta dell'utente; -L500- =
   0,5 m; U.m. M/ML = metri). Riquadro "Articoli venduti" in Dashboard -> Progetti (periodo della pagina): metri,
   pezzi, valore per categoria e serie; gli ordini senza righe si completano rileggendo il PDF (stesso numero = aggiorna).
+  **Bole** (2026-10-15): kg di ferro invece dei metri. `boleGeometry` dalla sigla (BOLE O/U|U|F d-h-n/L, anche "/A 720";
+  HDB/PSB-d/h-n/L; JDA-n/d/h-L); `boleElementKg` = n x (gambo pi d²/4 x h + 2 teste di diametro 3d e spessore 0,5d) x
+  7850 + listello 0,444 kg/m x L (Bole F: listello in plastica 0). Ipotesi modificabili nel riquadro (`settings.pesoBole`,
+  `BOLE_DEF`); verificato con i conti dell'utente (BOLE O/U 12-330-2/450 = 0,978 kg).
 - **Report del periodo** (Dashboard -> "Report", blocco "Report del periodo", 2026-10-14): periodo (questa
   settimana, scorsa, mese, mese scorso, date a scelta; `rep`, `repSetPeriod`); attivita' (telefonate, clienti
   raggiunti, appuntamenti fissati, incontri, sopralluoghi, mail; richieste/offerte/conferme/perse con `projEvents`);

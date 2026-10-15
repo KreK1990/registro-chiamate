@@ -80,6 +80,9 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .call-item .esito{display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px;}
 .call-item .note{font-size:14px;margin-top:4px;white-space:pre-wrap;}
 .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px;}
+.bole-params{margin-top:10px;}
+.bole-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 12px;}
+.bole-grid label{margin:0;font-size:12.5px;}
 .rep-group{font-family:var(--serif);font-weight:700;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px;}
 .rep-proj{margin:0 0 10px;padding-left:10px;border-left:3px solid var(--border-strong);}
 .rep-proj-title{font-weight:600;font-size:14px;margin-bottom:4px;}
@@ -1245,6 +1248,13 @@ function renderMain(){
     document.getElementById('dashProjPeriod')?.addEventListener('change', e=>{ dashProjPeriod = e.target.value; renderMain(); });
     document.getElementById('dashReportBtn')?.addEventListener('click', ()=>{ dashboardSubView='report'; renderMain(); });
     if(dashboardSubView==='report') bindReport(main);
+    main.querySelector('.bole-params')?.addEventListener('toggle', e=>{ boleOpen = e.target.open; });
+    main.querySelectorAll('[data-bole-param]').forEach(inp=>inp.addEventListener('change', ()=>{
+      const k = inp.dataset.boleParam, v = parseEuro(inp.value);
+      if(v===null || Number.isNaN(v) || v<0){ inp.value = String(boleParams()[k]).replace('.', ','); return; }
+      saveSettings({ pesoBole: { ...(appSettings.pesoBole || {}), [k]: v } });
+      appSettings.pesoBole = { ...(appSettings.pesoBole || {}), [k]: v }; renderMain();
+    }));
     main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
     main.querySelectorAll('.call-item[data-contact-id]').forEach(el=>{
       el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; view='detail'; confirmDeleteId=null; tableDetailCallId=null; setActiveTab('navContacts'); renderMain(); });
@@ -4372,6 +4382,8 @@ function parseOrderLines(lines){
 const UM_METRI = /^(M|ML|LM|MT)$/;
 function articleCategory(r){
   const d = (r.descrizione || '').replace(/®/g, ' ').replace(/\s+/g, ' ');
+  const g = boleGeometry(d);
+  if(g) return { serie: g.tipo==='HDB' || g.tipo==='PSB' || g.tipo==='JDA' ? g.tipo : 'Bole', label: `${['HDB','PSB','JDA'].includes(g.tipo) ? g.tipo : 'Bole '+g.tipo} Ø${g.d}` };
   const m = /Isokorb\s+([A-Z]{1,4})\s+([A-Z]{1,3})(?=[-\s+]|$)/.exec(d);
   if(m) return { serie: 'Isokorb '+m[1], label: `Isokorb ${m[1]} tipo ${m[2]}` };
   const w = d.trim().split(' ').slice(0, 2).join(' ') || ('Articolo '+r.codice);
@@ -4383,36 +4395,77 @@ function articleMeters(r){
   return (Number(r.qta) || 0) * (m ? Number(m[1]) / 1000 : 1);
 }
 function fmtQty(v){ return (Math.round(v * 10) / 10).toLocaleString('it-IT'); }
+// Bole (e sigle simili HDB, PSB, JDA): si contano i kg di ferro, non i metri (richiesta dell'utente
+// 2026-10-15). Dalla sigla: diametro d, altezza h, numero di pioli n, lunghezza del listello L (mm), es.
+// "BOLE O/U 12-330-2/450". Peso di un elemento = n pioli x (gambo sull'altezza + 2 teste) x densita'
+// + listello (kg/m x L; plastica per Bole F). Testa e listello sono ipotesi dell'utente, modificabili
+// nel riquadro (settings.pesoBole).
+let boleOpen = false;
+const BOLE_DEF = { densita:7850, testaD:3, testaS:0.5, listello:0.444, listelloF:0 };
+const BOLE_LABELS = { densita:'Densità acciaio [kg/m³]', testaD:'Diametro testa [× d]', testaS:'Spessore testa [× d]', listello:'Listello in acciaio [kg/m]', listelloF:'Listello in plastica, Bole F [kg/m]' };
+function boleParams(){
+  const s = appSettings.pesoBole || {}, o = {};
+  Object.keys(BOLE_DEF).forEach(k=>{ const v = Number(s[k]); o[k] = s[k]!=null && s[k]!=='' && isFinite(v) && v>=0 ? v : BOLE_DEF[k]; });
+  return o;
+}
+function boleGeometry(desc){
+  const d = (desc || '').replace(/\s+/g, ' ');
+  let m = /\bBOLE\s+([A-Z][A-Z\/]*)\s+(\d+)-(\d+)-(\d+)\s*\/\s*(?:A\s*)?(\d+)/i.exec(d);
+  if(m) return { tipo: m[1].toUpperCase(), d: +m[2], h: +m[3], n: +m[4], L: +m[5] };
+  m = /\b(HDB|PSB)-(\d+)\/(\d+)-(\d+)\/(\d+)/i.exec(d);
+  if(m) return { tipo: m[1].toUpperCase(), d: +m[2], h: +m[3], n: +m[4], L: +m[5] };
+  m = /\bJDA-(\d+)\/(\d+)\/(\d+)-(\d+)/i.exec(d);
+  if(m) return { tipo: 'JDA', n: +m[1], d: +m[2], h: +m[3], L: +m[4] };
+  return null;
+}
+function boleElementKg(g, P){
+  P = P || boleParams();
+  const stud = Math.PI * g.d * g.d / 4 * g.h + 2 * Math.PI * (P.testaD * g.d) ** 2 / 4 * (P.testaS * g.d);   // mm³
+  return g.n * stud * 1e-9 * P.densita + (g.tipo==='F' ? P.listelloF : P.listello) * g.L / 1000;
+}
+function articleKg(r){ const g = boleGeometry(r.descrizione); return g ? (Number(r.qta) || 0) * boleElementKg(g) : null; }
+function fmtKg(v){ return Math.round(v).toLocaleString('it-IT')+' kg'; }
 function orderLinesSummary(righe){
-  const pz = righe.filter(r=>!UM_METRI.test(r.um)).reduce((s,r)=>s+(Number(r.qta)||0), 0), m = righe.reduce((s,r)=>s+articleMeters(r), 0);
+  const kgL = righe.filter(r=>articleKg(r)!=null), mL = righe.filter(r=>articleKg(r)==null);
+  const pz = righe.filter(r=>!UM_METRI.test(r.um)).reduce((s,r)=>s+(Number(r.qta)||0), 0);
+  const m = mL.reduce((s,r)=>s+articleMeters(r), 0), kg = kgL.reduce((s,r)=>s+articleKg(r), 0);
   const cats = [...new Set(righe.map(r=>articleCategory(r).label))];
-  return `${pz ? fmtQty(pz)+' pz · ' : ''}${fmtQty(m)} m · ${esc(cats.slice(0, 3).join(', '))}${cats.length > 3 ? ` e altri ${cats.length - 3}` : ''}`;
+  return `${pz ? fmtQty(pz)+' pz · ' : ''}${[mL.length ? fmtQty(m)+' m' : '', kgL.length ? fmtKg(kg) : ''].filter(Boolean).join(' · ')} · ${esc(cats.slice(0, 3).join(', '))}${cats.length > 3 ? ` e altri ${cats.length - 3}` : ''}`;
 }
 function soldArticlesHtml(range){
   const ord = ordersIn(range), withL = ord.filter(x=>(x.o.righe || []).length), noL = ord.length - withL.length;
   const cats = new Map(), series = new Map();
   withL.forEach(({ o })=>o.righe.forEach(r=>{
-    const c = articleCategory(r), m = articleMeters(r), pz = UM_METRI.test(r.um) ? 0 : (Number(r.qta) || 0), eur = Number(r.totale) || 0;
-    const e = cats.get(c.label) || { label: c.label, pz: 0, m: 0, eur: 0, ord: new Set() };
-    e.pz += pz; e.m += m; e.eur += eur; e.ord.add(o.id); cats.set(c.label, e);
-    const s = series.get(c.serie) || { m: 0, eur: 0 }; s.m += m; s.eur += eur; series.set(c.serie, s);
+    const c = articleCategory(r), kg = articleKg(r), m = kg==null ? articleMeters(r) : 0, pz = UM_METRI.test(r.um) ? 0 : (Number(r.qta) || 0), eur = Number(r.totale) || 0;
+    const e = cats.get(c.label) || { label: c.label, pz: 0, m: 0, kg: 0, isKg: kg!=null, eur: 0, ord: new Set() };
+    e.pz += pz; e.m += m; e.kg += kg || 0; e.eur += eur; e.ord.add(o.id); cats.set(c.label, e);
+    const s = series.get(c.serie) || { m: 0, kg: 0, isKg: kg!=null, eur: 0 }; s.m += m; s.kg += kg || 0; s.eur += eur; series.set(c.serie, s);
   }));
-  const rows = [...cats.values()].sort((a,b)=>b.m - a.m || b.eur - a.eur);
-  const totM = rows.reduce((s,r)=>s+r.m, 0), totPz = rows.reduce((s,r)=>s+r.pz, 0), totE = rows.reduce((s,r)=>s+r.eur, 0);
-  const maxM = Math.max(1, ...rows.map(r=>r.m));
+  const rows = [...cats.values()].sort((a,b)=>(a.isKg - b.isKg) || (b.isKg ? b.kg - a.kg : b.m - a.m) || b.eur - a.eur);
+  const mRows = rows.filter(r=>!r.isKg), kRows = rows.filter(r=>r.isKg);
+  const totM = mRows.reduce((s,r)=>s+r.m, 0), totKg = kRows.reduce((s,r)=>s+r.kg, 0), totPz = rows.reduce((s,r)=>s+r.pz, 0), totE = rows.reduce((s,r)=>s+r.eur, 0);
+  const maxM = Math.max(1, ...mRows.map(r=>r.m)), maxKg = Math.max(1, ...kRows.map(r=>r.kg));
+  const P = boleParams();
+  const row = r=>`<div class="fc-q-row">
+        <div class="fc-q-label">${esc(r.label)} <span>${r.pz ? fmtQty(r.pz)+' pz · ' : ''}${r.ord.size} ${r.ord.size===1 ? 'ordine' : 'ordini'}</span></div>
+        <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round((r.isKg ? r.kg / maxKg : r.m / maxM) * 100))}%;"></div></div>
+        <div class="fc-q-num"><strong>${r.isKg ? fmtKg(r.kg) : fmtQty(r.m)+' m'}</strong> <span class="fc-note">${fmtEuro(r.eur)}</span></div></div>`;
   return `<div class="card" id="soldArticles">
     <h3>Articoli venduti</h3>
     ${rows.length ? `<div class="fc-tiles" style="margin-bottom:12px;">
-        <div class="fc-tile"><div class="fc-label">Metri lineari</div><div class="fc-value">${fmtQty(totM)} m</div><div class="fc-note">${fmtQty(totPz)} pezzi</div></div>
+        ${mRows.length ? `<div class="fc-tile"><div class="fc-label">Metri lineari</div><div class="fc-value">${fmtQty(totM)} m</div><div class="fc-note">${fmtQty(mRows.reduce((s,r)=>s+r.pz, 0))} pezzi</div></div>` : ''}
+        ${kRows.length ? `<div class="fc-tile"><div class="fc-label">Ferro Bole</div><div class="fc-value">${fmtKg(totKg)}</div><div class="fc-note">${fmtQty(kRows.reduce((s,r)=>s+r.pz, 0))} elementi</div></div>` : ''}
         <div class="fc-tile"><div class="fc-label">Valore merce</div><div class="fc-value">${fmtEuro(totE)}</div><div class="fc-note">${withL.length} ${withL.length===1 ? 'ordine' : 'ordini'} con il dettaglio</div></div>
-        ${[...series.entries()].sort((a,b)=>b[1].m - a[1].m).slice(0, 2).map(([k,s])=>`<div class="fc-tile"><div class="fc-label">${esc(k)}</div><div class="fc-value">${fmtQty(s.m)} m</div><div class="fc-note">${fmtEuro(s.eur)}</div></div>`).join('')}
+        ${[...series.entries()].filter(([,s])=>!s.isKg).sort((a,b)=>b[1].m - a[1].m).slice(0, 2).map(([k,s])=>`<div class="fc-tile"><div class="fc-label">${esc(k)}</div><div class="fc-value">${fmtQty(s.m)} m</div><div class="fc-note">${fmtEuro(s.eur)}</div></div>`).join('')}
       </div>
-      ${rows.map(r=>`<div class="fc-q-row">
-        <div class="fc-q-label">${esc(r.label)} <span>${r.pz ? fmtQty(r.pz)+' pz · ' : ''}${r.ord.size} ${r.ord.size===1 ? 'ordine' : 'ordini'}</span></div>
-        <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round(r.m * 100 / maxM))}%;"></div></div>
-        <div class="fc-q-num"><strong>${fmtQty(r.m)} m</strong> <span class="fc-note">${fmtEuro(r.eur)}</span></div></div>`).join('')}`
+      ${mRows.map(row).join('')}${kRows.map(row).join('')}`
       : '<div class="empty">Nessun ordine del periodo ha il dettaglio degli articoli.</div>'}
-    <div class="fc-note" style="margin-top:8px;">Dalle righe delle conferme d'ordine lette da PDF; 1 m per pezzo salvo lunghezza nella sigla (es. L500 = 0,5 m).${noL ? ` ${noL} ${noL===1 ? 'ordine del periodo non ha' : 'ordini del periodo non hanno'} il dettaglio: rileggi la conferma con "Leggi da PDF" nel progetto (l'ordine con lo stesso numero si aggiorna, non si duplica).` : ''}</div>
+    <div class="fc-note" style="margin-top:8px;">Dalle righe delle conferme d'ordine lette da PDF. Isokorb: 1 m per pezzo salvo lunghezza nella sigla (es. L500 = 0,5 m). Bole: kg di ferro calcolati dalla sigla (diametro, altezza, pioli, listello).${noL ? ` ${noL} ${noL===1 ? 'ordine del periodo non ha' : 'ordini del periodo non hanno'} il dettaglio: rileggi la conferma con "Leggi da PDF" nel progetto (l'ordine con lo stesso numero si aggiorna, non si duplica).` : ''}</div>
+    <details class="bole-params" ${boleOpen ? 'open' : ''}><summary class="name-link">Ipotesi di calcolo del peso delle Bole</summary>
+      <div class="fc-note" style="margin:6px 0;">Peso di un elemento = pioli × (gambo sull'altezza + 2 teste) × densità + listello × lunghezza. Testa e listello sono ipotesi: confronta con i valori del produttore e correggi qui.</div>
+      <div class="bole-grid">${Object.keys(BOLE_DEF).map(k=>`<label>${BOLE_LABELS[k]}<input data-bole-param="${k}" inputmode="decimal" value="${String(P[k]).replace('.', ',')}"></label>`).join('')}</div>
+      <div class="fc-note" style="margin-top:6px;">Esempio: BOLE O/U 12-330-2/450 = ${boleElementKg({ tipo:'O/U', d:12, h:330, n:2, L:450 }, P).toLocaleString('it-IT', { maximumFractionDigits:3 })} kg a elemento. Sigle riconosciute: BOLE O/U, U, F 12-330-2/450 (anche "/A 720"), HDB-12/215-4/720, PSB-12/215-4/720, JDA-4/12/215-720.</div>
+    </details>
   </div>`;
 }
 
