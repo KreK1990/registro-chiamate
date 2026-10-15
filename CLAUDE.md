@@ -9,13 +9,13 @@ con Claude (claude.ai), poi esportata qui per continuare lo sviluppo con Claude 
 Tutti i file stanno in `netlify-site/`, che corrisponde alla radice del repo GitHub ed è
 la cartella pubblicata su Netlify (deploy automatico a ogni push).
 
-- **`crm-chiamate-standalone.html`** — l'app (unico file, Firebase Auth + Firestore). La vecchia
+- **`crm-chiamate-standalone.html`** �€� l'app (unico file, Firebase Auth + Firestore). La vecchia
   copia `crm-chiamate.html` per Claude Artifact e' stata eliminata il 2026-10-06 (resta nella
   cronologia git); `/crm-chiamate.html` su Netlify rimanda alla radice.
 
-- `manifest.json`, `service-worker.js`, le icone — il "app shell" PWA installabile su
+- `manifest.json`, `service-worker.js`, le icone �€� il "app shell" PWA installabile su
   iPhone (Aggiungi a Home Screen).
-- `netlify/functions/calendar.js` — funzione serverless che legge Firestore (via
+- `netlify/functions/calendar.js` �€� funzione serverless che legge Firestore (via
   Firebase Admin SDK) e genera al volo un feed **.ics** per l'abbonamento calendario
   (così gli appuntamenti si sincronizzano da soli sul Calendario di iPhone/Google
   Calendar, senza export/import manuali).
@@ -32,7 +32,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
   400); il messaggio indica la copia di sicurezza da ripristinare per annullare. Logica comune in
   `netlify/lib/backup.mjs` (fuori da `functions/` per non diventare una function).
   Il service worker non mette in cache nulla sotto `/.netlify/`.
-- `tests/` — **controlli automatici da lanciare prima di ogni pubblicazione**: `cd tests`,
+- `tests/` �€� **controlli automatici da lanciare prima di ogni pubblicazione**: `cd tests`,
   `npm install` (la prima volta), `npm test` (`node run.mjs`; `--show` apre il browser, `--shots`
   salva le schermate del telefono in una cartella temporanea). playwright-core usa Chrome/Edge
   installato; `fake-firebase.js` sostituisce gli script Firebase (stessa interfaccia compat, dati
@@ -344,6 +344,10 @@ Campi principali:
   HDB/PSB-d/h-n/L; JDA-n/d/h-L); `boleElementKg` = n x (gambo pi d²/4 x h + 2 teste di diametro 3d e spessore 0,5d) x
   7850 + listello 0,444 kg/m x L (Bole F: listello in plastica 0). Ipotesi modificabili nel riquadro (`settings.pesoBole`,
   `BOLE_DEF`); verificato con i conti dell'utente (BOLE O/U 12-330-2/450 = 0,978 kg).
+  **Dettaglio e prezzi** (2026-10-15): ogni categoria e' un `<details>` (`soldOpen` ricorda le aperte) con le varianti
+  (`articleVariant`: classe M1...M14 per gli Isokorb, le altezze no, scelta dell'utente; geometria per le Bole;
+  ordinate con `variantOrder`): pezzi, metri/kg, valore, prezzo medio = valore/pezzi (e €/kg per le Bole), min-max
+  del prezzo unitario; sotto "Prezzi per ordine" (ultime 40 righe, data, progetto, variante, prezzo netto).
 - **Report del periodo** (Dashboard -> "Report", blocco "Report del periodo", 2026-10-14): periodo (questa
   settimana, scorsa, mese, mese scorso, date a scelta; `rep`, `repSetPeriod`); attivita' (telefonate, clienti
   raggiunti, appuntamenti fissati, incontri, sopralluoghi, mail; richieste/offerte/conferme/perse con `projEvents`);
@@ -407,7 +411,7 @@ Campi principali:
   progetto (blocco "Posizione corretta a mano"): editor Leaflet con segnaposto trascinabile, salva
   `geo.manual` (vale per Mappa, mappa incorporata e "Indicazioni" via `manualGeo` in `mapsUrl`/
   `mapEmbedUrl`; per i clienti anche ai colleghi con lo stesso indirizzo; si azzera se l'indirizzo
-  cambia o con "Torna alla posizione dell'indirizzo"). "Vicino a…" (località o
+  cambia o con "Torna alla posizione dell'indirizzo"). "Vicino a�€�" (località o
   posizione del telefono) elenca cosa c'è entro 20 km. `canAutoRender` esclude la mappa.
   Cantieri del portale (filtri "Portale: seguiti", acceso di default, e "Portale: da valutare", spento:
   sono centinaia): rombi rosa `#d1495b` (pieno = seguito, vuoto = da valutare; colore validato per
@@ -467,7 +471,7 @@ Campi principali:
   `projects.portaleIds` [ID portale] (+ vecchio `portaleId`, `projectPortalIds`); `portalCandidates`
   propone i progetti simili (stesso comune obbligatorio, poi stessa via +3, parola del nome nella
   descrizione +2, stesso professionista +3; soglia 4, "molto probabilmente" da 8); "Collega a un
-  progetto…" cerca per ID/nome/via; i collegati escono da "Da esaminare" (casella per vederli);
+  progetto�€�" cerca per ID/nome/via; i collegati escono da "Da esaminare" (casella per vederli);
   nella scheda progetto il riquadro "NII Progetti" (`projectPortalCardHtml`) elenca le schede
   collegate con dati, "Apri scheda", "Scollega" e avviso se collegate anche ad altri progetti; sul
   cantiere compaiono tutti i progetti collegati (`portalProjectsOf`), ognuno con Apri/Scollega. "Crea contatto" / "Crea progetto" aprono i moduli
@@ -482,7 +486,7 @@ Campi principali:
 
 ## Deploy & hosting
 
-- **GitHub**: repo `KreK1990/registro-chiamate` — root del repo = contenuto di
+- **GitHub**: repo `KreK1990/registro-chiamate` �€� root del repo = contenuto di
   `netlify-site/` (i file vanno caricati/committati alla radice del repo, non dentro una
   sottocartella "netlify-site").
 - **Netlify**: collegato al repo GitHub, auto-deploy su ogni push a `main`. Variabili
@@ -511,7 +515,7 @@ Calendar/iCloud, così il Calendario si aggiorna da solo periodicamente. La sott
 nativa su iPhone funziona (verificata il 2026-10-01). I problemi iniziali erano dovuti al
 "Visitor access" di Netlify impostato su Private per la produzione (ogni richiesta
 riceveva il login Netlify): ora è Private solo per le Deploy Previews, e la produzione è
-pubblica — la protezione dei dati è affidata al login Firebase e al token del feed.
+pubblica �€� la protezione dei dati è affidata al login Firebase e al token del feed.
 "Accesso negato" dal feed = token nell'URL diverso da `CALENDAR_TOKEN`; dopo aver
 cambiato la variabile su Netlify serve un nuovo deploy perché la function la legga.
 Il file `.ics` esportabile manualmente (sezione Appuntamenti) resta un fallback.
@@ -532,7 +536,7 @@ in abbonamento "Rimuovi avvisi" è disattivato.
   del `@media (max-width:720px)`. Icone PWA: "R" bianca su blu con quadratino giallo.
 - Niente `confirm()`/`alert()` nativi per conferme critiche (scelta storica, nata quando l'app
   girava come Claude Artifact): le conferme di eliminazione sono implementate come UI inline nella
-  pagina stessa (pattern già presente per contatti e chiamate — riusarlo per nuove
+  pagina stessa (pattern già presente per contatti e chiamate �€� riusarlo per nuove
   funzionalità di eliminazione).
 - Ogni vista/tab (Oggi, Contatti, Chiamata, Follow-up, Appuntamenti, Tabella chiamate,
   Dashboard) è una funzione JS che ritorna una stringa HTML, iniettata in `#main` da

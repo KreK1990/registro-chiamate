@@ -329,6 +329,23 @@ await test('conferma d\'ordine da PDF', async () => {
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'obole'), pid);
   const txt2 = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
   expect(/Ferro Bole\s*137 kg/.test(txt2) && /Bole O\/U Ø14[\s\S]*123 kg/.test(txt2) && /Metri lineari\s*11 m/.test(txt2), 'Dashboard: kg delle Bole mancanti');
+  // dettaglio per classe M1...M14 e prezzi medi
+  await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'om4', data: new Date().toISOString().slice(0, 10), numero: '10', importo: 650, righe: [{ codice: '1215190', descrizione: 'Isokorb® XT K-O-M4-V1-REI120-CV35-LR145-X120-H180-7.2', qta: 5, um: 'PZ', prezzo: 130, totale: 650 }] }] }), pid);
+  await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'om4'), pid);
+  await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
+  await page.click('[data-sold-cat="Isokorb XT tipo K"] > summary');
+  const det = await page.evaluate(() => document.querySelector('[data-sold-cat="Isokorb XT tipo K"]').innerText);
+  expect(/media 115,69 €\/pz/.test(det) && /M1[\s\S]*11 pz[\s\S]*109,19 €\/pz/.test(det) && /M4[\s\S]*5 pz[\s\S]*130,00 €\/pz/.test(det) && /da 109,19 € a 130,00 €/.test(det), 'dettaglio M1/M4 o prezzi medi sbagliati:\n' + det);
+  expect(det.indexOf('M1') < det.indexOf('M4'), 'classi non in ordine');
+  await page.evaluate(() => renderMain());
+  expect(await page.$('[data-sold-cat="Isokorb XT tipo K"][open]'), 'la categoria aperta si richiude al ridisegno');
+  if (shotsDir) {
+    await page.click('[data-sold-cat="Bole O/U Ø14"] > summary');
+    await (await page.$('#soldArticles')).screenshot({ path: path.join(shotsDir, 'articoli-pc.png') });
+    const vs = page.viewportSize(); await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+    await (await page.$('#soldArticles')).screenshot({ path: path.join(shotsDir, 'articoli-telefono.png') });
+    await page.setViewportSize(vs);
+  }
 });
 
 const portalPdf = path.join(fixtures, 'portale.pdf');
