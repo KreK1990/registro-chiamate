@@ -348,6 +348,8 @@ Campi principali:
   (`articleVariant`: classe M1...M14 per gli Isokorb, le altezze no, scelta dell'utente; geometria per le Bole;
   ordinate con `variantOrder`): pezzi, metri/kg, valore, prezzo medio = valore/pezzi (e €/kg per le Bole), min-max
   del prezzo unitario; sotto "Prezzi per ordine" (ultime 40 righe, data, progetto, variante, prezzo netto).
+  Le Bole (e HDB/PSB/JDA) sono raccolte in un gruppo per famiglia (`groupHtml`, chiave `gruppo:<famiglia>` in
+  `soldOpen`) con totali, kg e prezzo medio; dentro le categorie per diametro.
 - **Report del periodo** (Dashboard -> "Report", blocco "Report del periodo", 2026-10-14): periodo (questa
   settimana, scorsa, mese, mese scorso, date a scelta; `rep`, `repSetPeriod`); attivita' (telefonate, clienti
   raggiunti, appuntamenti fissati, incontri, sopralluoghi, mail; richieste/offerte/conferme/perse con `projEvents`);

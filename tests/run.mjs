@@ -328,7 +328,7 @@ await test('conferma d\'ordine da PDF', async () => {
   await page.evaluate(([pid, righe]) => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'obole', data: new Date().toISOString().slice(0, 10), numero: '9', importo: 6460, righe }] }), [pid, bole.rr]);
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'obole'), pid);
   const txt2 = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
-  expect(/Ferro Bole\s*137 kg/.test(txt2) && /Bole O\/U Ø14[\s\S]*123 kg/.test(txt2) && /Metri lineari\s*11 m/.test(txt2), 'Dashboard: kg delle Bole mancanti');
+  expect(/Ferro Bole\s*137 kg/.test(txt2) && /Metri lineari\s*11 m/.test(txt2), 'Dashboard: kg delle Bole mancanti');
   // dettaglio per classe M1...M14 e prezzi medi
   await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'om4', data: new Date().toISOString().slice(0, 10), numero: '10', importo: 650, righe: [{ codice: '1215190', descrizione: 'Isokorb® XT K-O-M4-V1-REI120-CV35-LR145-X120-H180-7.2', qta: 5, um: 'PZ', prezzo: 130, totale: 650 }] }] }), pid);
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'om4'), pid);
@@ -339,6 +339,10 @@ await test('conferma d\'ordine da PDF', async () => {
   expect(det.indexOf('M1') < det.indexOf('M4'), 'classi non in ordine');
   await page.evaluate(() => renderMain());
   expect(await page.$('[data-sold-cat="Isokorb XT tipo K"][open]'), 'la categoria aperta si richiude al ridisegno');
+  const grp = await page.evaluate(() => document.querySelector('[data-sold-cat="gruppo:Bole"] > summary').innerText);
+  expect(/Bole[\s\S]*110 elementi[\s\S]*2 diametri[\s\S]*137 kg/.test(grp), 'gruppo Bole: ' + grp);
+  await page.click('[data-sold-cat="gruppo:Bole"] > summary');
+  expect(await page.isVisible('[data-sold-cat="Bole O/U Ø14"] > summary'), 'dentro il gruppo mancano i diametri');
   if (shotsDir) {
     await page.click('[data-sold-cat="Bole O/U Ø14"] > summary');
     await (await page.$('#soldArticles')).screenshot({ path: path.join(shotsDir, 'articoli-pc.png') });

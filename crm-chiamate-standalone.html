@@ -85,6 +85,7 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .sold-cat > summary::-webkit-details-marker{display:none;}
 .sold-cat > summary .fc-q-label::before{content:'';display:inline-block;width:6px;height:6px;margin:0 8px 2px 0;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;}
 .sold-cat[open] > summary .fc-q-label::before{transform:rotate(45deg);}
+.sold-group-in{padding-left:14px;border-left:3px solid var(--border-strong);margin:2px 0 8px 3px;}
 .sold-avg{font-weight:400;font-size:12px;color:var(--text);margin:2px 0 0 14px;}
 .sold-avg .fc-note{font-size:11.5px;}
 .sold-detail{padding:4px 0 12px 14px;border-bottom:1px solid var(--border);}
@@ -4483,7 +4484,7 @@ function soldArticlesHtml(range){
   withL.forEach(({ p, o })=>o.righe.forEach(r=>{
     const c = articleCategory(r), kg = articleKg(r), isKg = kg!=null;
     const x = { p, o, r, pz: UM_METRI.test(r.um) ? 0 : (Number(r.qta) || 0), m: isKg ? 0 : articleMeters(r), kg: kg || 0, eur: Number(r.totale) || 0 };
-    const e = cats.get(c.label) || Object.assign(soldStat(), { label: c.label, isKg, vars: new Map() });
+    const e = cats.get(c.label) || Object.assign(soldStat(), { label: c.label, serie: c.serie, isKg, vars: new Map() });
     soldAdd(e, x); cats.set(c.label, e);
     const vk = articleVariant(r), v = e.vars.get(vk) || soldStat(); soldAdd(v, x); e.vars.set(vk, v);
     const s = series.get(c.serie) || { m: 0, kg: 0, isKg, eur: 0 }; s.m += x.m; s.kg += x.kg; s.eur += x.eur; series.set(c.serie, s);
@@ -4514,6 +4515,23 @@ function soldArticlesHtml(range){
       </div>
     </details>`;
   };
+  // Bole (e simili): un gruppo per famiglia con i totali, dentro le categorie per diametro (richiesta 2026-10-15)
+  const groupHtml = list=>{
+    const fams = new Map();
+    list.forEach(e=>{ const g = fams.get(e.serie) || Object.assign(soldStat(), { label: e.serie, cats: [] }); g.cats.push(e);
+      e.lines.forEach(x=>soldAdd(g, x)); fams.set(e.serie, g); });
+    const maxG = Math.max(1, ...[...fams.values()].map(g=>g.kg));
+    return [...fams.values()].sort((a,b)=>b.kg - a.kg).map(g=>{ const key = 'gruppo:'+g.label;
+      return `<details class="sold-cat sold-group" data-sold-cat="${esc(key)}" ${soldOpen.has(key) ? 'open' : ''}>
+        <summary class="fc-q-row">
+          <div class="fc-q-label">${esc(g.label)} <span>${fmtQty(g.pz)} elementi · ${g.ord.size} ${g.ord.size===1 ? 'ordine' : 'ordini'} · ${g.cats.length} ${g.cats.length===1 ? 'diametro' : 'diametri'}</span>
+            <div class="sold-avg">${soldAvgHtml(g, true)}</div></div>
+          <div class="fc-q-track"><div class="fc-q-bar" style="width:${Math.max(1, Math.round(g.kg / maxG * 100))}%;"></div></div>
+          <div class="fc-q-num"><strong>${fmtKg(g.kg)}</strong> <span>${fmtEuro(g.eur)}</span></div>
+        </summary>
+        <div class="sold-group-in">${g.cats.map(catHtml).join('')}</div>
+      </details>`; }).join('');
+  };
   return `<div class="card" id="soldArticles">
     <h3>Articoli venduti</h3>
     ${rows.length ? `<div class="fc-tiles" style="margin-bottom:12px;">
@@ -4523,7 +4541,7 @@ function soldArticlesHtml(range){
         ${[...series.entries()].filter(([,s])=>!s.isKg).sort((a,b)=>b[1].m - a[1].m).slice(0, 2).map(([k,s])=>`<div class="fc-tile"><div class="fc-label">${esc(k)}</div><div class="fc-value">${fmtQty(s.m)} m</div><div class="fc-note">${fmtEuro(s.eur)}</div></div>`).join('')}
       </div>
       <div class="fc-note" style="margin-bottom:4px;">Tocca una categoria per il dettaglio per classe (M1, M2…) o per elemento e i prezzi unitari di ogni ordine.</div>
-      ${mRows.map(catHtml).join('')}${kRows.map(catHtml).join('')}`
+      ${mRows.map(catHtml).join('')}${groupHtml(kRows)}`
       : '<div class="empty">Nessun ordine del periodo ha il dettaglio degli articoli.</div>'}
     <div class="fc-note" style="margin-top:8px;">Dalle righe delle conferme d'ordine lette da PDF. Isokorb: 1 m per pezzo salvo lunghezza nella sigla (es. L500 = 0,5 m). Bole: kg di ferro calcolati dalla sigla (diametro, altezza, pioli, listello). Prezzo medio = valore diviso pezzi (prezzi netti delle conferme).${noL ? ` ${noL} ${noL===1 ? 'ordine del periodo non ha' : 'ordini del periodo non hanno'} il dettaglio: rileggi la conferma con "Leggi da PDF" nel progetto (l'ordine con lo stesso numero si aggiorna, non si duplica).` : ''}</div>
     <details class="bole-params" ${boleOpen ? 'open' : ''}><summary class="name-link">Ipotesi di calcolo del peso delle Bole</summary>
