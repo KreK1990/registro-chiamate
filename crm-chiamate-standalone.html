@@ -4412,7 +4412,10 @@ function articleCategory(r){
 // Unita' con cui si conta l'articolo: kg (Bole e simili), pezzi (Isokorb tipo S e SK, elementi puntuali:
 // non sviluppano metri, scelta dell'utente 2026-10-15), metri (tutti gli altri Isokorb).
 const ISOKORB_PUNTUALI = /^(S|SK)$/;
+// Tronsole: linea con molti elementi puntuali, non si somma in un'unica quantita'; conta solo nel valore
+// della merce (scelta dell'utente 2026-10-15).
 function articleUnit(r){
+  if(/tronsole/i.test(r.descrizione || '')) return 'none';
   if(boleGeometry(r.descrizione)) return 'kg';
   const c = articleCategory(r);
   return c.tipo && ISOKORB_PUNTUALI.test(c.tipo) ? 'pz' : 'm';
@@ -4491,10 +4494,11 @@ function soldAvgHtml(e, isKg){
 }
 function soldArticlesHtml(range){
   const ord = ordersIn(range), withL = ord.filter(x=>(x.o.righe || []).length), noL = ord.length - withL.length;
-  const cats = new Map(), series = new Map();
+  const cats = new Map(), series = new Map(), excluded = { eur: 0, n: 0, labels: new Set() };
   withL.forEach(({ p, o })=>o.righe.forEach(r=>{
     const c = articleCategory(r), unit = articleUnit(r), isKg = unit==='kg', kg = isKg ? articleKg(r) : 0;
     const x = { p, o, r, pz: UM_METRI.test(r.um) ? 0 : (Number(r.qta) || 0), m: unit==='m' ? articleMeters(r) : 0, kg, eur: Number(r.totale) || 0 };
+    if(unit==='none'){ excluded.eur += x.eur; excluded.n++; excluded.labels.add(c.serie); return; }
     const e = cats.get(c.label) || Object.assign(soldStat(), { label: c.label, serie: c.serie, unit, isKg, vars: new Map() });
     soldAdd(e, x); cats.set(c.label, e);
     const vk = articleVariant(r), v = e.vars.get(vk) || soldStat(); soldAdd(v, x); e.vars.set(vk, v);
@@ -4502,7 +4506,7 @@ function soldArticlesHtml(range){
   }));
   const rows = [...cats.values()].sort((a,b)=>b.m - a.m || b.kg - a.kg || b.pz - a.pz || b.eur - a.eur);
   const mRows = rows.filter(r=>r.unit==='m'), pRows = rows.filter(r=>r.unit==='pz'), kRows = rows.filter(r=>r.unit==='kg');
-  const totM = mRows.reduce((s,r)=>s+r.m, 0), totKg = kRows.reduce((s,r)=>s+r.kg, 0), totP = pRows.reduce((s,r)=>s+r.pz, 0), totE = rows.reduce((s,r)=>s+r.eur, 0);
+  const totM = mRows.reduce((s,r)=>s+r.m, 0), totKg = kRows.reduce((s,r)=>s+r.kg, 0), totP = pRows.reduce((s,r)=>s+r.pz, 0), totE = rows.reduce((s,r)=>s+r.eur, 0) + excluded.eur;
   const maxOf = { m: Math.max(1, ...mRows.map(r=>r.m)), pz: Math.max(1, ...pRows.map(r=>r.pz)), kg: Math.max(1, ...kRows.map(r=>r.kg)) };
   const amount = (e, unit)=>unit==='kg' ? e.kg : unit==='pz' ? e.pz : e.m;
   const P = boleParams();
@@ -4546,7 +4550,7 @@ function soldArticlesHtml(range){
   };
   return `<div class="card" id="soldArticles">
     <h3>Articoli venduti</h3>
-    ${rows.length ? `<div class="fc-tiles" style="margin-bottom:12px;">
+    ${rows.length || excluded.n ? `<div class="fc-tiles" style="margin-bottom:12px;">
         ${mRows.length ? `<div class="fc-tile"><div class="fc-label">Metri lineari</div><div class="fc-value">${fmtQty(totM)} m</div><div class="fc-note">${fmtQty(mRows.reduce((s,r)=>s+r.pz, 0))} pezzi</div></div>` : ''}
         ${kRows.length ? `<div class="fc-tile"><div class="fc-label">Ferro Bole</div><div class="fc-value">${fmtKg(totKg)}</div><div class="fc-note">${fmtQty(kRows.reduce((s,r)=>s+r.pz, 0))} elementi</div></div>` : ''}
         <div class="fc-tile"><div class="fc-label">Valore merce</div><div class="fc-value">${fmtEuro(totE)}</div><div class="fc-note">${withL.length} ${withL.length===1 ? 'ordine' : 'ordini'} con il dettaglio</div></div>
@@ -4554,7 +4558,8 @@ function soldArticlesHtml(range){
         ${pRows.length ? `<div class="fc-tile"><div class="fc-label">Isokorb ${[...new Set(pRows.map(r=>r.label.replace(/^.* tipo /, '')))].join(' / ')}</div><div class="fc-value">${fmtQty(totP)} pz</div><div class="fc-note">${fmtEuro(pRows.reduce((s,r)=>s+r.eur, 0))}</div></div>` : ''}
       </div>
       <div class="fc-note" style="margin-bottom:4px;">Tocca una categoria per il dettaglio per classe (M1, M2…) o per elemento e i prezzi unitari di ogni ordine.</div>
-      ${mRows.map(catHtml).join('')}${pRows.map(catHtml).join('')}${groupHtml(kRows)}`
+      ${mRows.map(catHtml).join('')}${pRows.map(catHtml).join('')}${groupHtml(kRows)}
+      ${excluded.n ? `<div class="fc-note" style="margin-top:6px;">Tronsole: ${fmtEuro(excluded.eur)} compresi nel valore merce, senza dettaglio né metri.</div>` : ''}`
       : '<div class="empty">Nessun ordine del periodo ha il dettaglio degli articoli.</div>'}
     <div class="fc-note" style="margin-top:8px;">Dalle righe delle conferme d'ordine lette da PDF. Isokorb: 1 m per pezzo salvo lunghezza nella sigla (es. L500 = 0,5 m); i tipi S e SK sono elementi puntuali e si contano a pezzi, fuori dai metri lineari. Bole: kg di ferro calcolati dalla sigla (diametro, altezza, pioli, listello). Prezzo medio = valore diviso pezzi (prezzi netti delle conferme).${noL ? ` ${noL} ${noL===1 ? 'ordine del periodo non ha' : 'ordini del periodo non hanno'} il dettaglio: rileggi la conferma con "Leggi da PDF" nel progetto (l'ordine con lo stesso numero si aggiorna, non si duplica).` : ''}</div>
     <details class="bole-params" ${boleOpen ? 'open' : ''}><summary class="name-link">Ipotesi di calcolo del peso delle Bole</summary>

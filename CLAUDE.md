@@ -353,6 +353,8 @@ Campi principali:
   Isokorb tipo S e SK (`ISOKORB_PUNTUALI`, `articleUnit` = 'pz'): elementi puntuali, contati a pezzi e fuori dai
   "Metri lineari" e dai metri delle serie; riquadro "Isokorb S / SK" in pezzi. La sigla "Isokorb T_S-N-R0-D16-2.0"
   (tipo dopo il trattino basso) e' riconosciuta; variante = resto della sigla senza altezze. Riquadri per ogni serie.
+  Tronsole (`articleUnit` = 'none', scelta dell'utente 2026-10-15): solo nel valore merce, niente metri, riquadri o
+  dettaglio; una riga di nota con il loro importo.
 - **Report del periodo** (Dashboard -> "Report", blocco "Report del periodo", 2026-10-14): periodo (questa
   settimana, scorsa, mese, mese scorso, date a scelta; `rep`, `repSetPeriod`); attivita' (telefonate, clienti
   raggiunti, appuntamenti fissati, incontri, sopralluoghi, mail; richieste/offerte/conferme/perse con `projEvents`);
