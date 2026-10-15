@@ -82,6 +82,9 @@ Campi principali:
   **Salva nella rubrica del telefono** (scheda contatto, blocco omonimo): `vcardText` (vCard 3.0: N, FN,
   ORG, TITLE, TEL cell/lavoro, EMAIL, ADR; niente note) scaricato come .vcf (`downloadVCard`); su
   iPhone apre "Nuovo contatto". Una tantum, scelta dell'utente 2026-10-12 (no export di massa, no CardDAV).
+  Su iPhone/iPad (`isIOSDevice`) il file scaricato non si salvava (scheda chiusa senza salvare, iOS 27, anche da Safari e
+  con account iCloud, 2026-10-15): il vCard va con un modulo POST (target _blank) a `netlify/functions/vcard.mjs`, che lo
+  restituisce come text/vcard inline (accetta solo un vCard, max 8000 caratteri, non salva nulla). Sul PC resta il download.
   Lo studio/attività è un'entità "derivata", senza collection propria: contatti con lo
   stesso `azienda` normalizzato (`normStudio`: minuscole, spazi e punteggiatura) sono
   lo stesso studio; via/citta/telefono dello studio si ricavano dai membri

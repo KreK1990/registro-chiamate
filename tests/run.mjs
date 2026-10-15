@@ -698,6 +698,18 @@ await test('contatto: salva nella rubrica del telefono (vCard)', async () => {
   expect(dl.suggestedFilename() === 'Rossi Mario.vcf', 'nome del file: ' + dl.suggestedFilename());
   for (const l of ['BEGIN:VCARD', 'N:Rossi;Mario;;;', 'FN:Mario Rossi', 'ORG:Studio Rossi', 'TITLE:Architetto', 'TEL;TYPE=CELL,VOICE:333 1234567', 'EMAIL;TYPE=INTERNET,WORK:mario@studiorossi.it', 'ADR;TYPE=WORK:;;Via Roma 1;Torino;;;Italia', 'END:VCARD'])
     expect(txt.includes(l + '\r\n'), 'manca nel vCard: ' + l + '\n' + txt);
+  // iPhone: il vCard passa dalla function con un modulo POST (niente dati nell'indirizzo), in una nuova scheda
+  let posted = null;
+  await ctx.route('**/.netlify/functions/vcard', r => { posted = { method: r.request().method(), url: r.request().url(), body: r.request().postData() }; r.fulfill({ contentType: 'text/vcard', body: 'BEGIN:VCARD\r\nEND:VCARD\r\n' }); });
+  await page.evaluate(() => { window.__isIOS = isIOSDevice; isIOSDevice = () => true; });
+  const [pop] = await Promise.all([ctx.waitForEvent('page'), page.click('#vcardBtn')]);
+  await pop.waitForLoadState().catch(() => {});
+  for (let i = 0; i < 50 && !posted; i++) await page.waitForTimeout(100);
+  await page.evaluate(() => { isIOSDevice = window.__isIOS; });
+  await pop.close().catch(() => {});
+  await ctx.unroute('**/.netlify/functions/vcard');
+  const body = posted ? new URLSearchParams(posted.body) : null;
+  expect(posted && posted.method === 'POST' && !posted.url.includes('Rossi') && body.get('n') === 'Rossi Mario' && body.get('v').includes('TEL;TYPE=CELL,VOICE:333 1234567') && body.get('v').startsWith('BEGIN:VCARD'), 'invio per iPhone: ' + JSON.stringify(posted));
 });
 
 await test('mail di presentazione: firma richiesta, poi Outlook con destinatario, oggetto e testo', async () => {
