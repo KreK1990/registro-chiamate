@@ -82,6 +82,9 @@ Campi principali:
   **Salva nella rubrica del telefono** (scheda contatto, blocco omonimo): `vcardText` (vCard 3.0: N, FN,
   ORG, TITLE, TEL cell/lavoro, EMAIL, ADR; niente note) scaricato come .vcf (`downloadVCard`); su
   iPhone apre "Nuovo contatto". Una tantum, scelta dell'utente 2026-10-12 (no export di massa, no CardDAV).
+  Su iOS 27 la scheda "Nuovo contatto" si chiude senza salvare (anche da Safari e con account iCloud, 2026-10-15). Provato e
+  TOLTO lo stesso giorno l'invio via function con POST in Safari: la pagina si bloccava e Safari chiedeva il login;
+  l'utente preferisce il download del file.
   Lo studio/attività è un'entità "derivata", senza collection propria: contatti con lo
   stesso `azienda` normalizzato (`normStudio`: minuscole, spazi e punteggiatura) sono
   lo stesso studio; via/citta/telefono dello studio si ricavano dai membri
