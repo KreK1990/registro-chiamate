@@ -412,7 +412,7 @@ await ctx.close();
 await page.evaluate(() => new Promise(r => navigator.geolocation.getCurrentPosition(r, r, { timeout: 5000 })));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"]];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['rete'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"]];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
@@ -1013,6 +1013,41 @@ await test('report del periodo: attività, note modificabili, obiettivo, PDF sal
   await page.click('[data-rep-del]');
   await page.click('[data-rep-del-yes]');
   await page.waitForFunction(() => window.__fake.docs('report').length === 0);
+});
+
+await test('rete di collaborazioni: commesse, portale, collegamento a mano, opportunità', async () => {
+  await page.evaluate(() => window.__fake.put('portale', 'psnet', { pid: '9000077', stato: 'seguito', seguitoIl: 1, aggiornatoIl: 1, dati: {
+    id: '9000077', titolo: 'Residenza Collina', comune: 'Pino Torinese', nuovaCostruzione: true, fase: 'Progettazione', unita: 12, soggetti: [
+      { ruolo: 'Progettazione architettonica', nome: 'Studio Rossi', altro: [], tel: [], email: ['mario@studiorossi.it'], via: '', citta: 'Torino', web: '' },
+      { ruolo: 'Progettazione strutturale', nome: 'Studio Nuovo Srl', altro: [], tel: ['011 9999999'], email: ['info@studionuovo.it'], via: '', citta: 'Chieri', web: '' },
+      { ruolo: 'Committente', nome: 'Immobiliare Collina Spa', altro: [], tel: [], email: [], via: '', citta: '', web: '' } ] } }));
+  await page.waitForFunction(() => portalSaved.has('9000077'));
+  // scheda contatto: collaborazioni dalla commessa e collegamento a mano
+  await show_(page, 'detail', "selectedId='c1'; collabAdd=null");
+  let card = await page.textContent('#collabCard');
+  expect(/Collaborazioni/.test(card) && card.includes('Studio Nuovo Srl') && /1 cantiere del portale/.test(card), 'collaborazioni dalla scheda del portale mancanti:\n' + card);
+  await page.click('#collabAddBtn');
+  await page.fill('#collabWho', 'Verdi Paolo');
+  await page.fill('#collabNote', 'impresa di fiducia');
+  await page.click('#collabSaveBtn');
+  await page.waitForFunction(() => window.__fake.docs('collegamenti').some(l => l.a === 'c1' && l.b === 'c4' && l.nota === 'impresa di fiducia'));
+  await page.waitForFunction(() => /impresa di fiducia/.test((document.getElementById('collabCard') || {}).textContent || ''));
+  // pagina Rete: Studio Nuovo e' un'opportunita' tramite Studio Rossi; il committente non conta
+  let txt = await show_(page, 'rete', 'reteFocus=null; reteQ=""');
+  expect(/Opportunità[\s\S]*Studio Nuovo Srl[\s\S]*tramite Studio Rossi/.test(txt), 'opportunità mancante:\n' + txt.slice(0, 1200));
+  expect(!txt.includes('Immobiliare Collina'), 'i committenti non devono entrare nella rete');
+  await page.click('#main [data-net-node="x:studio nuovo srl"]');
+  txt = await page.evaluate(() => document.getElementById('main').innerText);
+  expect(/Studio Nuovo Srl[\s\S]*nuovo[\s\S]*Chieri[\s\S]*Collegato con[\s\S]*Studio Rossi/.test(txt), 'scheda del punto nella rete:\n' + txt.slice(0, 1500));
+  // ricerca
+  await page.fill('#reteQ', 'verdi');
+  await page.waitForTimeout(400);
+  expect(/Verdi Paolo/.test(await page.evaluate(() => document.getElementById('main').innerText)), 'ricerca nella rete');
+  // togli il collegamento a mano
+  await show_(page, 'detail', "selectedId='c1'");
+  await page.click('#collabCard [data-collab-del]');
+  await page.click('#collabCard [data-collab-del-yes]');
+  await page.waitForFunction(() => !window.__fake.docs('collegamenti').length);
 });
 
 await ctx.close();

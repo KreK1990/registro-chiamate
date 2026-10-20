@@ -9,20 +9,20 @@ con Claude (claude.ai), poi esportata qui per continuare lo sviluppo con Claude 
 Tutti i file stanno in `netlify-site/`, che corrisponde alla radice del repo GitHub ed è
 la cartella pubblicata su Netlify (deploy automatico a ogni push).
 
-- **`crm-chiamate-standalone.html`** �€� l'app (unico file, Firebase Auth + Firestore). La vecchia
+- **`crm-chiamate-standalone.html`** — l'app (unico file, Firebase Auth + Firestore). La vecchia
   copia `crm-chiamate.html` per Claude Artifact e' stata eliminata il 2026-10-06 (resta nella
   cronologia git); `/crm-chiamate.html` su Netlify rimanda alla radice.
 
-- `manifest.json`, `service-worker.js`, le icone �€� il "app shell" PWA installabile su
+- `manifest.json`, `service-worker.js`, le icone — il "app shell" PWA installabile su
   iPhone (Aggiungi a Home Screen).
-- `netlify/functions/calendar.js` �€� funzione serverless che legge Firestore (via
+- `netlify/functions/calendar.js` — funzione serverless che legge Firestore (via
   Firebase Admin SDK) e genera al volo un feed **.ics** per l'abbonamento calendario
   (così gli appuntamenti si sincronizzano da soli sul Calendario di iPhone/Google
   Calendar, senza export/import manuali).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
   download, "Fai una copia adesso"): backup JSON di
-  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report}` (version 2; restano fuori
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report,collegamenti}` (version 2; restano fuori
   `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
   chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
   manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
@@ -32,7 +32,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
   400); il messaggio indica la copia di sicurezza da ripristinare per annullare. Logica comune in
   `netlify/lib/backup.mjs` (fuori da `functions/` per non diventare una function).
   Il service worker non mette in cache nulla sotto `/.netlify/`.
-- `tests/` �€� **controlli automatici da lanciare prima di ogni pubblicazione**: `cd tests`,
+- `tests/` — **controlli automatici da lanciare prima di ogni pubblicazione**: `cd tests`,
   `npm install` (la prima volta), `npm test` (`node run.mjs`; `--show` apre il browser, `--shots`
   salva le schermate del telefono in una cartella temporanea). playwright-core usa Chrome/Edge
   installato; `fake-firebase.js` sostituisce gli script Firebase (stessa interfaccia compat, dati
@@ -258,6 +258,19 @@ Campi principali:
   **Barra del portale**: in "Cantieri dal portale" la riga in alto (`.page-bar`: "← Progetti", "Torna su")
   diventa fissa in cima (`.stuck`, sticky con top = -padding di #main) quando si risale oltre 150 px e
   sparisce scendendo (`bindPageBar`, un solo ascoltatore di scroll su #main).
+- **Rete di collaborazioni** (blocco omonimo, 2026-10-20, passo 1 di 2; il passo 2 sara' la mappa interattiva):
+  punti = STUDI (`contactNodeKey`: 's:'+studio normalizzato, o 'c:'+id per chi non ha studio) e soggetti del portale
+  non in rubrica ('x:'+nome, uniti per email); abbinamento alla rubrica con `portalMatch`. Legami (`buildNetwork`,
+  memo `netCache` sull'identita' degli array): stessa commessa (partecipanti + soggetti delle schede NII collegate,
+  la scheda non conta due volte), stesso cantiere del portale (importati e seguiti; esclusi i Committenti, scelta
+  2026-10-20) e collegamenti a mano (collection `collegamenti` {a, b: contactId, nota, il, createdAt}, nei backup).
+  Forza = numero di lavori + 2 se indicato a mano (`netWeight`). Stato (`NET_STATUS`): acquisito (membro di una
+  commessa vinta), trattativa (commessa aperta), contattato (attivita'), rubrica, nuovo. Scheda contatto: riquadro
+  "Collaborazioni" (`collabCardHtml`, "+ Collabora con…" con datalist della rubrica, "Togli" con conferma inline).
+  Contatti -> "Rete di collaborazioni" (`view='rete'`, `reteView`): ricerca, punto aperto (`reteFocus`, anche nel
+  Torna indietro) e "Opportunita'" (`netOpportunities`: punti nuovo/rubrica collegati a clienti/trattative/contattati,
+  punteggio = somma peso stato x forza, con "tramite ..."). Clic su un punto (`data-net-node`, ascoltatore su
+  document): nella Rete lo apre, altrove apre il contatto (o la Rete se non e' in rubrica).
 - **Ritorno alla mappa** (blocco "Ritorno alla mappa"): aprendo dalla mappa un progetto, un contatto
   o un cantiere del portale (`noteMapReturn` salva centro e zoom in `mapReturn`) compare il pulsante
   fisso `#mapReturnBtn` "Torna alla mappa" (in basso a destra, appeso a body, gestito da
@@ -421,7 +434,7 @@ Campi principali:
   progetto (blocco "Posizione corretta a mano"): editor Leaflet con segnaposto trascinabile, salva
   `geo.manual` (vale per Mappa, mappa incorporata e "Indicazioni" via `manualGeo` in `mapsUrl`/
   `mapEmbedUrl`; per i clienti anche ai colleghi con lo stesso indirizzo; si azzera se l'indirizzo
-  cambia o con "Torna alla posizione dell'indirizzo"). "Vicino a�€�" (località o
+  cambia o con "Torna alla posizione dell'indirizzo"). "Vicino a…" (località o
   posizione del telefono) elenca cosa c'è entro 20 km. `canAutoRender` esclude la mappa.
   Cantieri del portale (filtri "Portale: seguiti", acceso di default, e "Portale: da valutare", spento:
   sono centinaia): rombi rosa `#d1495b` (pieno = seguito, vuoto = da valutare; colore validato per
@@ -481,7 +494,7 @@ Campi principali:
   `projects.portaleIds` [ID portale] (+ vecchio `portaleId`, `projectPortalIds`); `portalCandidates`
   propone i progetti simili (stesso comune obbligatorio, poi stessa via +3, parola del nome nella
   descrizione +2, stesso professionista +3; soglia 4, "molto probabilmente" da 8); "Collega a un
-  progetto�€�" cerca per ID/nome/via; i collegati escono da "Da esaminare" (casella per vederli);
+  progetto…" cerca per ID/nome/via; i collegati escono da "Da esaminare" (casella per vederli);
   nella scheda progetto il riquadro "NII Progetti" (`projectPortalCardHtml`) elenca le schede
   collegate con dati, "Apri scheda", "Scollega" e avviso se collegate anche ad altri progetti; sul
   cantiere compaiono tutti i progetti collegati (`portalProjectsOf`), ognuno con Apri/Scollega. "Crea contatto" / "Crea progetto" aprono i moduli
@@ -496,7 +509,7 @@ Campi principali:
 
 ## Deploy & hosting
 
-- **GitHub**: repo `KreK1990/registro-chiamate` �€� root del repo = contenuto di
+- **GitHub**: repo `KreK1990/registro-chiamate` — root del repo = contenuto di
   `netlify-site/` (i file vanno caricati/committati alla radice del repo, non dentro una
   sottocartella "netlify-site").
 - **Netlify**: collegato al repo GitHub, auto-deploy su ogni push a `main`. Variabili
@@ -525,7 +538,7 @@ Calendar/iCloud, così il Calendario si aggiorna da solo periodicamente. La sott
 nativa su iPhone funziona (verificata il 2026-10-01). I problemi iniziali erano dovuti al
 "Visitor access" di Netlify impostato su Private per la produzione (ogni richiesta
 riceveva il login Netlify): ora è Private solo per le Deploy Previews, e la produzione è
-pubblica �€� la protezione dei dati è affidata al login Firebase e al token del feed.
+pubblica — la protezione dei dati è affidata al login Firebase e al token del feed.
 "Accesso negato" dal feed = token nell'URL diverso da `CALENDAR_TOKEN`; dopo aver
 cambiato la variabile su Netlify serve un nuovo deploy perché la function la legga.
 Il file `.ics` esportabile manualmente (sezione Appuntamenti) resta un fallback.
@@ -546,7 +559,7 @@ in abbonamento "Rimuovi avvisi" è disattivato.
   del `@media (max-width:720px)`. Icone PWA: "R" bianca su blu con quadratino giallo.
 - Niente `confirm()`/`alert()` nativi per conferme critiche (scelta storica, nata quando l'app
   girava come Claude Artifact): le conferme di eliminazione sono implementate come UI inline nella
-  pagina stessa (pattern già presente per contatti e chiamate �€� riusarlo per nuove
+  pagina stessa (pattern già presente per contatti e chiamate — riusarlo per nuove
   funzionalità di eliminazione).
 - Ogni vista/tab (Oggi, Contatti, Chiamata, Follow-up, Appuntamenti, Tabella chiamate,
   Dashboard) è una funzione JS che ritorna una stringa HTML, iniettata in `#main` da

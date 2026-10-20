@@ -96,6 +96,19 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .sold-line{display:grid;grid-template-columns:82px minmax(0,1.6fr) minmax(0,1fr) auto;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:12.5px;align-items:baseline;}
 .bole-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 12px;}
 .bole-grid label{margin:0;font-size:12.5px;}
+.net-row{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);}
+.net-row:last-child{border-bottom:none;}
+.net-main{flex:1;min-width:0;font-size:13.5px;}
+.net-main .name-link{font-weight:600;}
+.net-main .fc-note .name-link{font-weight:400;}
+.net-w{flex:none;min-width:26px;text-align:center;font-size:12px;font-weight:600;color:var(--accent);background:var(--accent-soft);border-radius:2px;padding:2px 6px;}
+.net-tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:2px;border:1px solid var(--border-strong);color:var(--muted);vertical-align:1px;margin-left:4px;white-space:nowrap;}
+.net-tag.net-acquisito{background:var(--accent);border-color:var(--accent);color:#fff;}
+.net-tag.net-trattativa{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
+.net-tag.net-nuovo{border-style:dashed;}
+.net-focus{border-left:3px solid var(--accent);}
+.net-members{font-size:13.5px;}
+.collab-form{margin:6px 0 10px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:2px;}
 .rep-group{font-family:var(--serif);font-weight:700;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px;}
 .rep-proj{margin:0 0 10px;padding-left:10px;border-left:3px solid var(--border-strong);}
 .rep-proj-title{font-weight:600;font-size:14px;margin-bottom:4px;}
@@ -1122,6 +1135,7 @@ function startApp(uid){
   unsubscribers.push(db.collection('settings').onSnapshot(onSettingsSnapshot, showDataError));
   unsubscribers.push(db.collection('sopralluoghi').onSnapshot(onSopSnapshot, showDataError));
   unsubscribers.push(db.collection('report').onSnapshot(onReportSnapshot, showDataError));
+  unsubscribers.push(db.collection('collegamenti').onSnapshot(onCollegamentiSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -1142,9 +1156,10 @@ function contactsListView(){
         <option value="nome" ${sortField==='nome'?'selected':''}>Nome</option>
       </select></div>
     </div>
-    <div style="display:flex;gap:8px;margin-top:10px;">
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
       <button class="btn" id="newContactBtn">+ Nuovo contatto</button>
       <button class="btn secondary" id="exportXlsBtn">⬇ Esporta tutto (Excel)</button>
+      <button class="btn secondary" id="reteBtn">Rete di collaborazioni</button>
       <button class="btn secondary" id="dupsBtn">Possibili doppioni${(()=>{ const n = dupGroups().length; return n ? ` (${n})` : ''; })()}</button>
     </div>
   </div>`;
@@ -1308,6 +1323,7 @@ function renderMain(){
     if(newBtn) newBtn.addEventListener('click', ()=>{ window.__editing=null; view='new'; tableDetailCallId=null; renderMain(); });
     document.getElementById('exportXlsBtn')?.addEventListener('click', exportAllExcel);
     document.getElementById('dupsBtn')?.addEventListener('click', ()=>{ view='dups'; renderMain(); });
+    document.getElementById('reteBtn')?.addEventListener('click', ()=>{ reteFocus = null; view='rete'; renderMain(); });
     const cSearch = document.getElementById('contactsSearch');
     if(cSearch){
       cSearch.addEventListener('input', e=>{ contactsSearchQuery=e.target.value; renderMain(); });
@@ -1323,6 +1339,7 @@ function renderMain(){
   if(view==='map'){ main.innerHTML = mapView(); bindMap(); return; }
   if(view==='portal'){ main.innerHTML = portalView(); bindPortal(); bindPageBar(main); return; }
   if(view==='dups'){ main.innerHTML = dupsView(); bindDups(); return; }
+  if(view==='rete'){ main.innerHTML = reteView(); bindRete(main); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -1362,6 +1379,7 @@ function renderMain(){
       </div>
       ${lastContactsHtml(c)}
       ${studioColleaguesHtml(c)}
+      ${collabCardHtml(c)}
       ${contactProjectsHtml(c)}
       ${contactPortalHtml(c)}
       <div class="card">
@@ -1421,6 +1439,8 @@ function renderMain(){
     bindAutoFollowUp('callEsito', 'callFollowUpDate', 'callFollowUpTime', 'callDate');
     bindContactOff(c);
     document.getElementById('vcardBtn')?.addEventListener('click', ()=>downloadVCard(c));
+    bindCollab(c);
+    main.querySelectorAll('#collabCard [data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
     bindContactProjects(c);
     main.querySelectorAll('[data-contact-id]').forEach(el=>{
       el.addEventListener('click', ()=>{ selectedId=el.dataset.contactId; confirmDeleteId=null; renderMain(); main.scrollTop=0; });
@@ -4288,10 +4308,10 @@ function bindPageBar(main){
 // Un modulo di registrazione appena salvato (Attivita' -> scelta del cliente) non si ripropone.
 let navStack = [], navCur = null, navRestoring = false;
 function navState(){
-  return { view, selectedId, tableDetailCallId, selectedProjectId, callStep, editingCallId, portalTab, apptSubView, dashboardSubView, dashboardDrilldown, sopEdit };
+  return { view, selectedId, tableDetailCallId, selectedProjectId, callStep, editingCallId, portalTab, apptSubView, dashboardSubView, dashboardDrilldown, sopEdit, reteFocus };
 }
 function navKey(s){
-  return [s.view, s.selectedId, s.tableDetailCallId, s.selectedProjectId, s.callStep, s.editingCallId, s.portalTab, s.apptSubView, s.dashboardSubView, JSON.stringify(s.dashboardDrilldown || null), s.sopEdit ? (s.sopEdit.id || 'new') : ''].join('|');
+  return [s.view, s.selectedId, s.tableDetailCallId, s.selectedProjectId, s.callStep, s.editingCallId, s.portalTab, s.apptSubView, s.dashboardSubView, JSON.stringify(s.dashboardDrilldown || null), s.sopEdit ? (s.sopEdit.id || 'new') : '', s.view==='rete' ? s.reteFocus || '' : ''].join('|');
 }
 function navActiveTab(){ return NAV_TABS.find(t=>document.getElementById(t)?.classList.contains('active')) || 'navAgenda'; }
 function navTrack(){
@@ -4315,6 +4335,7 @@ function navLabel(e){
   if(s.view==='portal') return 'Cantieri dal portale';
   if(s.view==='sop') return 'Sopralluogo';
   if(s.view==='dups') return 'Possibili doppioni';
+  if(s.view==='rete'){ const n = s.reteFocus && netCache && netCache.nodes.get(s.reteFocus); return n ? n.label : 'Rete di collaborazioni'; }
   const t = document.getElementById(e.tab || 'navAgenda');
   return t ? t.firstChild.textContent.trim() : 'Indietro';
 }
@@ -4333,7 +4354,7 @@ function navBack(){
   const s = prev.s;
   view = s.view; selectedId = s.selectedId; tableDetailCallId = s.tableDetailCallId; selectedProjectId = s.selectedProjectId;
   callStep = s.callStep; editingCallId = s.editingCallId; portalTab = s.portalTab; apptSubView = s.apptSubView;
-  dashboardSubView = s.dashboardSubView; dashboardDrilldown = s.dashboardDrilldown; sopEdit = s.sopEdit;
+  dashboardSubView = s.dashboardSubView; dashboardDrilldown = s.dashboardDrilldown; sopEdit = s.sopEdit; reteFocus = s.reteFocus;
   confirmDeleteId = null; confirmDeleteCallId = null; clearFollowUpOnEntry = false;
   if(prev.tab) setActiveTab(prev.tab);
   document.body.classList.remove('drawer-open');
@@ -4913,6 +4934,236 @@ document.addEventListener('click', async e=>{
 });
 
 // ---------------------------------------------------------------------------
+// Rete delle collaborazioni (richiesta dell'utente 2026-10-20)
+// Ogni punto della rete e' uno STUDIO (contatti con lo stesso studio/azienda; chi non ha studio e'
+// un punto a se') o un soggetto del portale NII non in rubrica. Due punti sono collegati se compaiono
+// nella stessa commessa (partecipanti dei progetti e soggetti delle schede del portale collegate), nello
+// stesso cantiere del portale (importati e seguiti; i committenti non contano) o se l'utente li ha
+// collegati a mano (collection `collegamenti` {a, b: contactId, nota, il, createdAt}). Stato rispetto
+// all'utente: cliente con commesse acquisite, in trattativa, contattato, in rubrica mai sentito, nuovo.
+// "Opportunita'": studi mai sentiti collegati a quelli con cui si lavora, ordinati per forza dei legami.
+// La rete si ricalcola solo quando cambiano i dati (`netCache`).
+// ---------------------------------------------------------------------------
+let collegamenti = [], netCache = null, reteQ = '', reteFocus = null, collabAdd = null, collabDel = null, reteShowAll = false;
+function onCollegamentiSnapshot(snap){
+  collegamenti = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  if((view==='detail' || view==='rete') && canAutoRender()) renderMain();
+}
+const NET_STATUS = {
+  acquisito:  { label:'Cliente: commesse acquisite', short:'cliente', w:3 },
+  trattativa: { label:'In trattativa', short:'in trattativa', w:2 },
+  contattato: { label:'Contattato', short:'contattato', w:1 },
+  rubrica:    { label:'In rubrica, mai sentito', short:'in rubrica', w:0 },
+  nuovo:      { label:'Non in rubrica', short:'nuovo', w:0 },
+};
+function contactNodeKey(c){ const s = normStudio(c.azienda); return s.length>=3 ? 's:'+s : 'c:'+c.id; }
+function netWeight(e){ return e.refs.length + (e.manual.length ? 2 : 0); }
+function buildNetwork(){
+  const sig = [contacts, projects, portalImport, portalSaved, collegamenti, calls];
+  if(netCache && netCache.sig.every((x,i)=>x===sig[i])) return netCache;
+  const nodes = new Map(), edges = new Map(), byId = Object.fromEntries(contacts.map(c=>[c.id, c]));
+  const node = key=>{ let n = nodes.get(key); if(!n){ n = { key, label:'', members:[], soggetti:[], works:new Set(), adj:[] }; nodes.set(key, n); } return n; };
+  contacts.forEach(c=>node(contactNodeKey(c)).members.push(c));
+  nodes.forEach(n=>{ n.label = n.key.startsWith('s:') ? bestStudioName(n.members.map(m=>m.azienda)) : fullName(n.members[0]); });
+  const ix = portalIndex(), emailKey = new Map();
+  const soggKey = s=>{
+    const m = portalMatch(s, ix);
+    if(m) return contactNodeKey(m.c);
+    let k = (s.email || []).map(e=>emailKey.get(e)).find(Boolean) || 'x:'+normStudio(s.nome);
+    (s.email || []).forEach(e=>emailKey.set(e, k));
+    const n = node(k);
+    if(!n.label) n.label = s.nome;
+    if(n.soggetti.length < 3) n.soggetti.push(s);
+    return k;
+  };
+  const soggKeys = d=>(d.soggetti || []).filter(s=>s.nome && normStudio(s.nome).length>=3 && portalRole(s.ruolo)!=='Committente').map(soggKey);
+  const counts = { p:0, n:0, m:0 };
+  const addWork = (keys, ref)=>{
+    const ks = [...new Set(keys)];
+    if(ks.length < 2) return;
+    counts[ref.kind]++;
+    ks.forEach(k=>nodes.get(k).works.add(ref.id));
+    for(let i=0; i<ks.length; i++) for(let j=i+1; j<ks.length; j++){
+      const [a, b] = ks[i] < ks[j] ? [ks[i], ks[j]] : [ks[j], ks[i]], id = a+'|'+b;
+      const e = edges.get(id) || { a, b, refs:[], manual:[] };
+      e.refs.push(ref); edges.set(id, e);
+    }
+  };
+  // commesse: partecipanti + soggetti delle schede del portale collegate (la scheda non si conta due volte)
+  const linked = new Set();
+  projects.forEach(p=>{
+    const keys = (p.partecipanti || []).map(x=>byId[x.contactId]).filter(Boolean).map(contactNodeKey);
+    projectPortalIds(p).forEach(pid=>{ linked.add(pid); const d = portalFindProject(pid); if(d) keys.push(...soggKeys(d)); });
+    addWork(keys, { kind:'p', id:'p:'+p.id, pid:p.id, title: projectTitle(p) });
+  });
+  // cantieri del portale (importati e seguiti)
+  const sites = new Map();
+  if(portalImport) portalImport.forEach((x, pid)=>{ if(x.dati) sites.set(pid, x.dati); });
+  portalSaved.forEach((x, pid)=>{ if(x.dati && x.stato!=='scartato') sites.set(pid, x.dati); });
+  sites.forEach((d, pid)=>{ if(!linked.has(pid)) addWork(soggKeys(d), { kind:'n', id:'n:'+pid, site:pid, title: [d.titolo, d.comune].filter(Boolean).join(' · ') }); });
+  // collegamenti a mano
+  collegamenti.forEach(l=>{
+    const ca = byId[l.a], cb = byId[l.b];
+    if(!ca || !cb) return;
+    const ka = contactNodeKey(ca), kb = contactNodeKey(cb);
+    if(ka===kb) return;
+    const [a, b] = ka < kb ? [ka, kb] : [kb, ka], id = a+'|'+b;
+    const e = edges.get(id) || { a, b, refs:[], manual:[] };
+    e.manual.push(l); edges.set(id, e); counts.m++;
+  });
+  // stato rispetto all'utente
+  const wonC = new Set(), openC = new Set(), calledC = new Set(calls.map(k=>k.contactId));
+  projects.forEach(p=>{ if(!isLost(p)) (p.partecipanti || []).forEach(x=>(isWon(p) ? wonC : openC).add(x.contactId)); });
+  nodes.forEach(n=>{
+    const ms = n.members;
+    n.status = !ms.length ? 'nuovo' : ms.some(m=>wonC.has(m.id)) ? 'acquisito' : ms.some(m=>openC.has(m.id)) ? 'trattativa' : ms.some(m=>calledC.has(m.id)) ? 'contattato' : 'rubrica';
+  });
+  edges.forEach(e=>{ const A = nodes.get(e.a), B = nodes.get(e.b); A.adj.push({ other:B, e }); B.adj.push({ other:A, e }); });
+  netCache = { sig, nodes, edges, counts };
+  return netCache;
+}
+function netOpportunities(net){
+  const out = [];
+  net.nodes.forEach(n=>{
+    if(n.status!=='nuovo' && n.status!=='rubrica') return;
+    if(n.members.length && n.members.every(isOff)) return;
+    let score = 0; const via = [];
+    n.adj.forEach(({ other, e })=>{ const w = NET_STATUS[other.status].w; if(!w) return; const ew = netWeight(e); score += w * ew; via.push({ other, e, ew, w }); });
+    if(score) out.push({ n, score, via: via.sort((a,b)=>b.w * b.ew - a.w * a.ew) });
+  });
+  return out.sort((a,b)=>b.score - a.score || b.n.works.size - a.n.works.size);
+}
+function netTag(n){ return `<span class="net-tag net-${n.status}" title="${NET_STATUS[n.status].label}">${NET_STATUS[n.status].short}</span>`; }
+function netWorksText(e){
+  const own = e.refs.filter(r=>r.kind==='p'), site = e.refs.filter(r=>r.kind==='n');
+  return [own.length ? `${own.length} ${own.length===1 ? 'commessa' : 'commesse'} insieme` : '', site.length ? `${site.length} ${site.length===1 ? 'cantiere' : 'cantieri'} del portale` : ''].filter(Boolean).join(' · ');
+}
+function netRefsHtml(e){
+  return e.refs.slice(0, 4).map(r=>r.kind==='p' ? `<span class="name-link" data-open-project="${r.pid}">${esc(r.title)}</span>` : `<span class="name-link" data-portal-goto="${isFollowed(r.site) ? 'seguiti' : 'esamina'}|${esc(r.site)}">${esc(r.title)}</span>`).join(' · ')
+    + (e.refs.length > 4 ? ` <span class="fc-note">e altri ${e.refs.length - 4}</span>` : '');
+}
+// Elenco dei collegamenti di un punto della rete (scheda contatto e pagina Rete).
+function netConnsHtml(n, max){
+  const list = n.adj.slice().sort((a,b)=>netWeight(b.e) - netWeight(a.e) || NET_STATUS[b.other.status].w - NET_STATUS[a.other.status].w);
+  if(!list.length) return '<div class="empty" style="padding:4px 0;">Nessun collegamento: nascono dalle commesse in comune, dai cantieri del portale o con "Collabora con…".</div>';
+  const shown = max ? list.slice(0, max) : list;
+  return shown.map(({ other, e })=>`<div class="net-row">
+      <div class="net-main"><span class="name-link" data-net-node="${esc(other.key)}">${esc(other.label)}</span> ${netTag(other)}
+        <div class="fc-note">${netWorksText(e)}${e.refs.length ? ': '+netRefsHtml(e) : ''}</div>
+        ${e.manual.map(l=>`<div class="fc-note">Indicato da te${l.il ? ' il '+fmtDate(l.il) : ''}${l.nota ? ': <em>'+esc(l.nota)+'</em>' : ''}
+          ${collabDel===l.id ? ` <strong style="color:var(--danger);">Togliere?</strong> <button class="btn small" data-collab-del-yes="${l.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button> <button class="btn secondary small" data-collab-del-no>No</button>`
+            : ` <button class="btn secondary small" data-collab-del="${l.id}">Togli</button>`}</div>`).join('')}
+      </div>
+      <div class="net-w" title="forza del legame">${netWeight(e)}</div>
+    </div>`).join('') + (max && list.length > max ? `<div class="fc-note" style="margin-top:6px;">e altri ${list.length - max}: <span class="name-link" data-net-node="${esc(n.key)}">vedili nella rete</span></div>` : '');
+}
+function collabFormHtml(c){
+  const opts = contacts.filter(x=>x.id!==c.id && !isOff(x)).map(x=>({ x, l: fullName(x) + (x.azienda ? ' · '+x.azienda : '') })).sort((a,b)=>a.l.localeCompare(b.l));
+  return `<div class="collab-form">
+    <label>Collabora con</label><input id="collabWho" list="collabList" placeholder="Cerca nome o studio in rubrica" autocomplete="off">
+    <datalist id="collabList">${opts.map(o=>`<option value="${esc(o.l)}"></option>`).join('')}</datalist>
+    <label>Nota (facoltativa)</label><input id="collabNote" placeholder="es. fa sempre le strutture per loro">
+    <div id="collabErr" style="color:var(--danger);font-size:13px;"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn small" id="collabSaveBtn">Collega</button><button class="btn secondary small" id="collabCancelBtn">Annulla</button></div>
+    <div class="fc-note" style="margin-top:4px;">Se l'altro non è in rubrica, crealo prima come contatto.</div>
+  </div>`;
+}
+function collabCardHtml(c){
+  if(!portalImportStarted) startPortalImport();
+  const net = buildNetwork(), n = net.nodes.get(contactNodeKey(c));
+  if(!n) return '';
+  return `<div class="card" id="collabCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+      <h3 style="margin:0;">Collaborazioni${n.adj.length ? ` (${n.adj.length})` : ''}</h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${n.adj.length ? `<button class="btn secondary small" data-net-node="${esc(n.key)}" data-net-here>Vedi nella rete</button>` : ''}<button class="btn secondary small" id="collabAddBtn">+ Collabora con…</button></div>
+    </div>
+    ${n.key.startsWith('s:') ? `<div class="fc-note" style="margin-bottom:6px;">Collegamenti dello studio ${esc(n.label)}.</div>` : ''}
+    ${collabAdd===c.id ? collabFormHtml(c) : ''}
+    ${netConnsHtml(n, 12)}
+  </div>`;
+}
+async function saveCollab(c){
+  const who = document.getElementById('collabWho').value.trim(), err = document.getElementById('collabErr');
+  const other = contacts.find(x=>x.id!==c.id && (fullName(x) + (x.azienda ? ' · '+x.azienda : ''))===who);
+  if(!other){ err.textContent = 'Scegli un contatto dall\'elenco dei suggerimenti.'; return; }
+  if(contactNodeKey(other)===contactNodeKey(c)){ err.textContent = 'È dello stesso studio: sono già collegati.'; return; }
+  try{
+    await db.collection('collegamenti').add({ a: c.id, b: other.id, nota: document.getElementById('collabNote').value.trim(), il: todayISO(), createdAt: Date.now() });
+    collabAdd = null; renderMain();
+  }catch(e){ err.textContent = 'Errore nel salvataggio: '+(e.message || e.code || ''); }
+}
+function bindCollab(c){
+  document.getElementById('collabAddBtn')?.addEventListener('click', ()=>{ collabAdd = c.id; renderMain(); document.getElementById('collabWho')?.focus(); });
+  document.getElementById('collabCancelBtn')?.addEventListener('click', ()=>{ collabAdd = null; renderMain(); });
+  document.getElementById('collabSaveBtn')?.addEventListener('click', ()=>saveCollab(c));
+}
+document.addEventListener('click', async e=>{
+  const del = e.target.closest('[data-collab-del]'), yes = e.target.closest('[data-collab-del-yes]'), no = e.target.closest('[data-collab-del-no]');
+  if(del){ collabDel = del.dataset.collabDel; renderMain(); return; }
+  if(no){ collabDel = null; renderMain(); return; }
+  if(yes){ const id = yes.dataset.collabDelYes; collabDel = null; try{ await db.collection('collegamenti').doc(id).delete(); }catch(err){ alert('Errore: '+(err.message || err.code || '')); } renderMain(); return; }
+  const nn = e.target.closest('[data-net-node]');
+  if(!nn) return;
+  e.preventDefault();
+  const n = buildNetwork().nodes.get(nn.dataset.netNode);
+  if(!n) return;
+  // nella Rete (o con "Vedi nella rete") si apre il punto; altrove la scheda del contatto, se c'e'
+  if(view==='rete' || nn.hasAttribute('data-net-here') || !n.members.length){ reteFocus = n.key; view = 'rete'; setActiveTab('navContacts'); renderMain(); document.getElementById('main').scrollTop = 0; }
+  else { selectedId = n.members[0].id; view = 'detail'; confirmDeleteId = null; tableDetailCallId = null; setActiveTab('navContacts'); renderMain(); }
+});
+function netNodeCardHtml(n){
+  const s = n.soggetti[0];
+  const ruoli = [...new Set(n.soggetti.map(x=>portalRole(x.ruolo)))].join(', ');
+  return `<div class="card net-focus">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;">
+      <h3 style="margin:0;">${esc(n.label)} ${netTag(n)}</h3>
+      <button class="btn secondary small" id="reteCloseBtn">Chiudi</button>
+    </div>
+    <div class="fc-note" style="margin:4px 0 8px;">${n.works.size} ${n.works.size===1 ? 'lavoro' : 'lavori'} con altri · ${n.adj.length} ${n.adj.length===1 ? 'collegamento' : 'collegamenti'}${ruoli ? ' · nel portale: '+esc(ruoli) : ''}</div>
+    ${n.members.length ? `<div class="net-members">${n.members.map(m=>`<span class="name-link" data-contact-open="${m.id}">${esc(fullName(m))}</span>${m.professione ? ' <span class="fc-note">'+esc(m.professione)+'</span>' : ''}`).join(' · ')}</div>`
+      : s ? `<div class="net-members fc-note">${[s.citta, ...(s.tel || []).slice(0, 2), ...(s.email || []).slice(0, 1)].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
+    <div class="todo-title" style="margin-top:10px;">Collegato con</div>
+    ${netConnsHtml(n, 0)}
+  </div>`;
+}
+function reteView(){
+  if(!portalImportStarted) startPortalImport();
+  const net = buildNetwork(), focus = reteFocus && net.nodes.get(reteFocus);
+  const opps = netOpportunities(net), shown = reteShowAll ? opps.slice(0, 200) : opps.slice(0, 25);
+  const q = normStudio(reteQ), found = q.length >= 2 ? [...net.nodes.values()].filter(n=>n.adj.length && normStudio(n.label + ' ' + n.members.map(fullName).join(' ')).includes(q)).sort((a,b)=>b.adj.length - a.adj.length).slice(0, 20) : [];
+  const linkedN = [...net.nodes.values()].filter(n=>n.adj.length).length;
+  return `<div class="top-actions" style="justify-content:space-between;"><button class="btn secondary small" id="reteBackBtn">← Contatti</button></div>
+    <h2 style="margin-bottom:4px;">Rete di collaborazioni</h2>
+    <div class="fc-note" style="margin-bottom:12px;">${linkedN} studi e professionisti collegati tra loro da ${net.counts.p} commesse, ${net.counts.n} cantieri del portale${portalImport ? '' : ' (caricamento…)'} e ${net.counts.m} collegamenti indicati da te. I committenti del portale non contano.</div>
+    <div class="card">
+      <input id="reteQ" placeholder="Cerca uno studio o un professionista…" value="${esc(reteQ)}" autocomplete="off">
+      ${q.length >= 2 ? `<div style="margin-top:8px;">${found.length ? found.map(n=>`<div class="net-row"><div class="net-main"><span class="name-link" data-net-node="${esc(n.key)}">${esc(n.label)}</span> ${netTag(n)}</div><div class="net-w">${n.adj.length}</div></div>`).join('') : '<div class="empty" style="padding:4px 0;">Nessuno studio collegato con questo nome.</div>'}</div>` : ''}
+    </div>
+    ${focus ? netNodeCardHtml(focus) : ''}
+    <div class="card">
+      <h3>Opportunità (${opps.length})</h3>
+      <div class="fc-note" style="margin-bottom:8px;">Studi e professionisti che non hai ancora sentito ma che lavorano con i tuoi clienti e con chi è in trattativa: chiedi una presentazione a chi li conosce.</div>
+      ${shown.length ? shown.map(o=>`<div class="net-row">
+          <div class="net-main"><span class="name-link" data-net-node="${esc(o.n.key)}">${esc(o.n.label)}</span> ${netTag(o.n)}
+            <div class="fc-note">tramite ${o.via.slice(0, 3).map(v=>`<span class="name-link" data-net-node="${esc(v.other.key)}">${esc(v.other.label)}</span> (${NET_STATUS[v.other.status].short}, ${netWorksText(v.e) || 'indicato da te'})`).join('; ')}${o.via.length > 3 ? ` e altri ${o.via.length - 3}` : ''}</div>
+          </div>
+          <div class="net-w" title="punteggio">${o.score}</div>
+        </div>`).join('') : '<div class="empty" style="padding:4px 0;">Ancora nessuna opportunità: servono commesse con i partecipanti, il PDF del portale o collegamenti indicati a mano.</div>'}
+      ${opps.length > shown.length ? `<button class="btn secondary small" id="reteMoreBtn" style="margin-top:8px;">Mostra altre (${opps.length - shown.length})</button>` : ''}
+    </div>`;
+}
+function bindRete(main){
+  main.querySelector('#reteBackBtn')?.addEventListener('click', ()=>{ view = 'contactsList'; renderMain(); });
+  main.querySelector('#reteCloseBtn')?.addEventListener('click', ()=>{ reteFocus = null; renderMain(); });
+  main.querySelector('#reteMoreBtn')?.addEventListener('click', ()=>{ reteShowAll = true; renderMain(); });
+  main.querySelectorAll('[data-contact-open]').forEach(el=>el.addEventListener('click', ()=>{ selectedId = el.dataset.contactOpen; view = 'detail'; confirmDeleteId = null; tableDetailCallId = null; renderMain(); }));
+  main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
+  const q = main.querySelector('#reteQ');
+  let t = null;
+  q?.addEventListener('input', ()=>{ reteQ = q.value; clearTimeout(t); t = setTimeout(()=>{ const pos = q.selectionStart; renderMain(); const nq = document.getElementById('reteQ'); if(nq){ nq.focus(); nq.setSelectionRange(pos, pos); } }, 250); });
+}
+
+// ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
 // stesso studio stanno in un solo punto) e cantieri (quadrati: in corso / confermati /
 // persi). Leaflet + OpenStreetMap da cdnjs. Coordinate da Nominatim (OpenStreetMap),
@@ -5475,7 +5726,7 @@ function onPortalSnapshot(snap){
 }
 function onPortalImportSnapshot(snap){
   portalImport = new Map(snap.docs.map(d=>{ const x = { docId:d.id, ...d.data() }; return [x.pid, x]; }));
-  if((view==='portal' || view==='detail' || view==='projectDetail') && canAutoRender() && !portalBusy) renderMain();
+  if((view==='portal' || view==='detail' || view==='projectDetail' || view==='rete') && canAutoRender() && !portalBusy) renderMain();
   if(view==='map' && mapObj){ if(!mapGeoRunning) drawMapPoints(false); runMapGeocoding(); }   // indirizzi dei progetti presi dal portale, cantieri da valutare
 }
 function startPortalImport(){
