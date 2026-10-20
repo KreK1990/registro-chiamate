@@ -356,7 +356,7 @@ await test('conferma d\'ordine da PDF', async () => {
   expect(await page.isVisible('[data-sold-cat="Bole O/U Ø14"] > summary'), 'dentro il gruppo mancano i diametri');
   if (shotsDir) {
     await page.click('[data-sold-cat="Bole O/U Ø14"] > summary');
-    await (await page.$('#soldArticles')).screenshot({ path: path.join(shotsDir, 'articoli-pc.png') });
+    await page.waitForTimeout(300); await (await page.$('#soldArticles')).screenshot({ path: path.join(shotsDir, 'articoli-pc.png') });
     const vs = page.viewportSize(); await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
     await (await page.$('#soldArticles')).screenshot({ path: path.join(shotsDir, 'articoli-telefono.png') });
     await page.setViewportSize(vs);
@@ -412,10 +412,11 @@ await ctx.close();
 await page.evaluate(() => new Promise(r => navigator.geolocation.getCurrentPosition(r, r, { timeout: 5000 })));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['rete'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"]];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"], ['rete']];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
+    if (v === 'rete') await page.waitForFunction(() => !document.getElementById('reteGraph') || document.querySelector('#reteGraph canvas'), null, { timeout: 20000 }).catch(() => {});   // la mappa della rete si disegna dopo aver caricato d3
     const w = await page.evaluate(() => {
       const vw = document.documentElement.clientWidth, out = [];
       document.querySelectorAll('#main *').forEach(el => {
@@ -1036,9 +1037,30 @@ await test('rete di collaborazioni: commesse, portale, collegamento a mano, oppo
   let txt = await show_(page, 'rete', 'reteFocus=null; reteQ=""');
   expect(/Opportunità[\s\S]*Studio Nuovo Srl[\s\S]*tramite Studio Rossi/.test(txt), 'opportunità mancante:\n' + txt.slice(0, 1200));
   expect(!txt.includes('Immobiliare Collina'), 'i committenti non devono entrare nella rete');
-  await page.click('#main [data-net-node="x:studio nuovo srl"]');
+  await page.click('#main .card:not(#reteGraphCard) [data-net-focus="x:studio nuovo"]');
   txt = await page.evaluate(() => document.getElementById('main').innerText);
   expect(/Studio Nuovo Srl[\s\S]*nuovo[\s\S]*Chieri[\s\S]*Collegato con[\s\S]*Studio Rossi/.test(txt), 'scheda del punto nella rete:\n' + txt.slice(0, 1500));
+  // nome di chi non e' in rubrica -> cantieri del portale in cui compare
+  await page.click('.net-focus h3 [data-net-node="x:studio nuovo"]');
+  let st = await page.evaluate(() => ({ view, portalTab, q: portalFilters.q, txt: document.getElementById('main').innerText }));
+  expect(st.view === 'portal' && st.portalTab === 'seguiti' && st.q === 'Studio Nuovo Srl' && st.txt.includes('Residenza Collina'), 'dal nome al portale: ' + JSON.stringify({ ...st, txt: st.txt.slice(0, 300) }));
+  // nome in rubrica -> anagrafica
+  await show_(page, 'rete', "reteFocus='x:studio nuovo'");
+  await page.click('.net-focus .net-row [data-net-node^="s:studio rossi"]');
+  st = await page.evaluate(() => ({ view, selectedId }));
+  expect(st.view === 'detail' && ['c1', 'c3'].includes(st.selectedId), 'dal nome all\'anagrafica: ' + JSON.stringify(st));
+  await show_(page, 'rete', "reteFocus=null");
+  // mappa: disegnata, un clic su un punto lo apre
+  expect(await page.evaluate(() => netName('Amato Costruzioni S.r.l.') === netName('amato costruzioni') && netName('Edil Srl') === 'edil'), 'forma societaria nei nomi della rete');
+  await page.evaluate(() => { reteFocus = null; renderMain(); });
+  await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim, null, { timeout: 20000 });
+  await page.waitForTimeout(1500);
+  const pt = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.key === 'x:studio nuovo') || reteSim.nodes()[0]; const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { key: d.key, x: r.left + d.x, y: r.top + d.y, n: reteSim.nodes().length }; });
+  expect(pt.n >= 2, 'mappa vuota');
+  await page.mouse.click(pt.x, pt.y);
+  await page.waitForFunction(k => reteFocus === k, pt.key, { timeout: 5000 }).catch(() => {});
+  expect(await page.evaluate(() => reteFocus) === pt.key, 'clic sul punto della mappa: ' + await page.evaluate(() => reteFocus) + ' invece di ' + pt.key);
+  if (shotsDir) { await page.waitForTimeout(1500); await (await page.$('#reteGraphCard')).screenshot({ path: path.join(shotsDir, 'rete-mappa.png') }); }
   // ricerca
   await page.fill('#reteQ', 'verdi');
   await page.waitForTimeout(400);

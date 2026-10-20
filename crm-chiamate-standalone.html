@@ -22,6 +22,7 @@
 :root{
   --bg:#EEEEEE; --panel:#FFFFFF; --border:#D3DBE5; --border-strong:#BEC8DA; --text:#1A1A1A; --muted:#5F6B77; --trend-1:#2a6fb0; --trend-2:#b97f00;
   --accent:#00487E; --accent-soft:#E3E9F1; --on-accent:#FFFFFF; --brand-yellow:#DC9D00; --danger:#B3261E;
+  --net-acq:#00487E; --net-tratt:#2F78B7; --net-cont:#8DB6DD; --net-rub:#E2E6EA; --net-stroke:#3B4D5E;
   --serif:"Fira Sans Condensed","Arial Narrow",sans-serif;
   --sans:"Fira Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --mono:"Fira Mono",ui-monospace,monospace;
@@ -31,12 +32,14 @@
   :root:not([data-theme="light"]){
     --bg:#0D1822; --panel:#14222F; --border:#27394B; --border-strong:#34506A; --text:#E6ECF2; --muted:#98A8B8; --trend-1:#4a8acb; --trend-2:#c08a10;
     --accent:#7DB2E3; --accent-soft:#1B3246; --on-accent:#0D1822; --danger:#F08C80;
+    --net-acq:#A9CEF2; --net-tratt:#5E97CF; --net-cont:#2F5C88; --net-rub:#33404C; --net-stroke:#C9D6E2;
   }
   :root:not([data-theme="light"]) .followup.due{background:#3E1F1C;}
 }
 :root[data-theme="dark"]{
   --bg:#0D1822; --panel:#14222F; --border:#27394B; --border-strong:#34506A; --text:#E6ECF2; --muted:#98A8B8; --trend-1:#4a8acb; --trend-2:#c08a10;
   --accent:#7DB2E3; --accent-soft:#1B3246; --on-accent:#0D1822; --danger:#F08C80;
+  --net-acq:#A9CEF2; --net-tratt:#5E97CF; --net-cont:#2F5C88; --net-rub:#33404C; --net-stroke:#C9D6E2;
 }
 html{scroll-padding-top:env(safe-area-inset-top,0px);}
 *{box-sizing:border-box;}
@@ -96,6 +99,16 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .sold-line{display:grid;grid-template-columns:82px minmax(0,1.6fr) minmax(0,1fr) auto;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:12.5px;align-items:baseline;}
 .bole-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 12px;}
 .bole-grid label{margin:0;font-size:12.5px;}
+.rete-graph{position:relative;height:520px;border:1px solid var(--border);background:var(--panel);touch-action:none;overflow:hidden;border-radius:2px;}
+.rete-graph canvas{display:block;cursor:grab;}
+.rete-tip{position:absolute;pointer-events:none;max-width:230px;background:var(--panel);border:1px solid var(--border-strong);box-shadow:0 2px 8px rgba(0,0,0,.15);padding:6px 9px;font-size:12px;line-height:1.35;border-radius:2px;}
+.rete-ctrl{display:flex;gap:6px;flex-wrap:wrap;}
+.rete-legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12px;color:var(--muted);}
+.rete-legend span{display:inline-flex;align-items:center;gap:6px;}
+.rete-dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid var(--net-stroke);}
+.rete-dot-acquisito{background:var(--net-acq);} .rete-dot-trattativa{background:var(--net-tratt);} .rete-dot-contattato{background:var(--net-cont);} .rete-dot-rubrica{background:var(--net-rub);}
+.rete-dot-nuovo{background:var(--panel);border-style:dashed;}
+.rete-line{display:inline-block;width:18px;border-top:2px dashed var(--accent);}
 .net-row{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);}
 .net-row:last-child{border-bottom:none;}
 .net-main{flex:1;min-width:0;font-size:13.5px;}
@@ -107,6 +120,8 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .net-tag.net-trattativa{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
 .net-tag.net-nuovo{border-style:dashed;}
 .net-focus{border-left:3px solid var(--accent);}
+.net-focus-btn{border:none;background:none;padding:0 2px;font:inherit;font-size:11.5px;color:var(--muted);text-decoration:underline;cursor:pointer;}
+.net-focus-btn:hover{color:var(--accent);}
 .net-members{font-size:13.5px;}
 .collab-form{margin:6px 0 10px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:2px;}
 .rep-group{font-family:var(--serif);font-weight:700;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px;}
@@ -745,6 +760,7 @@ h2{color:var(--accent);font-weight:800;}
   .subnav{margin-bottom:12px;flex-wrap:wrap;}
   .top-actions{margin-bottom:8px;}
   .page-bar.stuck{top:-12px;margin:-12px -12px 8px;padding:8px 12px;}
+  .rete-graph{height:420px;}
   .map-embed{height:200px;}
   .imp-map{grid-template-columns:1fr;gap:3px;}
   .funnel-row{grid-template-columns:1fr auto;grid-template-areas:"label num" "track track" "note note";gap:4px 10px;}
@@ -1183,6 +1199,7 @@ function renderMain(){
   if(view!=='call' || tableDetailCallId) navTrack();
   updateMapReturnBtn();
   if(view!=='map') stopMyPosition();
+  if(view!=='rete') stopReteGraph();
   queueMicrotask(()=>{ mountPlanners(); mountTrips(); mountZoneMap(); });   // agende per pianificare nei moduli appena disegnati
   if(tableDetailCallId){ main.innerHTML = tableDetailView(); bindTableDetail(); return; }
   if(view==='deliveries'){ main.innerHTML = deliveriesView(); bindDeliveries(); return; }
@@ -4956,7 +4973,10 @@ const NET_STATUS = {
   rubrica:    { label:'In rubrica, mai sentito', short:'in rubrica', w:0 },
   nuovo:      { label:'Non in rubrica', short:'nuovo', w:0 },
 };
-function contactNodeKey(c){ const s = normStudio(c.azienda); return s.length>=3 ? 's:'+s : 'c:'+c.id; }
+// Nome per la rete: senza la forma societaria, cosi' "Amato Costruzioni" e "Amato Costruzioni Srl" sono
+// lo stesso punto (segnalato dall'utente 2026-10-20).
+function netName(s){ return normStudio(s).replace(/\b(s ?r ?l ?s?|s ?p ?a|s ?n ?c|s ?a ?s|s ?c ?a ?r ?l|s ?c ?r ?l|soc(?:ieta)? coop(?:erativa)?|unipersonale|in liquidazione)\b/g, ' ').replace(/\s+/g, ' ').trim(); }
+function contactNodeKey(c){ const s = netName(c.azienda); return s.length>=3 ? 's:'+s : 'c:'+c.id; }
 function netWeight(e){ return e.refs.length + (e.manual.length ? 2 : 0); }
 function buildNetwork(){
   const sig = [contacts, projects, portalImport, portalSaved, collegamenti, calls];
@@ -4969,14 +4989,16 @@ function buildNetwork(){
   const soggKey = s=>{
     const m = portalMatch(s, ix);
     if(m) return contactNodeKey(m.c);
-    let k = (s.email || []).map(e=>emailKey.get(e)).find(Boolean) || 'x:'+normStudio(s.nome);
+    const sk = 's:'+netName(s.nome);
+    if(nodes.has(sk) && nodes.get(sk).members.length) return sk;   // studio della rubrica scritto con o senza "Srl"
+    let k = (s.email || []).map(e=>emailKey.get(e)).find(Boolean) || 'x:'+netName(s.nome);
     (s.email || []).forEach(e=>emailKey.set(e, k));
     const n = node(k);
     if(!n.label) n.label = s.nome;
     if(n.soggetti.length < 3) n.soggetti.push(s);
     return k;
   };
-  const soggKeys = d=>(d.soggetti || []).filter(s=>s.nome && normStudio(s.nome).length>=3 && portalRole(s.ruolo)!=='Committente').map(soggKey);
+  const soggKeys = d=>(d.soggetti || []).filter(s=>s.nome && netName(s.nome).length>=3 && portalRole(s.ruolo)!=='Committente').map(soggKey);
   const counts = { p:0, n:0, m:0 };
   const addWork = (keys, ref)=>{
     const ks = [...new Set(keys)];
@@ -5048,14 +5070,14 @@ function netConnsHtml(n, max){
   if(!list.length) return '<div class="empty" style="padding:4px 0;">Nessun collegamento: nascono dalle commesse in comune, dai cantieri del portale o con "Collabora con…".</div>';
   const shown = max ? list.slice(0, max) : list;
   return shown.map(({ other, e })=>`<div class="net-row">
-      <div class="net-main"><span class="name-link" data-net-node="${esc(other.key)}">${esc(other.label)}</span> ${netTag(other)}
+      <div class="net-main"><span class="name-link" data-net-node="${esc(other.key)}">${esc(other.label)}</span> ${netTag(other)} ${view==='rete' ? netFocusBtn(other) : ''}
         <div class="fc-note">${netWorksText(e)}${e.refs.length ? ': '+netRefsHtml(e) : ''}</div>
         ${e.manual.map(l=>`<div class="fc-note">Indicato da te${l.il ? ' il '+fmtDate(l.il) : ''}${l.nota ? ': <em>'+esc(l.nota)+'</em>' : ''}
           ${collabDel===l.id ? ` <strong style="color:var(--danger);">Togliere?</strong> <button class="btn small" data-collab-del-yes="${l.id}" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì</button> <button class="btn secondary small" data-collab-del-no>No</button>`
             : ` <button class="btn secondary small" data-collab-del="${l.id}">Togli</button>`}</div>`).join('')}
       </div>
       <div class="net-w" title="forza del legame">${netWeight(e)}</div>
-    </div>`).join('') + (max && list.length > max ? `<div class="fc-note" style="margin-top:6px;">e altri ${list.length - max}: <span class="name-link" data-net-node="${esc(n.key)}">vedili nella rete</span></div>` : '');
+    </div>`).join('') + (max && list.length > max ? `<div class="fc-note" style="margin-top:6px;">e altri ${list.length - max}: <span class="name-link" data-net-focus="${esc(n.key)}">vedili nella rete</span></div>` : '');
 }
 function collabFormHtml(c){
   const opts = contacts.filter(x=>x.id!==c.id && !isOff(x)).map(x=>({ x, l: fullName(x) + (x.azienda ? ' · '+x.azienda : '') })).sort((a,b)=>a.l.localeCompare(b.l));
@@ -5075,7 +5097,7 @@ function collabCardHtml(c){
   return `<div class="card" id="collabCard">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
       <h3 style="margin:0;">Collaborazioni${n.adj.length ? ` (${n.adj.length})` : ''}</h3>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">${n.adj.length ? `<button class="btn secondary small" data-net-node="${esc(n.key)}" data-net-here>Vedi nella rete</button>` : ''}<button class="btn secondary small" id="collabAddBtn">+ Collabora con…</button></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${n.adj.length ? `<button class="btn secondary small" data-net-focus="${esc(n.key)}">Vedi nella rete</button>` : ''}<button class="btn secondary small" id="collabAddBtn">+ Collabora con…</button></div>
     </div>
     ${n.key.startsWith('s:') ? `<div class="fc-note" style="margin-bottom:6px;">Collegamenti dello studio ${esc(n.label)}.</div>` : ''}
     ${collabAdd===c.id ? collabFormHtml(c) : ''}
@@ -5102,24 +5124,34 @@ document.addEventListener('click', async e=>{
   if(del){ collabDel = del.dataset.collabDel; renderMain(); return; }
   if(no){ collabDel = null; renderMain(); return; }
   if(yes){ const id = yes.dataset.collabDelYes; collabDel = null; try{ await db.collection('collegamenti').doc(id).delete(); }catch(err){ alert('Errore: '+(err.message || err.code || '')); } renderMain(); return; }
-  const nn = e.target.closest('[data-net-node]');
-  if(!nn) return;
+  const nf = e.target.closest('[data-net-focus]'), nn = e.target.closest('[data-net-node]');
+  if(!nf && !nn) return;
   e.preventDefault();
-  const n = buildNetwork().nodes.get(nn.dataset.netNode);
+  const n = buildNetwork().nodes.get((nf || nn).dataset[nf ? 'netFocus' : 'netNode']);
   if(!n) return;
-  // nella Rete (o con "Vedi nella rete") si apre il punto; altrove la scheda del contatto, se c'e'
-  if(view==='rete' || nn.hasAttribute('data-net-here') || !n.members.length){ reteFocus = n.key; view = 'rete'; setActiveTab('navContacts'); renderMain(); document.getElementById('main').scrollTop = 0; }
-  else { selectedId = n.members[0].id; view = 'detail'; confirmDeleteId = null; tableDetailCallId = null; setActiveTab('navContacts'); renderMain(); }
+  if(nf){ reteFocus = n.key; view = 'rete'; setActiveTab('navContacts'); renderMain(); document.getElementById('main').scrollTop = 0; return; }
+  netOpen(n);
 });
+// Clic sul nome (richiesta dell'utente 2026-10-20): se e' in rubrica si apre la sua anagrafica, altrimenti
+// "Cantieri dal portale" con i cantieri da cui viene (ricerca per nome; Seguiti se ce n'e' uno seguito).
+function netOpen(n){
+  if(n.members.length){ selectedId = (n.members.find(m=>!isOff(m)) || n.members[0]).id; view = 'detail'; confirmDeleteId = null; tableDetailCallId = null; setActiveTab('navContacts'); renderMain(); document.getElementById('main').scrollTop = 0; return; }
+  const sites = [...n.works].filter(w=>w.startsWith('n:')).map(w=>w.slice(2));
+  portalTab = sites.some(isFollowed) && !sites.some(pid=>!isFollowed(pid)) ? 'seguiti' : 'esamina';
+  portalFilters = { ...portalFilters, ristrutturazioni:true, noti:false, nuovi:false, fase:'', prov:'', regione:'', minUnita:0, scartati:false, collegati:true, q: n.label };
+  portalShow = 40; portalFocus = sites.length===1 ? sites[0] : null;
+  view = 'portal'; setActiveTab('navProjects'); renderMain(); document.getElementById('main').scrollTop = 0;
+}
+const netFocusBtn = n=>`<button type="button" class="net-focus-btn" data-net-focus="${esc(n.key)}" title="Vedi i suoi collegamenti nella rete">collegamenti</button>`;
 function netNodeCardHtml(n){
   const s = n.soggetti[0];
   const ruoli = [...new Set(n.soggetti.map(x=>portalRole(x.ruolo)))].join(', ');
   return `<div class="card net-focus">
     <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;">
-      <h3 style="margin:0;">${esc(n.label)} ${netTag(n)}</h3>
+      <h3 style="margin:0;"><span class="name-link" data-net-node="${esc(n.key)}">${esc(n.label)}</span> ${netTag(n)}</h3>
       <button class="btn secondary small" id="reteCloseBtn">Chiudi</button>
     </div>
-    <div class="fc-note" style="margin:4px 0 8px;">${n.works.size} ${n.works.size===1 ? 'lavoro' : 'lavori'} con altri · ${n.adj.length} ${n.adj.length===1 ? 'collegamento' : 'collegamenti'}${ruoli ? ' · nel portale: '+esc(ruoli) : ''}</div>
+    <div class="fc-note" style="margin:4px 0 8px;">${n.members.length ? 'Tocca il nome per aprire l\'anagrafica' : 'Non è in rubrica: tocca il nome per vedere i cantieri del portale in cui compare'} · ${n.works.size} ${n.works.size===1 ? 'lavoro' : 'lavori'} con altri · ${n.adj.length} ${n.adj.length===1 ? 'collegamento' : 'collegamenti'}${ruoli ? ' · nel portale: '+esc(ruoli) : ''}</div>
     ${n.members.length ? `<div class="net-members">${n.members.map(m=>`<span class="name-link" data-contact-open="${m.id}">${esc(fullName(m))}</span>${m.professione ? ' <span class="fc-note">'+esc(m.professione)+'</span>' : ''}`).join(' · ')}</div>`
       : s ? `<div class="net-members fc-note">${[s.citta, ...(s.tel || []).slice(0, 2), ...(s.email || []).slice(0, 1)].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
     <div class="todo-title" style="margin-top:10px;">Collegato con</div>
@@ -5137,14 +5169,15 @@ function reteView(){
     <div class="fc-note" style="margin-bottom:12px;">${linkedN} studi e professionisti collegati tra loro da ${net.counts.p} commesse, ${net.counts.n} cantieri del portale${portalImport ? '' : ' (caricamento…)'} e ${net.counts.m} collegamenti indicati da te. I committenti del portale non contano.</div>
     <div class="card">
       <input id="reteQ" placeholder="Cerca uno studio o un professionista…" value="${esc(reteQ)}" autocomplete="off">
-      ${q.length >= 2 ? `<div style="margin-top:8px;">${found.length ? found.map(n=>`<div class="net-row"><div class="net-main"><span class="name-link" data-net-node="${esc(n.key)}">${esc(n.label)}</span> ${netTag(n)}</div><div class="net-w">${n.adj.length}</div></div>`).join('') : '<div class="empty" style="padding:4px 0;">Nessuno studio collegato con questo nome.</div>'}</div>` : ''}
+      ${q.length >= 2 ? `<div style="margin-top:8px;">${found.length ? found.map(n=>`<div class="net-row"><div class="net-main"><span class="name-link" data-net-node="${esc(n.key)}">${esc(n.label)}</span> ${netTag(n)} ${netFocusBtn(n)}</div><div class="net-w">${n.adj.length}</div></div>`).join('') : '<div class="empty" style="padding:4px 0;">Nessuno studio collegato con questo nome.</div>'}</div>` : ''}
     </div>
+    ${linkedN ? reteGraphHtml() : ''}
     ${focus ? netNodeCardHtml(focus) : ''}
     <div class="card">
       <h3>Opportunità (${opps.length})</h3>
       <div class="fc-note" style="margin-bottom:8px;">Studi e professionisti che non hai ancora sentito ma che lavorano con i tuoi clienti e con chi è in trattativa: chiedi una presentazione a chi li conosce.</div>
       ${shown.length ? shown.map(o=>`<div class="net-row">
-          <div class="net-main"><span class="name-link" data-net-node="${esc(o.n.key)}">${esc(o.n.label)}</span> ${netTag(o.n)}
+          <div class="net-main"><span class="name-link" data-net-node="${esc(o.n.key)}">${esc(o.n.label)}</span> ${netTag(o.n)} ${netFocusBtn(o.n)}
             <div class="fc-note">tramite ${o.via.slice(0, 3).map(v=>`<span class="name-link" data-net-node="${esc(v.other.key)}">${esc(v.other.label)}</span> (${NET_STATUS[v.other.status].short}, ${netWorksText(v.e) || 'indicato da te'})`).join('; ')}${o.via.length > 3 ? ` e altri ${o.via.length - 3}` : ''}</div>
           </div>
           <div class="net-w" title="punteggio">${o.score}</div>
@@ -5156,11 +5189,153 @@ function bindRete(main){
   main.querySelector('#reteBackBtn')?.addEventListener('click', ()=>{ view = 'contactsList'; renderMain(); });
   main.querySelector('#reteCloseBtn')?.addEventListener('click', ()=>{ reteFocus = null; renderMain(); });
   main.querySelector('#reteMoreBtn')?.addEventListener('click', ()=>{ reteShowAll = true; renderMain(); });
+  main.querySelector('#reteMode')?.addEventListener('change', e=>{ reteGraphMode = e.target.value; renderMain(); });
+  main.querySelector('#reteMinW')?.addEventListener('change', e=>{ reteMinW = Number(e.target.value) || 1; renderMain(); });
+  main.querySelector('#reteAllBtn')?.addEventListener('click', ()=>{ reteFocus = null; renderMain(); });
+  queueMicrotask(mountReteGraph);
   main.querySelectorAll('[data-contact-open]').forEach(el=>el.addEventListener('click', ()=>{ selectedId = el.dataset.contactOpen; view = 'detail'; confirmDeleteId = null; tableDetailCallId = null; renderMain(); }));
   main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   const q = main.querySelector('#reteQ');
   let t = null;
   q?.addEventListener('input', ()=>{ reteQ = q.value; clearTimeout(t); t = setTimeout(()=>{ const pos = q.selectionStart; renderMain(); const nq = document.getElementById('reteQ'); if(nq){ nq.focus(); nq.setSelectionRange(pos, pos); } }, 250); });
+}
+
+// ---------------------------------------------------------------------------
+// Mappa della rete (passo 2, 2026-10-20): punti e linee disegnati su canvas con d3 7.9.0 (cdnjs,
+// caricato al bisogno: forze, zoom e trascinamento). Mostra "I miei" (studi con cui si lavora e
+// i loro collegamenti piu' forti), "Tutta la rete" (i piu' collegati, con forza minima) o, con un
+// punto aperto, i suoi collegamenti fino al secondo livello. Grandezza = numero di lavori, colore =
+// stato (una sola tinta dal piu' scuro = cliente al piu' chiaro = in rubrica; i nuovi tratteggiati),
+// spessore della linea = forza, linea tratteggiata = indicata a mano. Le posizioni restano tra un
+// ridisegno e l'altro (`reteGraphPos`).
+// ---------------------------------------------------------------------------
+let reteGraphMode = 'mia', reteMinW = 1, reteSim = null, reteGraphPos = new Map();
+function loadD3(){
+  if(window.d3 && d3.forceSimulation) return Promise.resolve();
+  return new Promise((resolve, reject)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js';
+    sc.onload = ()=>resolve(); sc.onerror = ()=>reject(new Error('libreria della mappa non caricata, controlla la connessione'));
+    document.head.appendChild(sc);
+  });
+}
+// Punti e linee da disegnare.
+function reteSubgraph(net){
+  const pick = new Map(), add = n=>{ if(n && !pick.has(n.key)) pick.set(n.key, n); };
+  const strongest = (n, k)=>n.adj.filter(a=>netWeight(a.e) >= reteMinW).sort((a,b)=>netWeight(b.e) - netWeight(a.e)).slice(0, k);
+  const focus = reteFocus && net.nodes.get(reteFocus);
+  if(focus){
+    add(focus);
+    const first = strongest(focus, 40);
+    first.forEach(a=>add(a.other));
+    first.forEach(a=>strongest(a.other, 4).forEach(b=>{ if(pick.size < 140) add(b.other); }));
+  } else if(reteGraphMode==='mia'){
+    const mine = [...net.nodes.values()].filter(n=>NET_STATUS[n.status].w > 0 && n.adj.length && !(n.members.length && n.members.every(isOff)))
+      .sort((a,b)=>NET_STATUS[b.status].w - NET_STATUS[a.status].w || b.adj.length - a.adj.length).slice(0, 80);
+    mine.forEach(add);
+    mine.forEach(n=>strongest(n, 6).forEach(a=>{ if(pick.size < 220) add(a.other); }));
+  } else {
+    [...net.nodes.values()].filter(n=>n.adj.some(a=>netWeight(a.e) >= reteMinW)).sort((a,b)=>b.adj.length - a.adj.length || b.works.size - a.works.size).slice(0, 350).forEach(add);
+  }
+  const links = [];
+  net.edges.forEach(e=>{ if(pick.has(e.a) && pick.has(e.b) && netWeight(e) >= reteMinW) links.push({ source: e.a, target: e.b, w: netWeight(e), manual: e.manual.length > 0 }); });
+  const nodes = [...pick.values()].map(n=>{ const p = reteGraphPos.get(n.key); return { key: n.key, n, r: 4 + 2.2 * Math.sqrt(Math.min(n.works.size, 60)), ...(p ? { x: p.x, y: p.y } : {}) }; });
+  return { nodes, links, focus };
+}
+function reteGraphHtml(){
+  return `<div class="card" id="reteGraphCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <h3 style="margin:0;">Mappa della rete</h3>
+      <div class="rete-ctrl">
+        ${reteFocus ? `<button class="btn secondary small" id="reteAllBtn">Torna a tutta la mappa</button>` : `<select id="reteMode" style="width:auto;" aria-label="Cosa mostrare">
+          <option value="mia" ${reteGraphMode==='mia' ? 'selected' : ''}>I miei studi e i loro collegamenti</option>
+          <option value="tutta" ${reteGraphMode==='tutta' ? 'selected' : ''}>Tutta la rete (i più collegati)</option></select>`}
+        <select id="reteMinW" style="width:auto;" aria-label="Forza minima del legame">${[1,2,3,5].map(v=>`<option value="${v}" ${reteMinW===v ? 'selected' : ''}>${v===1 ? 'Tutti i legami' : 'Legami da '+v+' lavori'}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="rete-graph" id="reteGraph"><div class="fc-note" style="padding:12px;">Preparazione della mappa…</div><div class="rete-tip hidden" id="reteTip"></div></div>
+    <div class="rete-legend">${['acquisito','trattativa','contattato','rubrica','nuovo'].map(s=>`<span><i class="rete-dot rete-dot-${s}"></i>${NET_STATUS[s].label}</span>`).join('')}<span><i class="rete-line"></i>indicato da te</span></div>
+    <div class="fc-note" style="margin-top:4px;">Tocca un punto per aprirlo e vedere i suoi collegamenti. Punti più grandi = più lavori, linee più spesse = più lavori insieme. Trascina per spostarti, rotellina o due dita per ingrandire.</div>
+  </div>`;
+}
+function stopReteGraph(){ if(reteSim){ reteSim.stop(); reteSim = null; } }
+async function mountReteGraph(){
+  const box = document.getElementById('reteGraph');
+  if(!box) return stopReteGraph();
+  try{ await loadD3(); }catch(e){ box.innerHTML = `<div class="fc-note" style="padding:12px;">${esc(e.message)}</div>`; return; }
+  if(!document.body.contains(box)) return;
+  stopReteGraph();
+  const net = buildNetwork(), { nodes, links, focus } = reteSubgraph(net);
+  if(!nodes.length){ box.innerHTML = '<div class="fc-note" style="padding:12px;">Ancora nessun collegamento da disegnare.</div>'; return; }
+  const tip = box.querySelector('#reteTip');
+  box.querySelectorAll('canvas, .fc-note').forEach(el=>el.remove());
+  const W = box.clientWidth, H = box.clientHeight, dpr = window.devicePixelRatio || 1;
+  const cv = document.createElement('canvas'); cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W+'px'; cv.style.height = H+'px';
+  cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', `Mappa della rete: ${nodes.length} studi e ${links.length} collegamenti`);
+  box.insertBefore(cv, tip);
+  const ctx = cv.getContext('2d');
+  const css = getComputedStyle(document.documentElement), v = n=>css.getPropertyValue(n).trim();
+  const col = { acquisito: v('--net-acq'), trattativa: v('--net-tratt'), contattato: v('--net-cont'), rubrica: v('--net-rub'), nuovo: v('--panel') };
+  const ink = v('--text'), stroke = v('--net-stroke'), edge = v('--border-strong'), accent = v('--accent'), halo = v('--panel');
+  let t = d3.zoomIdentity, hover = null;
+  const known = nodes.filter(d=>d.x!=null).length;
+  nodes.forEach(d=>{ if(d.x==null){ d.x = W/2 + (Math.random() - 0.5) * W * 0.6; d.y = H/2 + (Math.random() - 0.5) * H * 0.6; } });
+  if(focus){ const f = nodes.find(d=>d.key===focus.key); if(f){ f.fx = W/2; f.fy = H/2; } }
+  const draw = ()=>{
+    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    ctx.translate(t.x, t.y); ctx.scale(t.k, t.k);
+    links.forEach(l=>{
+      const hl = hover && (l.source===hover || l.target===hover);
+      ctx.beginPath(); ctx.moveTo(l.source.x, l.source.y); ctx.lineTo(l.target.x, l.target.y);
+      ctx.strokeStyle = hl || l.manual ? accent : edge; ctx.globalAlpha = hl ? 0.95 : 0.6;
+      ctx.lineWidth = (0.8 + Math.min(4, l.w * 0.6)) / Math.sqrt(t.k);
+      ctx.setLineDash(l.manual ? [5 / t.k, 4 / t.k] : []); ctx.stroke();
+    });
+    ctx.globalAlpha = 1; ctx.setLineDash([]);
+    nodes.forEach(d=>{
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+      ctx.fillStyle = col[d.n.status]; ctx.fill();
+      ctx.lineWidth = (d===hover || (focus && d.key===focus.key) ? 3 : 1.5) / t.k;
+      ctx.strokeStyle = focus && d.key===focus.key ? accent : stroke;
+      ctx.setLineDash(d.n.status==='nuovo' ? [3 / t.k, 2 / t.k] : []); ctx.stroke(); ctx.setLineDash([]);
+    });
+    // etichette: punto aperto, punto sotto il cursore, i punti grandi e, ingrandendo, tutti
+    ctx.font = `${12 / t.k}px "Fira Sans", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.lineWidth = 3 / t.k; ctx.strokeStyle = halo; ctx.fillStyle = ink; ctx.lineJoin = 'round';
+    nodes.forEach(d=>{
+      const show = d===hover || (focus && d.key===focus.key) || d.r * t.k >= 11 || t.k >= 2.2 || (focus && nodes.length <= 25);
+      if(!show) return;
+      const s = d.n.label.length > 28 ? d.n.label.slice(0, 27)+'…' : d.n.label;
+      ctx.strokeText(s, d.x, d.y + d.r + 2 / t.k); ctx.fillText(s, d.x, d.y + d.r + 2 / t.k);
+    });
+    ctx.restore();
+  };
+  const sim = reteSim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d=>d.key).distance(l=>45 + 80 / Math.sqrt(l.w)).strength(l=>Math.min(1, 0.15 + l.w * 0.1)))
+    .force('charge', d3.forceManyBody().strength(nodes.length > 150 ? -40 : nodes.length > 60 ? -80 : -200))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collide', d3.forceCollide(d=>d.r + 3))
+    .alpha(known > nodes.length * 0.8 ? 0.25 : 1)
+    .on('tick', ()=>{ if(!document.body.contains(cv)){ sim.stop(); return; } draw(); })
+    .on('end', ()=>nodes.forEach(d=>reteGraphPos.set(d.key, { x: d.x, y: d.y })));
+  const at = ev=>{ const r = cv.getBoundingClientRect(), [x, y] = t.invert([ev.clientX - r.left, ev.clientY - r.top]); return sim.find(x, y, 18 / t.k); };
+  d3.select(cv).call(d3.zoom().scaleExtent([0.3, 6]).on('zoom', ev=>{ t = ev.transform; draw(); }))
+    .on('dblclick.zoom', null);
+  cv.addEventListener('mousemove', ev=>{
+    const d = at(ev);
+    if(d!==hover){ hover = d || null; draw(); }
+    cv.style.cursor = d ? 'pointer' : 'grab';
+    if(d){ const r = box.getBoundingClientRect(); tip.innerHTML = `<strong>${esc(d.n.label)}</strong><br>${NET_STATUS[d.n.status].label} · ${d.n.works.size} ${d.n.works.size===1 ? 'lavoro' : 'lavori'} · ${d.n.adj.length} ${d.n.adj.length===1 ? 'collegamento' : 'collegamenti'}`;
+      tip.classList.remove('hidden'); tip.style.left = Math.min(W - 230, Math.max(0, ev.clientX - r.left + 12))+'px'; tip.style.top = Math.max(0, ev.clientY - r.top + 12)+'px'; }
+    else tip.classList.add('hidden');
+  });
+  cv.addEventListener('mouseleave', ()=>{ hover = null; tip.classList.add('hidden'); draw(); });
+  cv.addEventListener('click', ev=>{
+    const d = at(ev); if(!d) return;
+    nodes.forEach(x=>reteGraphPos.set(x.key, { x: x.x, y: x.y }));
+    reteFocus = d.key; renderMain();
+  });
+  draw();
 }
 
 // ---------------------------------------------------------------------------

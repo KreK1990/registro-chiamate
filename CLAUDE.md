@@ -270,7 +270,18 @@ Campi principali:
   Contatti -> "Rete di collaborazioni" (`view='rete'`, `reteView`): ricerca, punto aperto (`reteFocus`, anche nel
   Torna indietro) e "Opportunita'" (`netOpportunities`: punti nuovo/rubrica collegati a clienti/trattative/contattati,
   punteggio = somma peso stato x forza, con "tramite ..."). Clic su un punto (`data-net-node`, ascoltatore su
-  document): nella Rete lo apre, altrove apre il contatto (o la Rete se non e' in rubrica).
+  document) -> `netOpen` (richiesta 2026-10-20): in rubrica apre l'anagrafica, altrimenti "Cantieri dal portale" con
+  ricerca per nome (Seguiti se tutti i suoi cantieri sono seguiti); `data-net-focus` ("collegamenti", "Vedi nella
+  rete", clic sulla mappa) apre il punto nella Rete. Nomi della rete senza forma societaria (`netName`: Srl, Spa,
+  Snc, Sas...; "Amato Costruzioni" = "Amato Costruzioni Srl"); un soggetto del portale con lo stesso nome di uno
+  studio in rubrica diventa quello studio.
+  **Mappa della rete** (passo 2, blocco omonimo): canvas con d3 7.9.0 da cdnjs (`loadD3`), forze + zoom/pan
+  (`mountReteGraph`, `reteSim`, posizioni conservate in `reteGraphPos`); `reteSubgraph`: "I miei" (studi con
+  stato > rubrica e i loro 6 legami piu' forti, max 220), "Tutta la rete" (350 piu' collegati) o, con un punto
+  aperto, i suoi legami fino al secondo livello (max 140); filtro forza minima `reteMinW`. Raggio secondo i lavori,
+  colore = stato in una sola tinta (`--net-acq/-tratt/-cont/-rub`, chiaro e scuro; nuovi tratteggiati), linee
+  spesse = forza, tratteggiate = a mano; etichette per i punti grandi o ingrandendo; finestrella al passaggio.
+  Nel test del telefono la pagina 'rete' sta in fondo: con --shots, prima della Mappa falsava le tessere Leaflet.
 - **Ritorno alla mappa** (blocco "Ritorno alla mappa"): aprendo dalla mappa un progetto, un contatto
   o un cantiere del portale (`noteMapReturn` salva centro e zoom in `mapReturn`) compare il pulsante
   fisso `#mapReturnBtn` "Torna alla mappa" (in basso a destra, appeso a body, gestito da
