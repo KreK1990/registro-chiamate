@@ -35,6 +35,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `tests/` — **controlli automatici da lanciare prima di ogni pubblicazione**: `cd tests`,
   `npm install` (la prima volta), `npm test` (`node run.mjs`; `--show` apre il browser, `--shots`
   salva le schermate del telefono in una cartella temporanea). playwright-core usa Chrome/Edge
+  Le date dei test sono locali (`iso`), come nell'app: con toISOString tra mezzanotte e le 2 fallivano.
   installato; `fake-firebase.js` sostituisce gli script Firebase (stessa interfaccia compat, dati
   in memoria da `window.__seed`, accesso dai test con `window.__fake`); functions, Nominatim,
   mappe e font sono simulati. Controlla: tutte le pagine senza errori, cifre di forecast e budget,
@@ -281,8 +282,8 @@ Campi principali:
   aperto, i suoi legami fino al secondo livello (max 140); filtro forza minima `reteMinW`. Raggio secondo i lavori,
   colore = stato in una sola tinta (`--net-acq/-tratt/-cont/-rub`, chiaro e scuro; nuovi tratteggiati), linee
   spesse = forza, tratteggiate = a mano; etichette per i punti grandi o ingrandendo; finestrella al passaggio.
-  Clic su un punto della mappa (2026-10-20): se e' in rubrica apre l'anagrafica (riquadro Collaborazioni), altrimenti
-  apre il punto nella Rete.
+  Clic su un punto della mappa (2026-10-21): il primo tocco apre il punto nella Rete (nome e sua rete), un secondo
+  tocco sullo stesso punto (`reteFocus`) chiama `netOpen` (anagrafica con riquadro Collaborazioni, o portale).
   Nel test del telefono la pagina 'rete' sta in fondo: con --shots, prima della Mappa falsava le tessere Leaflet.
 - **Ritorno alla mappa** (blocco "Ritorno alla mappa"): aprendo dalla mappa un progetto, un contatto
   o un cantiere del portale (`noteMapReturn` salva centro e zoom in `mapReturn`) compare il pulsante

@@ -21,7 +21,8 @@ const show = process.argv.includes('--show');
 const shotsDir = process.argv.includes('--shots') ? fs.mkdtempSync(path.join(os.tmpdir(), 'registro-shots-')) : null;
 
 // ---------- dati di prova (date relative a oggi) ----------
-const iso = d => d.toISOString().slice(0, 10);
+// data locale (come l'app): con toISOString tra mezzanotte e le 2 il giorno sarebbe quello prima
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
 const year = new Date().getFullYear();
 const month = String(new Date().getMonth() + 1).padStart(2, '0');
@@ -317,7 +318,7 @@ await test('conferma d\'ordine da PDF', async () => {
   const cat = await page.evaluate(r => [articleCategory(r).label, articleMeters(r), articleMeters({ ...r, descrizione: 'Isokorb T Q-VV1-L500-H200' })], r.righe[0]);
   expect(cat[0] === 'Isokorb XT tipo K' && cat[1] === 11 && cat[2] === 5.5, 'categoria/metri: ' + JSON.stringify(cat));
   const pid = await page.evaluate(() => projects[0].id);
-  await page.evaluate(([pid, righe]) => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'oart', data: new Date().toISOString().slice(0, 10), numero: '2078251', importo: 1201.09, righe }] }), [pid, r.righe]);
+  await page.evaluate(([pid, righe]) => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'oart', data: todayISO(), numero: '2078251', importo: 1201.09, righe }] }), [pid, r.righe]);
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'oart'), pid);
   const txt = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
   expect(/Articoli venduti[\s\S]*11 m[\s\S]*Isokorb XT tipo K/.test(txt), 'Dashboard: articoli venduti mancanti');
@@ -325,23 +326,23 @@ await test('conferma d\'ordine da PDF', async () => {
   const bole = await page.evaluate(() => { const rr = parseOrderLines(['Pos. Codice articolo Qtà. U.m. Prezzo unitario Totale netto', '10 1056928', 'BOLE O/U 12-330-2/450', '150-200-100', 'Prezzo netto 14 PZ 50,00 700,00', '20 1056983', 'BOLE O/U 14-330-2/405', '150-170-85', 'Prezzo netto 96 PZ 60,00 5.760,00', 'Totale merce 6.460,00']); return { rr, cat: rr.map(r => articleCategory(r).label), kg: rr.map(r => Math.round(articleKg(r) * 10) / 10) }; });
   expect(bole.rr.length === 2 && bole.cat[0] === 'Bole O/U Ø12' && bole.cat[1] === 'Bole O/U Ø14', 'Bole lette male: ' + JSON.stringify(bole));
   expect(bole.kg[0] === 13.7 && bole.kg[1] === 123.1, 'peso Bole: ' + JSON.stringify(bole.kg));
-  await page.evaluate(([pid, righe]) => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'obole', data: new Date().toISOString().slice(0, 10), numero: '9', importo: 6460, righe }] }), [pid, bole.rr]);
+  await page.evaluate(([pid, righe]) => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'obole', data: todayISO(), numero: '9', importo: 6460, righe }] }), [pid, bole.rr]);
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'obole'), pid);
   const txt2 = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
   expect(/Ferro Bole\s*137 kg/.test(txt2) && /Metri lineari\s*11 m/.test(txt2), 'Dashboard: kg delle Bole mancanti');
   // Isokorb tipo S / SK: elementi puntuali, a pezzi e fuori dai metri lineari
-  await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'os', data: new Date().toISOString().slice(0, 10), numero: '11', importo: 848.12, righe: [{ codice: '1300001', descrizione: 'Isokorb® T_S-N-R0-D16-2.0', qta: 26, um: 'PZ', prezzo: 32.62, totale: 848.12 }] }] }), pid);
+  await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'os', data: todayISO(), numero: '11', importo: 848.12, righe: [{ codice: '1300001', descrizione: 'Isokorb® T_S-N-R0-D16-2.0', qta: 26, um: 'PZ', prezzo: 32.62, totale: 848.12 }] }] }), pid);
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'os'), pid);
   const txt3 = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
   expect(/Metri lineari\s*11 m/.test(txt3) && /Isokorb S\s*26 pz/.test(txt3) && /Isokorb T tipo S[\s\S]*26 pz/.test(txt3) && !/T_S/.test(txt3), 'tipo S non trattato come elemento puntuale:\n' + txt3.slice(txt3.indexOf('Articoli venduti'), txt3.indexOf('Articoli venduti') + 700));
   expect(await page.evaluate(() => articleVariant({ descrizione: 'Isokorb® T_S-N-R0-D16-2.0' })) === 'N-R0-D16-2.0', 'variante del tipo S');
   // Tronsole: solo nel valore, niente metri ne' dettaglio
-  await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'otr', data: new Date().toISOString().slice(0, 10), numero: '12', importo: 300, righe: [{ codice: '1400001', descrizione: 'Tronsole T-B-L-25', qta: 40, um: 'PZ', prezzo: 7.5, totale: 300 }] }] }), pid);
+  await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'otr', data: todayISO(), numero: '12', importo: 300, righe: [{ codice: '1400001', descrizione: 'Tronsole T-B-L-25', qta: 40, um: 'PZ', prezzo: 7.5, totale: 300 }] }] }), pid);
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'otr'), pid);
   const txt4 = await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
   expect(/Metri lineari\s*11 m/.test(txt4) && /Tronsole: 300,00\s€ compresi nel valore merce/.test(txt4) && !/Tronsole T/.test(txt4) && /Valore merce\s*8\.809,21/.test(txt4), 'Tronsole non escluse:\n' + txt4.slice(txt4.indexOf('Articoli venduti'), txt4.indexOf('Articoli venduti') + 500));
   // dettaglio per classe M1...M14 e prezzi medi
-  await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'om4', data: new Date().toISOString().slice(0, 10), numero: '10', importo: 650, righe: [{ codice: '1215190', descrizione: 'Isokorb® XT K-O-M4-V1-REI120-CV35-LR145-X120-H180-7.2', qta: 5, um: 'PZ', prezzo: 130, totale: 650 }] }] }), pid);
+  await page.evaluate(pid => db.collection('projects').doc(pid).update({ ordini: [...(projects.find(p => p.id === pid).ordini || []), { id: 'om4', data: todayISO(), numero: '10', importo: 650, righe: [{ codice: '1215190', descrizione: 'Isokorb® XT K-O-M4-V1-REI120-CV35-LR145-X120-H180-7.2', qta: 5, um: 'PZ', prezzo: 130, totale: 650 }] }] }), pid);
   await page.waitForFunction(pid => (projects.find(p => p.id === pid).ordini || []).some(o => o.id === 'om4'), pid);
   await show_(page, 'dashboard', "dashboardSubView='projects'; dashProjPeriod='year'");
   await page.click('[data-sold-cat="Isokorb XT tipo K"] > summary');
@@ -1066,6 +1067,12 @@ await test('rete di collaborazioni: commesse, portale, collegamento a mano, oppo
   await page.waitForTimeout(1500);
   const pm = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.n.members.length); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y, ids: d.n.members.map(m => m.id) }; });
   await page.mouse.click(pm.x, pm.y);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => view) === 'rete', 'il primo tocco deve solo aprire il punto nella rete');
+  await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim, null, { timeout: 20000 });
+  await page.waitForTimeout(1500);
+  const pm2 = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.key === reteFocus); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y }; });
+  await page.mouse.click(pm2.x, pm2.y);
   await page.waitForFunction(() => view === 'detail', null, { timeout: 5000 }).catch(() => {});
   const sd = await page.evaluate(() => ({ view, selectedId, card: !!document.getElementById('collabCard') }));
   expect(sd.view === 'detail' && pm.ids.includes(sd.selectedId) && sd.card, 'clic su un punto in rubrica: ' + JSON.stringify(sd));
