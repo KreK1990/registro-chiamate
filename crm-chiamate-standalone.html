@@ -5255,7 +5255,7 @@ function reteGraphHtml(){
     </div>
     <div class="rete-graph" id="reteGraph"><div class="fc-note" style="padding:12px;">Preparazione della mappa…</div><div class="rete-tip hidden" id="reteTip"></div></div>
     <div class="rete-legend">${['acquisito','trattativa','contattato','rubrica','nuovo'].map(s=>`<span><i class="rete-dot rete-dot-${s}"></i>${NET_STATUS[s].label}</span>`).join('')}<span><i class="rete-line"></i>indicato da te</span></div>
-    <div class="fc-note" style="margin-top:4px;">Tocca un punto per aprirlo e vedere i suoi collegamenti. Punti più grandi = più lavori, linee più spesse = più lavori insieme. Trascina per spostarti, rotellina o due dita per ingrandire.</div>
+    <div class="fc-note" style="margin-top:4px;">Tocca un punto: se è in rubrica si apre la sua anagrafica con le collaborazioni, altrimenti la sua scheda qui sotto. Punti più grandi = più lavori, linee più spesse = più lavori insieme. Trascina per spostarti, rotellina o due dita per ingrandire.</div>
   </div>`;
 }
 function stopReteGraph(){ if(reteSim){ reteSim.stop(); reteSim = null; } }
@@ -5333,6 +5333,8 @@ async function mountReteGraph(){
   cv.addEventListener('click', ev=>{
     const d = at(ev); if(!d) return;
     nodes.forEach(x=>reteGraphPos.set(x.key, { x: x.x, y: x.y }));
+    // in rubrica: la sua anagrafica, con il riquadro Collaborazioni (richiesta 2026-10-20); altrimenti la sua scheda nella Rete
+    if(d.n.members.length){ netOpen(d.n); requestAnimationFrame(()=>document.getElementById('collabCard')?.scrollIntoView({ block:'start' })); return; }
     reteFocus = d.key; renderMain();
   });
   draw();

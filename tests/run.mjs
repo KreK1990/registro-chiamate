@@ -1061,6 +1061,15 @@ await test('rete di collaborazioni: commesse, portale, collegamento a mano, oppo
   await page.waitForFunction(k => reteFocus === k, pt.key, { timeout: 5000 }).catch(() => {});
   expect(await page.evaluate(() => reteFocus) === pt.key, 'clic sul punto della mappa: ' + await page.evaluate(() => reteFocus) + ' invece di ' + pt.key);
   if (shotsDir) { await page.waitForTimeout(1500); await (await page.$('#reteGraphCard')).screenshot({ path: path.join(shotsDir, 'rete-mappa.png') }); }
+  // punto in rubrica sulla mappa -> anagrafica con le collaborazioni
+  await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim && reteSim.nodes().some(n => n.n.members.length), null, { timeout: 20000 });
+  await page.waitForTimeout(1500);
+  const pm = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.n.members.length); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y, ids: d.n.members.map(m => m.id) }; });
+  await page.mouse.click(pm.x, pm.y);
+  await page.waitForFunction(() => view === 'detail', null, { timeout: 5000 }).catch(() => {});
+  const sd = await page.evaluate(() => ({ view, selectedId, card: !!document.getElementById('collabCard') }));
+  expect(sd.view === 'detail' && pm.ids.includes(sd.selectedId) && sd.card, 'clic su un punto in rubrica: ' + JSON.stringify(sd));
+  await show_(page, 'rete', "reteFocus=null");
   // ricerca
   await page.fill('#reteQ', 'verdi');
   await page.waitForTimeout(400);

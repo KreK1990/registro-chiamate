@@ -281,6 +281,8 @@ Campi principali:
   aperto, i suoi legami fino al secondo livello (max 140); filtro forza minima `reteMinW`. Raggio secondo i lavori,
   colore = stato in una sola tinta (`--net-acq/-tratt/-cont/-rub`, chiaro e scuro; nuovi tratteggiati), linee
   spesse = forza, tratteggiate = a mano; etichette per i punti grandi o ingrandendo; finestrella al passaggio.
+  Clic su un punto della mappa (2026-10-20): se e' in rubrica apre l'anagrafica (riquadro Collaborazioni), altrimenti
+  apre il punto nella Rete.
   Nel test del telefono la pagina 'rete' sta in fondo: con --shots, prima della Mappa falsava le tessere Leaflet.
 - **Ritorno alla mappa** (blocco "Ritorno alla mappa"): aprendo dalla mappa un progetto, un contatto
   o un cantiere del portale (`noteMapReturn` salva centro e zoom in `mapReturn`) compare il pulsante
