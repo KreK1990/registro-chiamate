@@ -117,6 +117,19 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .fatt-db input{width:100%;min-width:0;text-align:center;padding:4px;}
 .fatt-name{min-width:0;}
 .fatt-warn{font-size:12.5px;color:var(--danger);margin-top:4px;}
+.fatt-chart{width:100%;height:auto;display:block;max-width:720px;margin-top:6px;}
+.fatt-chart .fb-fees{fill:var(--accent);}
+.fatt-chart .fb-fixed{fill:var(--border-strong);}
+.fatt-chart .draft .fb-fees, .fatt-chart .draft .fb-fixed{fill-opacity:.45;}
+.fatt-chart .fb-val{font-size:10px;fill:var(--text);font-family:var(--sans);}
+.fatt-chart .fb-lab{font-size:10px;fill:var(--muted);font-family:var(--sans);}
+.fatt-chart g:hover .fb-fees{fill-opacity:1;filter:brightness(1.15);}
+.fb-draft-key{background:var(--accent);opacity:.45;}
+.fatt-table{margin-top:6px;}
+.fatt-trow{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(4,minmax(0,1fr));gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;text-align:right;}
+.fatt-trow > :first-child{text-align:left;}
+.fatt-trow.fatt-th{font-size:11px;color:var(--muted);text-transform:uppercase;}
+.fatt-ttot{border-top:2px solid var(--accent);font-weight:600;}
 .fatt-addr{display:block;font-size:12px;color:var(--muted);}
 .fatt-rowact{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:4px;}
 .fatt-add{margin-top:10px;}
@@ -782,7 +795,9 @@ h2{color:var(--accent);font-weight:800;}
   .top-actions{margin-bottom:8px;}
   .page-bar.stuck{top:-12px;margin:-12px -12px 8px;padding:8px 12px;}
   .rete-graph{height:420px;}
-  .fatt-th{display:none;}
+  .fatt-cells.fatt-th{display:none;}
+  .fatt-trow{grid-template-columns:minmax(0,1fr) auto auto;font-size:12.5px;}
+  .fatt-trow > :nth-child(2), .fatt-trow > :nth-child(4){display:none;}
   .fatt-row .fatt-cells{grid-template-columns:minmax(0,1fr) 60px 92px;gap:2px 8px;}
   .fatt-row .fatt-cells > :nth-child(1){grid-column:1;grid-row:1;font-size:11.5px;}
   .fatt-row .fatt-cells > :nth-child(2){grid-column:1;grid-row:2;}
@@ -5458,16 +5473,6 @@ function fattMonths(){
   return out.reverse();
 }
 const orderRef = (pid, oid)=>{ const p = projects.find(x=>x.id===pid), o = p && (p.ordini || []).find(x=>x.id===oid); return p && o ? { p, o } : null; };
-// Ordini consegnati in mesi gia' fatturati ma rimasti fuori dalla fattura emessa.
-function fattLeftOut(){
-  const out = [];
-  projects.filter(p=>!isLost(p)).forEach(p=>(p.ordini || []).forEach(o=>{
-    const m = orderBillMonth(o), doc = m && fatture.get(m);
-    if(!doc || doc.stato!=='emessa' || doc.importato) return;
-    if(!(doc.righe || []).some(r=>(r.ordini || []).some(x=>x.oid===o.id))) out.push({ p, o, m });
-  }));
-  return out;
-}
 function fattView(){
   const cur = todayISO().slice(0,7), months = fattMonths();
   if(!fattMese || !months.includes(fattMese)) fattMese = cur;
@@ -5475,7 +5480,6 @@ function fattView(){
   const rows = fattRows(ym), voci = fattVoci(ym), tot = fattTotal(ym);
   const monthEnd = isoDay(new Date(+ym.slice(0,4), +ym.slice(5,7), 0));
   const notDone = emessa ? [] : deliveryRows().filter(r=>!r.o.consegnatoIl && !r.o.meseFattura && r.o.consegna && r.o.consegna <= monthEnd && r.o.consegna.slice(0,7) >= ymAdd(ym, -1));
-  const leftOut = !emessa && ym===cur ? fattLeftOut() : [];
   const title = monthLabel(ym).replace(/^./, s=>s.toUpperCase());
   const monthOpts = (sel)=>[-1, 0, 1].map(n=>{ const m = ymAdd(ym, n); return `<option value="${m}" ${m===sel ? 'selected' : ''}>${monthLabel(m)}</option>`; }).join('');
   const rowHtml = r=>{ const open = fattOpen.has(r.pid), p = projects.find(x=>x.id===r.pid), addr = fattAddr(p);
@@ -5522,12 +5526,13 @@ function fattView(){
       ${emessa ? '' : `<button class="btn secondary small" id="fattVoceAdd" style="margin-top:6px;">+ Voce (es. spese tecniche assistenze in cantiere)</button>`}
       <div class="fatt-total"><span>Totale fattura</span><strong>${fmtEuro(tot)}</strong></div>
       ${notDone.length ? `<div class="fatt-warn" style="margin-top:8px;">${notDone.length} ${notDone.length===1 ? 'ordine con consegna prevista entro il mese non è segnato' : 'ordini con consegna prevista entro il mese non sono segnati'} come consegnati: ${notDone.map(r=>`${esc(r.p.codice||'')} ${esc(r.p.nome||'')} (${fmtDate(r.o.consegna)})`).join(', ')}. Segnali nella scheda <span class="name-link" id="fattToDel">Consegne</span>.</div>` : ''}
-      ${leftOut.length ? `<div class="fatt-warn" style="margin-top:8px;">Consegnati in mesi già fatturati ma rimasti fuori: ${leftOut.map(x=>`${esc(x.p.codice||'')} ${esc(x.p.nome||'')} (${fmtEuro(x.o.importo)}, ${monthLabel(x.m)}) <button class="btn secondary small" data-fatt-move-here="${x.p.id}|${x.o.id}">Metti in ${esc(monthLabel(ym))}</button>`).join(' ')}</div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
         ${emessa ? `<button class="btn secondary small" id="fattReopenBtn">Riapri la fattura</button>` : `<button class="btn small" id="fattEmitBtn" ${rows.length || voci.length ? '' : 'disabled'}>Segna come emessa</button>`}
       </div>
       <div class="fc-note" style="margin-top:6px;">${emessa ? 'La fattura emessa resta com\'era anche se poi cambiano gli ordini; "Riapri" la ricalcola.' : `Compenso = merce × ${c.quota*100}% se il margine è almeno del ${c.quota*100}% ("SI"), altrimenti merce × margine (scrivi la percentuale, es. 18). Una fornitura uscita dal magazzino a fine mese e consegnata il mese dopo: apri gli ordini della commessa e scegli il mese.`}</div>
     </div>
+    ${fattNeglectedHtml()}
+    ${fattSummaryHtml()}
     <details class="card"><summary><strong>Impostazioni del compenso</strong></summary>
       <div class="field-row" style="margin-top:8px;">
         <div><label>Provvigione (%)</label><input data-fatt-cfg="quota" inputmode="decimal" value="${esc(fmtNum(c.quota*100))}"></div>
@@ -5551,6 +5556,82 @@ function fattAddHtml(ym){
       <div class="fatt-order"><span>Riga senza ordine, importo merce:</span><span><input id="fattXImp" inputmode="decimal" placeholder="es. 1.250,00" style="width:120px;"> <button class="btn secondary small" id="fattXAdd">Aggiungi</button></span></div>
       <button type="button" class="net-focus-btn" id="fattAddClose">chiudi</button>
     </div>` : ''}
+  </div>`;
+}
+// Riepilogo del fatturato e forniture mai fatturate (Fatturazione, richiesta dell'utente 2026-10-21).
+let fattYear = null;
+function fattMonthSplit(ym){
+  const rows = fattRows(ym);
+  const fees = round2(rows.reduce((s,r)=>s+(Number(r.fee) || 0), 0)), fixed = round2(fattVoci(ym).reduce((s,v)=>s+(Number(v.importo) || 0), 0));
+  return { fees, fixed, merce: round2(rows.reduce((s,r)=>s+(Number(r.importo) || 0), 0)), comm: rows.map(r=>r.codice || r.pid), tot: fattTotal(ym), emessa: (fatture.get(ym) || {}).stato==='emessa' };
+}
+// Conteggio complessivo dell'anno (anno solare), con il dettaglio mese per mese.
+function fattSummaryHtml(){
+  const all = fattMonths(), years = [...new Set(all.map(m=>m.slice(0,4)))].sort().reverse();
+  if(!years.length) return '';
+  if(!fattYear || !years.includes(fattYear)) fattYear = todayISO().slice(0,4);
+  const year = fattYear, data = all.filter(m=>m.startsWith(year)).sort().map(m=>({ m, ...fattMonthSplit(m) }));
+  const sum = (list, f)=>round2(list.reduce((s,d)=>s+d[f], 0));
+  const em = data.filter(d=>d.emessa), open = data.filter(d=>!d.emessa);
+  const comm = new Set(data.flatMap(d=>d.comm));
+  const W = 640, H = 170, pl = 6, pr = 6, pt = 18, pb = 22, iw = W - pl - pr, ih = H - pt - pb;
+  const max = Math.max(1, ...data.map(d=>d.tot)), gap = iw / 12, bw = Math.min(34, gap * 0.62);
+  const bars = data.map(d=>{
+    const i = +d.m.slice(5,7) - 1, x = pl + i * gap + (gap - bw) / 2, hf = d.fees / max * ih, hx = d.fixed / max * ih, y0 = pt + ih;
+    const tip = `${monthLabel(d.m)}: provvigioni ${fmtEuro(d.fees)} + voci fisse ${fmtEuro(d.fixed)} = ${fmtEuro(d.tot)}${d.emessa ? '' : ' (da emettere)'}`;
+    return `<g class="fatt-bar ${d.emessa ? '' : 'draft'}"><title>${esc(tip)}</title>
+      <rect x="${x.toFixed(1)}" y="${(y0 - hx).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, hx - 1).toFixed(1)}" class="fb-fixed"></rect>
+      <rect x="${x.toFixed(1)}" y="${(y0 - hx - hf).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, hf).toFixed(1)}" rx="2" class="fb-fees"></rect>
+      <text x="${(x + bw / 2).toFixed(1)}" y="${(y0 - hx - hf - 4).toFixed(1)}" text-anchor="middle" class="fb-val">${compactEuro(d.tot)}</text>
+      <rect x="${(pl + i * gap).toFixed(1)}" y="${pt}" width="${gap.toFixed(1)}" height="${ih + pb}" fill="transparent" data-fatt-goto="${d.m}" style="cursor:pointer;"></rect></g>`;
+  }).join('') + MONTHS_SHORT.map((l, i)=>`<text x="${(pl + i * gap + gap / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="fb-lab">${l}</text>`).join('');
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <h3 style="margin:0;">Riepilogo dell'anno</h3>
+      <select id="fattYear" style="width:auto;" aria-label="Anno">${years.map(y=>`<option ${y===year ? 'selected' : ''}>${y}</option>`).join('')}</select>
+    </div>
+    <div class="fc-tiles">
+      <div class="fc-tile"><div class="fc-label">Totale ${year}</div><div class="fc-value">${fmtEuro(sum(data, 'tot'))}</div><div class="fc-note">emesso ${fmtEuro(sum(em, 'tot'))}${open.length ? ` · da emettere ${fmtEuro(sum(open, 'tot'))}` : ''}</div></div>
+      <div class="fc-tile"><div class="fc-label">Provvigioni</div><div class="fc-value">${fmtEuro(sum(data, 'fees'))}</div><div class="fc-note">su merce fatturata ${fmtEuro(sum(data, 'merce'))}</div></div>
+      <div class="fc-tile"><div class="fc-label">Auto e compenso fisso</div><div class="fc-value">${fmtEuro(sum(data, 'fixed'))}</div><div class="fc-note">${data.length} ${data.length===1 ? 'mese' : 'mesi'}</div></div>
+      <div class="fc-tile"><div class="fc-label">Commesse fatturate</div><div class="fc-value">${comm.size}</div><div class="fc-note">media ${fmtEuro(data.length ? sum(data, 'tot') / data.length : 0)} al mese</div></div>
+    </div>
+    <div class="dash-legend" style="margin-top:10px;"><span><i style="background:var(--accent);"></i>Provvigioni</span><span><i style="background:var(--border-strong);"></i>Auto e compenso fisso</span><span><i class="fb-draft-key"></i>Da emettere</span></div>
+    <svg viewBox="0 0 ${W} ${H}" class="fatt-chart" role="img" aria-label="Fatturato ${year} mese per mese"><line x1="${pl}" y1="${pt + ih}" x2="${W - pr}" y2="${pt + ih}" stroke="var(--border)"></line>${bars}</svg>
+    <details style="margin-top:6px;"><summary class="fc-note" style="cursor:pointer;">Mese per mese</summary>
+      <div class="fatt-table"><div class="fatt-trow fatt-th"><span>Mese</span><span>Merce</span><span>Provvigioni</span><span>Fisso</span><span>Totale</span></div>
+        ${data.slice().reverse().map(d=>`<div class="fatt-trow"><span class="name-link" data-fatt-goto="${d.m}">${monthLabel(d.m)}${d.emessa ? '' : ' (da emettere)'}</span><span>${fmtEuro(d.merce)}</span><span>${fmtEuro(d.fees)}</span><span>${fmtEuro(d.fixed)}</span><strong>${fmtEuro(d.tot)}</strong></div>`).join('')}
+        <div class="fatt-trow fatt-ttot"><span>Totale ${year}</span><span>${fmtEuro(sum(data, 'merce'))}</span><span>${fmtEuro(sum(data, 'fees'))}</span><span>${fmtEuro(sum(data, 'fixed'))}</span><strong>${fmtEuro(sum(data, 'tot'))}</strong></div></div>
+    </details>
+  </div>`;
+}
+// Forniture che rischiano di non essere mai fatturate.
+function fattNeglected(){
+  const cur = todayISO().slice(0,7), out = [];
+  const inSnapshot = (doc, p, o)=>(doc.righe || []).some(r=>(r.ordini || []).some(x=>x.oid===o.id)) || (doc.importato && (doc.righe || []).some(r=>!(r.ordini || []).length && String(r.codice)===String(p.codice || '')));
+  projects.filter(p=>!isLost(p)).forEach(p=>(p.ordini || []).forEach(o=>{
+    const m = orderBillMonth(o), doc = m && fatture.get(m);
+    if(o.meseFattura==='no'){ out.push({ p, o, why: 'tolto a mano dalla fatturazione', kind: 'no' }); return; }
+    if(m && m < cur){
+      if(!doc || doc.stato!=='emessa') out.push({ p, o, why: `fattura di ${monthLabel(m)} non segnata come emessa`, kind: 'draft', m });
+      else if(!inSnapshot(doc, p, o)) out.push({ p, o, why: `consegnato a ${monthLabel(m)} ma fuori dalla fattura emessa`, kind: 'out', m });
+      return;
+    }
+    if(!m && !o.consegnatoIl && o.consegna && o.consegna < addDaysISO(todayISO(), -7)) out.push({ p, o, why: `consegna prevista il ${fmtDate(o.consegna)} e mai segnata come arrivata`, kind: 'late' });
+  }));
+  return out.sort((a,b)=>(a.o.consegnatoIl || a.o.consegna || a.o.data || '').localeCompare(b.o.consegnatoIl || b.o.consegna || b.o.data || ''));
+}
+function fattNeglectedHtml(){
+  const list = fattNeglected(), cur = todayISO().slice(0,7);
+  const warn = list.filter(x=>x.kind!=='no'), no = list.filter(x=>x.kind==='no');
+  const row = x=>`<div class="fatt-order"><span><span class="proj-code">${esc(x.p.codice || '')}</span> <span class="name-link" data-open-project="${x.p.id}">${esc(x.p.nome || 'Progetto')}</span> · ordine${x.o.numero ? ' n° '+esc(x.o.numero) : ''} ${fmtEuro(x.o.importo)}<br><span class="fc-note">${esc(fattAddr(x.p))}${fattAddr(x.p) ? ' · ' : ''}${esc(x.why)}</span></span>
+      <span>${x.kind==='late' ? `<button class="btn secondary small" data-fatt-todel>Vai a Consegne</button>` : x.kind==='draft' ? `<button class="btn secondary small" data-fatt-goto="${x.m}">Apri ${esc(monthLabel(x.m))}</button>` : ''}
+        <button class="btn secondary small" data-fatt-move-here="${x.p.id}|${x.o.id}" data-fatt-to="${cur}">Fattura in ${esc(monthLabel(cur))}</button></span></div>`;
+  return `<div class="card">
+    <h3>Forniture non fatturate${warn.length ? ` (${warn.length})` : ''}</h3>
+    <div class="fc-note" style="margin-bottom:6px;">Ordini consegnati che non sono in nessuna fattura emessa, o con consegna prevista passata e mai segnata (senza consegna non entrano in fattura).</div>
+    ${warn.length ? warn.map(row).join('') : '<div class="empty" style="padding:4px 0;">Nessuna fornitura dimenticata.</div>'}
+    ${no.length ? `<details style="margin-top:8px;"><summary class="fc-note" style="cursor:pointer;">Tolte a mano dalla fatturazione (${no.length})</summary>${no.map(row).join('')}</details>` : ''}
   </div>`;
 }
 async function fattSave(ym, patch){
@@ -5712,7 +5793,10 @@ function bindFatt(main){
     fattSave(ym, { extra: [...(doc.extra || []), { id: 'x'+Date.now().toString(36), pid: p.id, codice: p.codice || '', nome: p.nome || '', importo: round2(n) }] }).then(()=>{ fattAddPid = null; }).catch(fail);
   });
   main.querySelectorAll('[data-fatt-xdel]').forEach(b=>b.addEventListener('click', ()=>{ const doc = fatture.get(ym) || {}; fattSave(ym, { extra: (doc.extra || []).filter(x=>x.id!==b.dataset.fattXdel) }).catch(fail); }));
-  main.querySelectorAll('[data-fatt-move-here]').forEach(b=>b.addEventListener('click', ()=>{ const [pid, oid] = b.dataset.fattMoveHere.split('|'); b.disabled = true; setOrderBillMonth(pid, oid, ym).catch(fail); }));
+  main.querySelectorAll('[data-fatt-move-here]').forEach(b=>b.addEventListener('click', ()=>{ const [pid, oid] = b.dataset.fattMoveHere.split('|'); b.disabled = true; setOrderBillMonth(pid, oid, b.dataset.fattTo || ym).catch(fail); }));
+  main.querySelectorAll('[data-fatt-goto]').forEach(el=>el.addEventListener('click', ()=>{ fattMese = el.dataset.fattGoto; fattMsg = ''; renderMain(); document.getElementById('main').scrollTop = 0; }));
+  main.querySelectorAll('[data-fatt-todel]').forEach(b=>b.addEventListener('click', ()=>{ delTab = 'consegne'; renderMain(); }));
+  main.querySelector('#fattYear')?.addEventListener('change', e=>{ fattYear = e.target.value; renderMain(); });
   const voci = ()=>fattVoci(ym).map(v=>({ ...v }));
   main.querySelectorAll('[data-fatt-vdesc]').forEach(inp=>inp.addEventListener('change', ()=>{ const vv = voci(); vv[+inp.dataset.fattVdesc].desc = inp.value.trim(); fattSave(ym, { voci: vv }).catch(fail); }));
   main.querySelectorAll('[data-fatt-vimp]').forEach(inp=>inp.addEventListener('change', ()=>{

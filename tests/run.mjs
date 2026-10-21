@@ -1113,6 +1113,19 @@ await test('fatturazione provvigioni: compenso, margine, sposta mese, emessa, Ex
     return { moved, mese: projects.find(p => p.id === 'p3').ordini.find(o => o.id === 'of4').meseFattura, refs: (window.__fake.docs('fatture').find(d => d.id === m).righe[0].ordini || []).map(o => o.oid) };
   }, prev);
   expect(rec.moved === 1 && rec.mese === prev && rec.refs.join() === 'of4', 'abbinamento del mese importato: ' + JSON.stringify(rec));
+  // forniture dimenticate e riepilogo dell'anno
+  await page.evaluate(m => { const p1 = projects.find(p => p.id === 'p1'); return db.collection('projects').doc('p1').update({ ordini: [...p1.ordini, { id: 'of5', data: m + '-10', numero: '9005', importo: 1000, consegnatoIl: m + '-12' }, { id: 'of6', data: m + '-01', numero: '9006', importo: 500, consegna: addDaysISO(todayISO(), -20) }] }); }, prev);
+  await page.waitForFunction(() => projects.find(p => p.id === 'p1').ordini.some(o => o.id === 'of6'));
+  txt = await show_(page, 'deliveries', "delTab='fatt'; fattMese=null; fattYear=null");
+  expect(/Forniture non fatturate \(2\)[\s\S]*9005[\s\S]*fuori dalla fattura emessa[\s\S]*9006[\s\S]*mai segnata come arrivata/.test(txt) || /Forniture non fatturate \(2\)[\s\S]*9006[\s\S]*9005/.test(txt), 'forniture non fatturate:\n' + txt.slice(txt.indexOf('Forniture non'), txt.indexOf('Forniture non') + 700));
+  expect(/Riepilogo dell'anno[\s\S]*Totale \d{4}[\s\S]*Provvigioni[\s\S]*Commesse fatturate/.test(txt), 'riepilogo dell\'anno mancante');
+  await page.click('[data-fatt-move-here="p1|of5"]');
+  await page.waitForFunction(m => projects.find(p => p.id === 'p1').ordini.find(o => o.id === 'of5').meseFattura === m, ym);
+  if (shotsDir) {
+    await page.evaluate(() => { renderMain(); document.querySelectorAll('#main details').forEach(d => d.open = true); for (let el = document.getElementById('main'); el; el = el.parentElement) { el.style.height = 'auto'; el.style.maxHeight = 'none'; el.style.overflow = 'visible'; } });
+    await page.screenshot({ path: path.join(shotsDir, 'fatturazione-riepilogo.png'), fullPage: true });
+    await page.evaluate(() => { for (let el = document.getElementById('main'); el; el = el.parentElement) el.removeAttribute('style'); });
+  }
 });
 
 await test('rete di collaborazioni: commesse, portale, collegamento a mano, opportunità', async () => {

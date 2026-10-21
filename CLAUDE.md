@@ -253,8 +253,8 @@ Campi principali:
   da verificare con l'azienda" (scelta dell'utente). Voci: auto 1.000 e compenso mensile 2.500 (`settings.fatturazione`
   {quota, auto, fisso}, `FATT_DEF`) + voci libere (spese tecniche assistenze in cantiere). Collection `fatture` (id
   'YYYY-MM', nei backup): {mese, stato bozza|emessa, db {projectId: num|null}, voci, righe (fotografia all'emissione),
-  totale, emessaIl, importato}. "Segna come emessa" fotografa righe e totale; "Riapri" ricalcola. Avvisi: ordini con
-  consegna prevista nel mese non segnati; ordini consegnati in mesi gia' emessi rimasti fuori ("Metti in <mese>").
+  totale, emessaIl, importato}. "Segna come emessa" fotografa righe e totale; "Riapri" ricalcola. Avviso: ordini con
+  consegna prevista nel mese non segnati.
   "Scarica Excel" (`fattExportXlsx`, SheetJS): un foglio per mese "YYYY_MM" con le colonne del file dell'utente
   (N° project, Project name, sales amount, DB > 25 ?, fee + F1 = quota), formula del compenso, "spese tecniche
   assistenze in cantiere", voci e "invoice total" = SUM. "Importa dal mio Excel" (`fattImportXlsx`): i fogli dei
@@ -266,6 +266,13 @@ Campi principali:
   ordini della stessa commessa non assegnati e consegnati nel mese o in quello dopo (o non segnati) la cui somma da'
   l'importo (al centesimo, `fattMatchOrders`) -> `meseFattura` = quel mese e riga.ordini; cosi' una fornitura uscita a
   fine mese, fatturata allora e consegnata il mese dopo, non ricompare (caso reale: Villetta, agosto/settembre).
+  **Riepilogo dell'anno** (`fattSummaryHtml`, anno solare `fattYear`): totale (emesso / da emettere), provvigioni e merce
+  fatturata, auto e compenso fisso, commesse fatturate, media al mese; grafico a colonne per mese (provvigioni + voci
+  fisse impilate, mesi da emettere attenuati, clic = apre il mese) e tabella "Mese per mese". Un mese passato senza
+  fattura emessa conta come da emettere (auto e fisso si fatturano ogni mese). **Forniture non fatturate**
+  (`fattNeglected`): ordini di mesi passati con fattura non emessa, fuori da una fattura emessa (per i mesi importati
+  senza abbinamento vale la commessa), consegne previste da oltre 7 giorni mai segnate, e (a parte) quelli tolti a mano;
+  pulsante "Fattura in <mese corrente>".
 - **Torna indietro** (blocco "Torna indietro: cronologia delle schermate visitate", 2026-10-14): `navTrack` (all'inizio di
   `renderMain` e `renderCallFlow`) confronta la posizione (`navKey`: vista, contatto, attivita', progetto, passo e
   sotto-viste) con l'attuale; se cambia mette la precedente (con scorrimento di #main e voce di menu) in `navStack`
