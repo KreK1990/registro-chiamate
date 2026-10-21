@@ -1054,6 +1054,32 @@ await test('fatturazione provvigioni: compenso, margine, sposta mese, emessa, Ex
   expect(/4800001[\s\S]*3\.642,06/.test(txt) && !/17\.270,53/.test(txt), 'ordine spostato ancora nel mese');
   await page.evaluate(() => db.collection('projects').doc('p1').update({ ordini: projects.find(p => p.id === 'p1').ordini.map(o => { if (o.id !== 'of2') return o; const { meseFattura, ...r } = o; return r; }) }));
   await page.waitForFunction(() => !projects.find(p => p.id === 'p1').ordini.find(o => o.id === 'of2').meseFattura);
+  // indirizzo, "Non fatturare" su tutta la commessa, poi di nuovo dentro con "Aggiungi una commessa"
+  await page.evaluate(() => renderMain());
+  expect(/Via Po 10, Torino/.test(await page.evaluate(() => document.getElementById('main').innerText)), 'manca l\'indirizzo del cantiere');
+  await page.selectOption('[data-fatt-rowmove="p2"]', 'no');
+  await page.waitForFunction(() => projects.find(p => p.id === 'p2').ordini.find(o => o.id === 'of3').meseFattura === 'no');
+  await page.evaluate(() => renderMain());
+  expect(!(await page.$('[data-fatt-db="p2"]')), 'la commessa tolta è ancora nel mese');
+  const lab = await page.evaluate(() => { const p = projects.find(x => x.id === 'p2'); return [p.codice, p.nome, fattAddr(p)].filter(Boolean).join(' · '); });
+  await page.fill('#fattAddQ', lab); await page.press('#fattAddQ', 'Tab');
+  await page.waitForSelector('[data-fatt-addorder="p2|of3"]');
+  expect(/non fatturato/.test(await page.textContent('.fatt-addbox')), 'stato dell\'ordine tolto');
+  await page.click('[data-fatt-addorder="p2|of3"]');
+  await page.waitForFunction(() => !projects.find(p => p.id === 'p2').ordini.find(o => o.id === 'of3').meseFattura);
+  // riga a mano per una commessa senza ordini del mese, poi tolta
+  const lab3 = await page.evaluate(() => { const p = projects.find(x => x.id === 'p3'); return [p.codice, p.nome, fattAddr(p)].filter(Boolean).join(' · '); });
+  await page.evaluate(() => { fattAddPid = null; renderMain(); });
+  await page.fill('#fattAddQ', lab3); await page.press('#fattAddQ', 'Tab');
+  await page.waitForSelector('#fattXImp');
+  await page.fill('#fattXImp', '1.000,00'); await page.click('#fattXAdd');
+  await page.waitForFunction(m => ((window.__fake.docs('fatture').find(d => d.id === m) || {}).extra || []).length === 1, ym);
+  await page.evaluate(() => renderMain());
+  txt = await page.evaluate(() => document.getElementById('main').innerText);
+  expect(/4800003[\s\S]*1\.000,00[\s\S]*250,00/.test(txt) && /Totale fattura\s*8\.487,96/.test(txt), 'riga a mano:\n' + txt.slice(0, 1600));
+  await page.click('[data-fatt-xdel]');
+  await page.waitForFunction(m => !((window.__fake.docs('fatture').find(d => d.id === m) || {}).extra || []).length, ym);
+  await page.evaluate(() => renderMain());
   // emessa: fotografia delle righe
   await page.evaluate(() => renderMain());
   await page.click('#fattEmitBtn');
@@ -1075,6 +1101,18 @@ await test('fatturazione provvigioni: compenso, margine, sposta mese, emessa, Ex
   });
   const imp = await page.evaluate(() => window.__fake.docs('fatture').find(d => d.id === '2025-04'));
   expect(r.done.length === 1 && imp && imp.stato === 'emessa' && imp.importato && imp.righe[0].db === 0.18 && imp.righe[0].fee === 420.33 && imp.totale === 3920.33 && imp.voci.length === 2, 'importazione: ' + JSON.stringify({ r, imp }).slice(0, 500));
+  // fornitura fatturata il mese prima (uscita a fine mese, consegnata in questo): l'importazione la abbina
+  await page.evaluate(() => { const t = todayISO(), p3 = projects.find(p => p.id === 'p3'); return db.collection('projects').doc('p3').update({ ordini: [...(p3.ordini || []), { id: 'of4', data: t, numero: '9004', importo: 529.56, consegnatoIl: t }] }); });
+  await page.waitForFunction(() => projects.find(p => p.id === 'p3').ordini.some(o => o.id === 'of4'));
+  const rec = await page.evaluate(async m => {
+    const aoa = [['N° project', 'Project name', 'sales amount', 'DB > 25 ?', 'fee', 0.25], [4800003, 'Villa Gamma', 529.56, 'SI', 132.39], [], [], [], [], [], ['spese tecniche assistenze in cantiere', '', '', '', 'detail'], ['', '', '', '', 1000, 'car'], ['', '', '', '', 2500, 'monthly fee'], ['', '', '', 'invoice total', 3632.39]];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), m.replace('-', '_'));
+    await fattImportXlsx(new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], 'INVOICE.xlsx'));
+    await new Promise(r => setTimeout(r, 300));
+    const moved = await fattReconcile();
+    return { moved, mese: projects.find(p => p.id === 'p3').ordini.find(o => o.id === 'of4').meseFattura, refs: (window.__fake.docs('fatture').find(d => d.id === m).righe[0].ordini || []).map(o => o.oid) };
+  }, prev);
+  expect(rec.moved === 1 && rec.mese === prev && rec.refs.join() === 'of4', 'abbinamento del mese importato: ' + JSON.stringify(rec));
 });
 
 await test('rete di collaborazioni: commesse, portale, collegamento a mano, opportunità', async () => {
@@ -1115,7 +1153,7 @@ await test('rete di collaborazioni: commesse, portale, collegamento a mano, oppo
   expect(await page.evaluate(() => netName('Amato Costruzioni S.r.l.') === netName('amato costruzioni') && netName('Edil Srl') === 'edil'), 'forma societaria nei nomi della rete');
   await page.evaluate(() => { reteFocus = null; renderMain(); });
   await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim, null, { timeout: 20000 });
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => reteSim.alpha() < 0.02, null, { timeout: 20000 }).catch(() => {});
   const pt = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.key === 'x:studio nuovo') || reteSim.nodes()[0]; const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { key: d.key, x: r.left + d.x, y: r.top + d.y, n: reteSim.nodes().length }; });
   expect(pt.n >= 2, 'mappa vuota');
   await page.mouse.click(pt.x, pt.y);
@@ -1124,13 +1162,13 @@ await test('rete di collaborazioni: commesse, portale, collegamento a mano, oppo
   if (shotsDir) { await page.waitForTimeout(1500); await (await page.$('#reteGraphCard')).screenshot({ path: path.join(shotsDir, 'rete-mappa.png') }); }
   // punto in rubrica sulla mappa -> anagrafica con le collaborazioni
   await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim && reteSim.nodes().some(n => n.n.members.length), null, { timeout: 20000 });
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => reteSim.alpha() < 0.02, null, { timeout: 20000 }).catch(() => {});
   const pm = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.n.members.length); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y, ids: d.n.members.map(m => m.id) }; });
   await page.mouse.click(pm.x, pm.y);
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => view) === 'rete', 'il primo tocco deve solo aprire il punto nella rete');
   await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim, null, { timeout: 20000 });
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => reteSim.alpha() < 0.02, null, { timeout: 20000 }).catch(() => {});
   const pm2 = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.key === reteFocus); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y }; });
   await page.mouse.click(pm2.x, pm2.y);
   await page.waitForFunction(() => view === 'detail', null, { timeout: 5000 }).catch(() => {});

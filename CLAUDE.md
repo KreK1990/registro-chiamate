@@ -259,6 +259,13 @@ Campi principali:
   (N° project, Project name, sales amount, DB > 25 ?, fee + F1 = quota), formula del compenso, "spese tecniche
   assistenze in cantiere", voci e "invoice total" = SUM. "Importa dal mio Excel" (`fattImportXlsx`): i fogli dei
   mesi passati diventano fatture emesse (importato); il mese in corso lo calcola l'app.
+  2026-10-21: per ogni commessa "Fattura in" (mese prima/dopo o "Non fatturare" = `meseFattura` 'no') e indirizzo del
+  cantiere (`fattAddr`, anche dalla scheda NII); "+ Aggiungi una commessa" (ricerca ID/nome/indirizzo, `fattAddPid`):
+  suoi ordini con "Fattura in <mese>" o riga a mano con importo (`fatture.extra` [{id, pid, codice, nome, importo}]).
+  **Abbinamento dei mesi importati** (`fattReconcile`, dopo l'importazione e all'avvio): per ogni riga importata,
+  ordini della stessa commessa non assegnati e consegnati nel mese o in quello dopo (o non segnati) la cui somma da'
+  l'importo (al centesimo, `fattMatchOrders`) -> `meseFattura` = quel mese e riga.ordini; cosi' una fornitura uscita a
+  fine mese, fatturata allora e consegnata il mese dopo, non ricompare (caso reale: Villetta, agosto/settembre).
 - **Torna indietro** (blocco "Torna indietro: cronologia delle schermate visitate", 2026-10-14): `navTrack` (all'inizio di
   `renderMain` e `renderCallFlow`) confronta la posizione (`navKey`: vista, contatto, attivita', progetto, passo e
   sotto-viste) con l'attuale; se cambia mette la precedente (con scorrimento di #main e voce di menu) in `navStack`

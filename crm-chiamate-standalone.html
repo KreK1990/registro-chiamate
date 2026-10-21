@@ -117,6 +117,10 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .fatt-db input{width:100%;min-width:0;text-align:center;padding:4px;}
 .fatt-name{min-width:0;}
 .fatt-warn{font-size:12.5px;color:var(--danger);margin-top:4px;}
+.fatt-addr{display:block;font-size:12px;color:var(--muted);}
+.fatt-rowact{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:4px;}
+.fatt-add{margin-top:10px;}
+.fatt-addbox{margin-top:6px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:2px;}
 .fatt-orders{margin:6px 0 0 86px;}
 .fatt-order{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;font-size:12.5px;padding:3px 0;color:var(--muted);}
 .fatt-move{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:12px;}
@@ -5391,6 +5395,7 @@ const FATT_DEF = { quota: 0.25, auto: 1000, fisso: 2500 };
 let fatture = new Map(), fattMese = null, delTab = 'consegne', fattMsg = '', fattOpen = new Set(), fattBusy = '';
 function onFattureSnapshot(snap){
   fatture = new Map(snap.docs.map(d=>[d.id, { id:d.id, ...d.data() }]));
+  scheduleFattReconcile();
   if(view==='deliveries' && delTab==='fatt' && canAutoRender()) renderMain();
 }
 function fattCfg(){
@@ -5399,7 +5404,16 @@ function fattCfg(){
 }
 const round2 = v=>Math.round((Number(v) || 0) * 100) / 100;
 function ymAdd(ym, n){ const d = new Date(+ym.slice(0,4), +ym.slice(5,7) - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-function orderBillMonth(o){ return o.meseFattura || (o.consegnatoIl ? o.consegnatoIl.slice(0,7) : ''); }
+function orderBillMonth(o){ return o.meseFattura==='no' ? '' : o.meseFattura || (o.consegnatoIl ? o.consegnatoIl.slice(0,7) : ''); }
+// Indirizzo del cantiere: quello del progetto o, se manca, della scheda del portale collegata.
+function fattAddr(p){
+  if(!p) return '';
+  const a = projectAddress(p); if(a) return a;
+  const d = projectPortalIds(p).map(portalFindProject).find(Boolean);
+  if(!d) return '';
+  const vc = portalViaCitta(d); return vc.via ? `${vc.via}, ${vc.citta}` : (d.comune || '');
+}
+let fattAddPid = null;   // commessa scelta in "Aggiungi una commessa"
 function orderNeedsCheck(o){ return (o.righe || []).some(r=>!/isokorb/i.test(r.descrizione || '')); }
 function fattRate(db, quota){ return db==null || db >= quota ? quota : db; }
 function fattFee(importo, db, quota){ return round2(importo * fattRate(db, quota)); }
@@ -5419,6 +5433,11 @@ function fattRows(ym){
     r.importo = round2(r.importo + (Number(o.importo) || 0)); r.ordini.push({ pid: p.id, oid: o.id }); r.check = r.check || orderNeedsCheck(o);
     map.set(p.id, r);
   }));
+  (doc.extra || []).forEach(x=>{
+    const r = map.get(x.pid || 'x:'+x.id) || { pid: x.pid || 'x:'+x.id, codice: x.codice || '', nome: x.nome || '', importo: 0, ordini: [], check: false };
+    r.importo = round2(r.importo + (Number(x.importo) || 0)); (r.extras = r.extras || []).push(x);
+    map.set(r.pid, r);
+  });
   return [...map.values()].sort((a,b)=>String(a.codice).localeCompare(String(b.codice))).map(r=>{
     const db = doc.db && Object.prototype.hasOwnProperty.call(doc.db, r.pid) ? doc.db[r.pid] : null;
     return { ...r, db, fee: fattFee(r.importo, db, c.quota) };
@@ -5458,19 +5477,23 @@ function fattView(){
   const notDone = emessa ? [] : deliveryRows().filter(r=>!r.o.consegnatoIl && !r.o.meseFattura && r.o.consegna && r.o.consegna <= monthEnd && r.o.consegna.slice(0,7) >= ymAdd(ym, -1));
   const leftOut = !emessa && ym===cur ? fattLeftOut() : [];
   const title = monthLabel(ym).replace(/^./, s=>s.toUpperCase());
-  const rowHtml = r=>{ const open = fattOpen.has(r.pid);
+  const monthOpts = (sel)=>[-1, 0, 1].map(n=>{ const m = ymAdd(ym, n); return `<option value="${m}" ${m===sel ? 'selected' : ''}>${monthLabel(m)}</option>`; }).join('');
+  const rowHtml = r=>{ const open = fattOpen.has(r.pid), p = projects.find(x=>x.id===r.pid), addr = fattAddr(p);
     return `<div class="fatt-row ${r.check ? 'check' : ''}">
       <div class="fatt-cells">
         <span class="proj-code">${esc(r.codice)}</span>
         <span class="fatt-name">${r.pid && projects.some(p=>p.id===r.pid) ? `<span class="name-link" data-open-project="${r.pid}">${esc(r.nome)}</span>` : esc(r.nome)}
-          ${!emessa && r.ordini.length ? `<button type="button" class="net-focus-btn" data-fatt-toggle="${r.pid}">${r.ordini.length} ${r.ordini.length===1 ? 'ordine' : 'ordini'}</button>` : ''}</span>
+          ${!emessa && r.ordini.length ? `<button type="button" class="net-focus-btn" data-fatt-toggle="${r.pid}">${r.ordini.length} ${r.ordini.length===1 ? 'ordine' : 'ordini'}</button>` : ''}
+          ${addr ? `<span class="fatt-addr">${esc(addr)}</span>` : ''}</span>
         <span class="fatt-num">${fmtEuro(r.importo)}</span>
         <span class="fatt-db">${emessa ? fattDbLabel(r.db) : `<input data-fatt-db="${r.pid}" value="${esc(fattDbLabel(r.db).replace('%',''))}" inputmode="decimal" aria-label="Margine DB" title="SI = margine almeno del ${c.quota*100}%; altrimenti la percentuale">`}</span>
         <span class="fatt-num"><strong>${fmtEuro(r.fee)}</strong></span>
       </div>
+      ${!emessa ? `<div class="fatt-rowact">${r.ordini.length ? `<label class="fatt-move">Fattura in <select data-fatt-rowmove="${r.pid}">${monthOpts(ym)}<option value="no">Non fatturare</option></select></label>` : ''}
+        ${(r.extras || []).map(x=>`<span class="fc-note">Riga a mano ${fmtEuro(x.importo)} <button type="button" class="net-focus-btn" data-fatt-xdel="${esc(x.id)}">togli</button></span>`).join('')}</div>` : ''}
       ${r.check && !emessa ? '<div class="fatt-warn">Contiene Bole, Tronsole o altri prodotti: margine da verificare con l\'azienda.</div>' : ''}
       ${open && !emessa ? `<div class="fatt-orders">${r.ordini.map(x=>{ const ref = orderRef(x.pid, x.oid); if(!ref) return ''; const o = ref.o;
-          return `<div class="fatt-order"><span>Ordine${o.numero ? ' n° '+esc(o.numero) : ''} · ${fmtEuro(o.importo)} · ${o.consegnatoIl ? 'consegnato il '+fmtDate(o.consegnatoIl) : 'non ancora consegnato'}${o.meseFattura ? ' · <strong>spostato a mano</strong>' : ''}</span>
+          return `<div class="fatt-order"><span>Ordine${o.numero ? ' n° '+esc(o.numero) : ''} · ${fmtEuro(o.importo)} · ${o.consegnatoIl ? 'consegnato il '+fmtDate(o.consegnatoIl) : 'non ancora consegnato'}${o.meseFattura && o.meseFattura!=='no' ? ' · <strong>spostato a mano</strong>' : ''}</span>
             <label class="fatt-move">Fattura in <select data-fatt-move="${x.pid}|${x.oid}">${[-1, 0, 1].map(n=>{ const m = ymAdd(ym, n); return `<option value="${m}" ${n===0 ? 'selected' : ''}>${monthLabel(m)}</option>`; }).join('')}${o.meseFattura ? '<option value="">mese della consegna</option>' : ''}</select></label></div>`; }).join('')}</div>` : ''}
     </div>`; };
   return `<div class="card fatt-head">
@@ -5490,6 +5513,7 @@ function fattView(){
       </div>
       <div class="fatt-cells fatt-th"><span>N° progetto</span><span>Progetto</span><span class="fatt-num">Merce</span><span class="fatt-db">DB ≥ ${c.quota*100}%?</span><span class="fatt-num">Compenso</span></div>
       ${rows.length ? rows.map(rowHtml).join('') : `<div class="empty" style="padding:6px 0;">${emessa ? 'Nessuna commessa in questa fattura.' : 'Nessuna fornitura consegnata in questo mese: le consegne si segnano nella scheda Consegne.'}</div>`}
+      ${emessa ? '' : fattAddHtml(ym)}
       <div class="fatt-sub">Spese tecniche, auto e compenso fisso</div>
       ${voci.map((v, i)=>`<div class="fatt-cells fatt-voce">
           ${emessa ? `<span class="fatt-vdesc">${esc(v.desc)}</span><span class="fatt-num">${fmtEuro(v.importo)}</span>`
@@ -5513,6 +5537,22 @@ function fattView(){
       <div class="fc-note">Valgono per le bozze dei mesi nuovi; le fatture emesse non cambiano.</div>
     </details>`;
 }
+function fattAddHtml(ym){
+  const list = projects.filter(p=>!isLost(p)).map(p=>({ p, l: [p.codice, p.nome, fattAddr(p)].filter(Boolean).join(' · ') })).sort((a,b)=>String(a.p.codice||'').localeCompare(String(b.p.codice||'')));
+  const p = fattAddPid && projects.find(x=>x.id===fattAddPid);
+  const where = o=>{ const m = orderBillMonth(o); return o.meseFattura==='no' ? 'non fatturato' : m ? (m===ym ? 'già in questo mese' : 'in '+monthLabel(m)+((fatture.get(m) || {}).stato==='emessa' ? ' (emessa)' : '')) : 'non consegnato'; };
+  return `<div class="fatt-add">
+    <input id="fattAddQ" list="fattProjList" placeholder="+ Aggiungi una commessa: cerca ID, nome o indirizzo" autocomplete="off" value="${p ? esc(list.find(x=>x.p.id===p.id).l) : ''}">
+    <datalist id="fattProjList">${list.map(x=>`<option value="${esc(x.l)}"></option>`).join('')}</datalist>
+    ${p ? `<div class="fatt-addbox">
+      ${(p.ordini || []).length ? (p.ordini || []).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||'')).map(o=>`<div class="fatt-order"><span>Ordine${o.numero ? ' n° '+esc(o.numero) : ''} del ${fmtDate(o.data)} · ${fmtEuro(o.importo)} · ${esc(where(o))}</span>
+          ${orderBillMonth(o)===ym ? '' : `<button class="btn secondary small" data-fatt-addorder="${p.id}|${o.id}">Fattura in ${esc(monthLabel(ym))}</button>`}</div>`).join('')
+        : '<div class="fc-note">Nessun ordine registrato per questa commessa.</div>'}
+      <div class="fatt-order"><span>Riga senza ordine, importo merce:</span><span><input id="fattXImp" inputmode="decimal" placeholder="es. 1.250,00" style="width:120px;"> <button class="btn secondary small" id="fattXAdd">Aggiungi</button></span></div>
+      <button type="button" class="net-focus-btn" id="fattAddClose">chiudi</button>
+    </div>` : ''}
+  </div>`;
+}
 async function fattSave(ym, patch){
   const doc = fatture.get(ym) || {};
   const data = { mese: ym, stato: doc.stato || 'bozza', db: doc.db || {}, voci: doc.voci || fattDefaultVoci(ym), ...patch, aggiornatoIl: Date.now() };
@@ -5523,7 +5563,7 @@ async function setOrderBillMonth(pid, oid, ym){
   const ordini = (p.ordini || []).map(o=>{
     if(o.id!==oid) return o;
     const n = { ...o };
-    if(!ym || (o.consegnatoIl && o.consegnatoIl.slice(0,7)===ym)) delete n.meseFattura; else n.meseFattura = ym;
+    if(!ym || (ym!=='no' && o.consegnatoIl && o.consegnatoIl.slice(0,7)===ym)) delete n.meseFattura; else n.meseFattura = ym;
     return n;
   });
   await db.collection('projects').doc(pid).update({ ordini, updatedAt: Date.now() });
@@ -5593,6 +5633,50 @@ async function fattImportXlsx(file){
   }
   return { done, skipped };
 }
+// Abbinamento dei mesi importati dall'Excel agli ordini registrati (segnalato dall'utente 2026-10-21: una
+// fornitura fatturata ad agosto, uscita a fine agosto e consegnata a settembre, ricompariva a settembre).
+// Per ogni riga importata: ordini della stessa commessa non ancora assegnati, consegnati nel mese o in
+// quello dopo (o non segnati), la cui somma da' l'importo della riga (al centesimo): restano in quel mese
+// (`meseFattura`) e la riga ricorda gli ordini. Gira dopo l'importazione e all'avvio, una volta per riga.
+const fattReconciled = new Set();
+function fattMatchOrders(cands, target){
+  const ok = s=>Math.abs(s - target) < 0.05, n = Math.min(cands.length, 12);
+  for(let mask = 1; mask < (1 << n); mask++){
+    let s = 0; const pick = [];
+    for(let i = 0; i < n; i++) if(mask & (1 << i)){ s += Number(cands[i].importo) || 0; pick.push(cands[i]); }
+    if(ok(s)) return pick;
+  }
+  return null;
+}
+async function fattReconcile(){
+  if(!projectsSeen) return 0;
+  let moved = 0;
+  for(const [ym, doc] of fatture){
+    if(!doc.importato || doc.stato!=='emessa' || !doc.righe) continue;
+    let changed = false;
+    const righe = doc.righe.map(r=>({ ...r, ordini: r.ordini || [] }));
+    for(const r of righe){
+      const key = ym+'|'+r.codice+'|'+r.importo;
+      if(r.ordini.length || fattReconciled.has(key)) continue;
+      fattReconciled.add(key);
+      const p = projects.find(x=>String(x.codice||'')===String(r.codice));
+      if(!p) continue;
+      const taken = new Set([...fatture.values()].flatMap(d=>(d.righe || []).flatMap(x=>(x.ordini || []).map(o=>o.oid))));
+      const cands = (p.ordini || []).filter(o=>!taken.has(o.id) && (!o.meseFattura || o.meseFattura===ym) && (o.consegnatoIl ? [ym, ymAdd(ym, 1)].includes(o.consegnatoIl.slice(0,7)) : (o.data || '') <= ym+'-31'))
+        .sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+      const pick = fattMatchOrders(cands, Number(r.importo) || 0);
+      if(!pick) continue;
+      r.pid = p.id; r.ordini = pick.map(o=>({ pid: p.id, oid: o.id })); changed = true;
+      const ordini = (p.ordini || []).map(o=>pick.some(x=>x.id===o.id) ? { ...o, meseFattura: ym } : o);
+      await db.collection('projects').doc(p.id).update({ ordini, updatedAt: Date.now() });
+      p.ordini = ordini; moved += pick.length;
+    }
+    if(changed) await db.collection('fatture').doc(ym).update({ righe });
+  }
+  return moved;
+}
+let fattReconTimer = null;
+function scheduleFattReconcile(){ clearTimeout(fattReconTimer); fattReconTimer = setTimeout(()=>fattReconcile().catch(e=>console.warn('Abbinamento fatture', e)), 1500); }
 function bindFatt(main){
   const ym = fattMese, fail = e=>{ fattMsg = 'Non salvato: '+esc(e.message || e.code || ''); renderMain(); };
   main.querySelector('#fattMese')?.addEventListener('change', e=>{ fattMese = e.target.value; fattMsg = ''; renderMain(); });
@@ -5609,6 +5693,25 @@ function bindFatt(main){
     const [pid, oid] = sel.dataset.fattMove.split('|');
     setOrderBillMonth(pid, oid, sel.value).catch(fail);
   }));
+  main.querySelectorAll('[data-fatt-rowmove]').forEach(sel=>sel.addEventListener('change', async ()=>{
+    const r = fattRows(ym).find(x=>x.pid===sel.dataset.fattRowmove); if(!r) return;
+    sel.disabled = true;
+    try{ for(const x of r.ordini) await setOrderBillMonth(x.pid, x.oid, sel.value); fattMsg = sel.value==='no' ? `${esc(r.nome)}: tolta dalla fatturazione.` : `${esc(r.nome)}: spostata in ${monthLabel(sel.value)}.`; }
+    catch(e){ fail(e); }
+  }));
+  main.querySelector('#fattAddQ')?.addEventListener('change', e=>{
+    const v = e.target.value.trim(), p = projects.find(x=>!isLost(x) && [x.codice, x.nome, fattAddr(x)].filter(Boolean).join(' · ')===v) || projects.find(x=>String(x.codice||'')===v);
+    fattAddPid = p ? p.id : null; if(!p && v) fattMsg = 'Scegli la commessa dall\'elenco dei suggerimenti.'; renderMain();
+  });
+  main.querySelector('#fattAddClose')?.addEventListener('click', ()=>{ fattAddPid = null; renderMain(); });
+  main.querySelectorAll('[data-fatt-addorder]').forEach(b=>b.addEventListener('click', ()=>{ const [pid, oid] = b.dataset.fattAddorder.split('|'); b.disabled = true; setOrderBillMonth(pid, oid, ym).catch(fail); }));
+  main.querySelector('#fattXAdd')?.addEventListener('click', ()=>{
+    const p = projects.find(x=>x.id===fattAddPid), n = parseEuro(document.getElementById('fattXImp').value);
+    if(!p || n===null || Number.isNaN(n) || n<=0){ fattMsg = 'Indica l\'importo della merce (es. 1.250,00).'; renderMain(); return; }
+    const doc = fatture.get(ym) || {};
+    fattSave(ym, { extra: [...(doc.extra || []), { id: 'x'+Date.now().toString(36), pid: p.id, codice: p.codice || '', nome: p.nome || '', importo: round2(n) }] }).then(()=>{ fattAddPid = null; }).catch(fail);
+  });
+  main.querySelectorAll('[data-fatt-xdel]').forEach(b=>b.addEventListener('click', ()=>{ const doc = fatture.get(ym) || {}; fattSave(ym, { extra: (doc.extra || []).filter(x=>x.id!==b.dataset.fattXdel) }).catch(fail); }));
   main.querySelectorAll('[data-fatt-move-here]').forEach(b=>b.addEventListener('click', ()=>{ const [pid, oid] = b.dataset.fattMoveHere.split('|'); b.disabled = true; setOrderBillMonth(pid, oid, ym).catch(fail); }));
   const voci = ()=>fattVoci(ym).map(v=>({ ...v }));
   main.querySelectorAll('[data-fatt-vdesc]').forEach(inp=>inp.addEventListener('change', ()=>{ const vv = voci(); vv[+inp.dataset.fattVdesc].desc = inp.value.trim(); fattSave(ym, { voci: vv }).catch(fail); }));
@@ -5632,7 +5735,8 @@ function bindFatt(main){
     input.addEventListener('change', async ()=>{
       const f = input.files && input.files[0]; if(!f) return;
       fattBusy = 'i'; fattMsg = 'Lettura del file…'; renderMain();
-      try{ const r = await fattImportXlsx(f); fattMsg = (r.done.length ? `Importati come fatture emesse: ${r.done.join(', ')}.` : 'Nessun mese importato (fogli chiamati AAAA_MM).') + (r.skipped.length ? ` Saltati: ${r.skipped.join('; ')}.` : ''); }
+      try{ const r = await fattImportXlsx(f); await new Promise(res=>setTimeout(res, 300)); const moved = await fattReconcile();
+        fattMsg = (r.done.length ? `Importati come fatture emesse: ${r.done.join(', ')}.` : 'Nessun mese importato (fogli chiamati AAAA_MM).') + (r.skipped.length ? ` Saltati: ${r.skipped.join('; ')}.` : '') + (moved ? ` ${moved} ${moved===1 ? 'ordine abbinato' : 'ordini abbinati'} ai mesi già fatturati.` : ''); }
       catch(e){ fattMsg = 'Impossibile leggere il file: '+esc(e.message || e); }
       fattBusy = ''; renderMain();
     });
@@ -7246,7 +7350,7 @@ function canAutoRender(){
 }
 function onProjectsSnapshot(snap){
   projects = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-  projectsSeen = true; scheduleForecastSnapshot();
+  projectsSeen = true; scheduleForecastSnapshot(); if(fatture.size) scheduleFattReconcile();
   setTimeout(purgeTrash, 5000);
   if(canAutoRender()) renderMain();
   updateNavBadges();
