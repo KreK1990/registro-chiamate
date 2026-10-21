@@ -1119,6 +1119,9 @@ await test('fatturazione provvigioni: compenso, margine, sposta mese, emessa, Ex
   txt = await show_(page, 'deliveries', "delTab='fatt'; fattMese=null; fattYear=null");
   expect(/Forniture non fatturate \(2\)[\s\S]*9005[\s\S]*fuori dalla fattura emessa[\s\S]*9006[\s\S]*mai segnata come arrivata/.test(txt) || /Forniture non fatturate \(2\)[\s\S]*9006[\s\S]*9005/.test(txt), 'forniture non fatturate:\n' + txt.slice(txt.indexOf('Forniture non'), txt.indexOf('Forniture non') + 700));
   expect(/Riepilogo dell'anno[\s\S]*Totale \d{4}[\s\S]*Provvigioni[\s\S]*Commesse fatturate/.test(txt), 'riepilogo dell\'anno mancante');
+  expect(/In arrivo nel \d{4}[\s\S]*da ordini confermati/.test(txt) && /Obiettivo \d{4}: provvigioni che coprono auto e compenso fisso \(42\.000,00\s€\)/.test(txt) && /dal forecast 12\.500,00/.test(txt), 'provvigioni in arrivo / obiettivo:\n' + txt.slice(txt.indexOf('Riepilogo'), txt.indexOf('Riepilogo') + 900));
+  const inc = await page.evaluate(() => { const m = fattIncoming(); let a = 0, f = 0; m.forEach(v => { a += v.arrivo; f += v.fc; }); return { a: Math.round(a * 100) / 100, f }; });
+  expect(inc.a > 0 && inc.f === 12500, 'calcolo provvigioni in arrivo: ' + JSON.stringify(inc));
   await page.click('[data-fatt-move-here="p1|of5"]');
   await page.waitForFunction(m => projects.find(p => p.id === 'p1').ordini.find(o => o.id === 'of5').meseFattura === m, ym);
   if (shotsDir) {

@@ -273,6 +273,13 @@ Campi principali:
   (`fattNeglected`): ordini di mesi passati con fattura non emessa, fuori da una fattura emessa (per i mesi importati
   senza abbinamento vale la commessa), consegne previste da oltre 7 giorni mai segnate, e (a parte) quelli tolti a mano;
   pulsante "Fattura in <mese corrente>".
+  **Provvigioni in arrivo e obiettivo** (2026-10-21, `fattIncoming`, alla quota piena): commesse confermate = ordini
+  registrati non consegnati nel mese della consegna prevista (date passate e senza data: mese in corso) + resto da
+  spedire (`toShip`) diviso per anno con `yearShares` e sui mesi che restano; commesse aperte = `forecastWeighted` nel
+  mese di `chiusuraPrevista` (o sui mesi che restano). Nel grafico: in arrivo grigio trasparente (scelta dell'utente:
+  colore neutro), forecast solo contorno tratteggiato, auto e fisso dei mesi futuri attenuati. Riquadro "Obiettivo":
+  provvigioni maturate + in arrivo + forecast contro auto e fisso dell'anno ((auto+fisso) x 12), merce che manca
+  (/ quota) e al mese fino a dicembre, anno successivo con confermati e forecast.
 - **Torna indietro** (blocco "Torna indietro: cronologia delle schermate visitate", 2026-10-14): `navTrack` (all'inizio di
   `renderMain` e `renderCallFlow`) confronta la posizione (`navKey`: vista, contatto, attivita', progetto, passo e
   sotto-viste) con l'attuale; se cambia mette la precedente (con scorrimento di #main e voce di menu) in `navStack`

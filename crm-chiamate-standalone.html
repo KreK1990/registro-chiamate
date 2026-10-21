@@ -124,7 +124,22 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .fatt-chart .fb-val{font-size:10px;fill:var(--text);font-family:var(--sans);}
 .fatt-chart .fb-lab{font-size:10px;fill:var(--muted);font-family:var(--sans);}
 .fatt-chart g:hover .fb-fees{fill-opacity:1;filter:brightness(1.15);}
-.fb-draft-key{background:var(--accent);opacity:.45;}
+.fatt-chart .fb-fixed.fut{fill-opacity:.4;}
+.fatt-chart .fb-arrivo{fill:var(--muted);fill-opacity:.28;stroke:var(--muted);stroke-opacity:.6;stroke-width:1;}
+.fatt-chart .fb-fc{fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 2;}
+.fb-arrivo-key{background:var(--muted);opacity:.35;outline:1px solid var(--muted);}
+.fb-fc-key{background:none;border:1px dashed var(--muted);box-sizing:border-box;}
+.fatt-goal{margin-top:12px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:2px;}
+.fatt-goal-h{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13.5px;margin-bottom:8px;}
+.fatt-goal-h span{color:var(--muted);font-size:12.5px;}
+.fatt-goal-track{position:relative;display:flex;height:16px;background:var(--panel);border:1px solid var(--border);border-radius:2px;overflow:visible;}
+.fatt-goal-track > div{height:100%;}
+.fg-fees{background:var(--accent);}
+.fg-arrivo{background:color-mix(in srgb, var(--muted) 30%, transparent);}
+.fg-fc{background:none;border:1px dashed var(--muted);box-sizing:border-box;}
+.fg-target{position:absolute;top:-4px;bottom:-4px;width:0;border-left:2px solid var(--text);}
+.fatt-goal-legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--muted);}
+.fatt-goal-legend i{display:inline-block;width:11px;height:11px;margin-right:5px;vertical-align:-1px;}
 .fatt-table{margin-top:6px;}
 .fatt-trow{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(4,minmax(0,1fr));gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;text-align:right;}
 .fatt-trow > :first-child{text-align:left;}
@@ -796,8 +811,8 @@ h2{color:var(--accent);font-weight:800;}
   .page-bar.stuck{top:-12px;margin:-12px -12px 8px;padding:8px 12px;}
   .rete-graph{height:420px;}
   .fatt-cells.fatt-th{display:none;}
-  .fatt-trow{grid-template-columns:minmax(0,1fr) auto auto;font-size:12.5px;}
-  .fatt-trow > :nth-child(2), .fatt-trow > :nth-child(4){display:none;}
+  .fatt-trow{grid-template-columns:minmax(0,1fr) auto auto auto;font-size:12px;}
+  .fatt-trow > :nth-child(2){display:none;}
   .fatt-row .fatt-cells{grid-template-columns:minmax(0,1fr) 60px 92px;gap:2px 8px;}
   .fatt-row .fatt-cells > :nth-child(1){grid-column:1;grid-row:1;font-size:11.5px;}
   .fatt-row .fatt-cells > :nth-child(2){grid-column:1;grid-row:2;}
@@ -5559,32 +5574,96 @@ function fattAddHtml(ym){
   </div>`;
 }
 // Riepilogo del fatturato e forniture mai fatturate (Fatturazione, richiesta dell'utente 2026-10-21).
+// Provvigioni in arrivo (richiesta dell'utente 2026-10-21), per mese, alla quota piena (DB "SI"):
+// - arrivo: commesse confermate. Ordini registrati non ancora consegnati nel mese della consegna prevista
+//   (le date passate nel mese in corso); il resto da spedire (deliberato meno ordinato) diviso per anno con
+//   la ripartizione del Forecast e, dentro l'anno, sui mesi che restano.
+// - fc: commesse aperte, valore ponderato del Forecast nel mese di chiusura prevista (o sui mesi che restano).
+function fattIncoming(){
+  const cur = todayISO().slice(0,7), q = fattCfg().quota, map = new Map();
+  const add = (m, k, v)=>{ if(!v) return; const e = map.get(m) || { arrivo: 0, fc: 0 }; e[k] += v; map.set(m, e); };
+  const spread = (amount, year, k)=>{
+    const first = year===cur.slice(0,4) ? ymAdd(cur, 1) : year+'-01';
+    if(first.slice(0,4)!==year){ add(cur, k, amount); return; }
+    const months = []; for(let m = first; m.startsWith(year); m = ymAdd(m, 1)) months.push(m);
+    months.forEach(m=>add(m, k, amount / months.length));
+  };
+  projects.filter(p=>!isLost(p)).forEach(p=>{
+    if(isWon(p)){
+      (p.ordini || []).forEach(o=>{
+        if(o.consegnatoIl || o.meseFattura) return;
+        const m = o.consegna && o.consegna.slice(0,7) > cur ? o.consegna.slice(0,7) : cur;
+        add(m, 'arrivo', (Number(o.importo) || 0) * q);
+      });
+      const rest = toShip(p);
+      if(rest > 0) Object.entries(yearShares(p)).forEach(([y, sh])=>spread(rest * sh * q, y, 'arrivo'));
+    } else {
+      const w = forecastWeighted(p); if(!w) return;
+      Object.entries(yearShares(p)).forEach(([y, sh])=>{
+        const v = w * sh * q, ym = p.chiusuraPrevista;
+        if(ym && ym.startsWith(y) && ym > cur) add(ym, 'fc', v); else spread(v, y, 'fc');
+      });
+    }
+  });
+  return map;
+}
 let fattYear = null;
 function fattMonthSplit(ym){
   const rows = fattRows(ym);
   const fees = round2(rows.reduce((s,r)=>s+(Number(r.fee) || 0), 0)), fixed = round2(fattVoci(ym).reduce((s,v)=>s+(Number(v.importo) || 0), 0));
   return { fees, fixed, merce: round2(rows.reduce((s,r)=>s+(Number(r.importo) || 0), 0)), comm: rows.map(r=>r.codice || r.pid), tot: fattTotal(ym), emessa: (fatture.get(ym) || {}).stato==='emessa' };
 }
-// Conteggio complessivo dell'anno (anno solare), con il dettaglio mese per mese.
+// Conteggio complessivo dell'anno (anno solare), provvigioni in arrivo e distanza dal pareggio.
 function fattSummaryHtml(){
-  const all = fattMonths(), years = [...new Set(all.map(m=>m.slice(0,4)))].sort().reverse();
-  if(!years.length) return '';
-  if(!fattYear || !years.includes(fattYear)) fattYear = todayISO().slice(0,4);
-  const year = fattYear, data = all.filter(m=>m.startsWith(year)).sort().map(m=>({ m, ...fattMonthSplit(m) }));
-  const sum = (list, f)=>round2(list.reduce((s,d)=>s+d[f], 0));
+  const cur = todayISO().slice(0,7), c = fattCfg(), fixedMonth = c.auto + c.fisso, inc = fattIncoming();
+  const known = fattMonths(), years = [...new Set([...known.map(m=>m.slice(0,4)), cur.slice(0,4), String(+cur.slice(0,4) + 1)])].sort().reverse();
+  if(!fattYear || !years.includes(fattYear)) fattYear = cur.slice(0,4);
+  const year = fattYear;
+  const data = known.filter(m=>m.startsWith(year)).sort().map(m=>({ m, ...fattMonthSplit(m) }));
+  const sum = (list, f)=>round2(list.reduce((s,d)=>s+(d[f] || 0), 0));
   const em = data.filter(d=>d.emessa), open = data.filter(d=>!d.emessa);
   const comm = new Set(data.flatMap(d=>d.comm));
-  const W = 640, H = 170, pl = 6, pr = 6, pt = 18, pb = 22, iw = W - pl - pr, ih = H - pt - pb;
-  const max = Math.max(1, ...data.map(d=>d.tot)), gap = iw / 12, bw = Math.min(34, gap * 0.62);
-  const bars = data.map(d=>{
-    const i = +d.m.slice(5,7) - 1, x = pl + i * gap + (gap - bw) / 2, hf = d.fees / max * ih, hx = d.fixed / max * ih, y0 = pt + ih;
-    const tip = `${monthLabel(d.m)}: provvigioni ${fmtEuro(d.fees)} + voci fisse ${fmtEuro(d.fixed)} = ${fmtEuro(d.tot)}${d.emessa ? '' : ' (da emettere)'}`;
-    return `<g class="fatt-bar ${d.emessa ? '' : 'draft'}"><title>${esc(tip)}</title>
-      <rect x="${x.toFixed(1)}" y="${(y0 - hx).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, hx - 1).toFixed(1)}" class="fb-fixed"></rect>
-      <rect x="${x.toFixed(1)}" y="${(y0 - hx - hf).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, hf).toFixed(1)}" rx="2" class="fb-fees"></rect>
-      <text x="${(x + bw / 2).toFixed(1)}" y="${(y0 - hx - hf - 4).toFixed(1)}" text-anchor="middle" class="fb-val">${compactEuro(d.tot)}</text>
-      <rect x="${(pl + i * gap).toFixed(1)}" y="${pt}" width="${gap.toFixed(1)}" height="${ih + pb}" fill="transparent" data-fatt-goto="${d.m}" style="cursor:pointer;"></rect></g>`;
-  }).join('') + MONTHS_SHORT.map((l, i)=>`<text x="${(pl + i * gap + gap / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="fb-lab">${l}</text>`).join('');
+  const months12 = [...Array(12)].map((_, i)=>`${year}-${String(i + 1).padStart(2, '0')}`);
+  const cols = months12.map(m=>{
+    const d = data.find(x=>x.m===m), f = inc.get(m) || { arrivo: 0, fc: 0 }, future = m > cur;
+    return { m, d, fees: d ? d.fees : 0, fixed: d ? d.fixed : (future ? fixedMonth : 0), arrivo: round2(f.arrivo), fc: round2(f.fc), future, emessa: d && d.emessa };
+  });
+  const arrY = sum(cols, 'arrivo'), fcY = sum(cols, 'fc'), feesY = sum(data, 'fees'), fixedY = fixedMonth * 12;
+  // grafico
+  const W = 640, H = 180, pl = 6, pr = 6, pt = 18, pb = 22, iw = W - pl - pr, ih = H - pt - pb;
+  const max = Math.max(1, ...cols.map(x=>x.fixed + x.fees + x.arrivo + x.fc)), gap = iw / 12, bw = Math.min(34, gap * 0.62), sc = v=>v / max * ih;
+  const bars = cols.map((x, i)=>{
+    const bx = pl + i * gap + (gap - bw) / 2, y0 = pt + ih;
+    let y = y0; const seg = (v, cls, rx)=>{ if(v <= 0) return ''; const h = sc(v); y -= h; return `<rect x="${bx.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0.5, h - 1).toFixed(1)}" class="${cls}" ${rx ? 'rx="2"' : ''}></rect>`; };
+    const parts = seg(x.fixed, x.future ? 'fb-fixed fut' : 'fb-fixed') + seg(x.fees, 'fb-fees') + seg(x.arrivo, 'fb-arrivo') + seg(x.fc, 'fb-fc');
+    const tot = x.fixed + x.fees + x.arrivo + x.fc;
+    const tip = `${monthLabel(x.m)}: ` + [x.fees ? `provvigioni ${fmtEuro(x.fees)}` : '', x.arrivo ? `in arrivo da ordini confermati ${fmtEuro(x.arrivo)}` : '', x.fc ? `dal forecast ${fmtEuro(x.fc)}` : '', x.fixed ? `auto e fisso ${fmtEuro(x.fixed)}` : ''].filter(Boolean).join(' · ');
+    return `<g class="fatt-bar ${x.d && !x.emessa ? 'draft' : ''}"><title>${esc(tip)}</title>${parts}
+      ${tot ? `<text x="${(bx + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" class="fb-val">${compactEuro(tot)}</text>` : ''}
+      <rect x="${(pl + i * gap).toFixed(1)}" y="${pt}" width="${gap.toFixed(1)}" height="${ih + pb}" fill="transparent" ${x.d || x.m===cur ? `data-fatt-goto="${x.m}" style="cursor:pointer;"` : ''}></rect>
+      <text x="${(pl + i * gap + gap / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="fb-lab">${MONTHS_SHORT[i]}</text></g>`;
+  }).join('');
+  // distanza dal pareggio: provvigioni (maturate + in arrivo + forecast) contro auto e compenso fisso dell'anno
+  const pct = v=>Math.round(v * 100 / fixedY);
+  const scaleMax = Math.max(fixedY, feesY + arrY + fcY);
+  const bw2 = v=>(Math.max(0, v) * 100 / scaleMax).toFixed(2);
+  const gapAll = fixedY - (feesY + arrY + fcY), gapSure = fixedY - (feesY + arrY);
+  const monthsLeft = year===cur.slice(0,4) ? 12 - +cur.slice(5,7) : year > cur.slice(0,4) ? 12 : 0;
+  const next = String(+year + 1), nextCols = [...inc.entries()].filter(([m])=>m.startsWith(next));
+  const nextArr = round2(nextCols.reduce((s,[,v])=>s+v.arrivo, 0)), nextFc = round2(nextCols.reduce((s,[,v])=>s+v.fc, 0));
+  const goal = `<div class="fatt-goal">
+      <div class="fatt-goal-h"><strong>Obiettivo ${year}: provvigioni che coprono auto e compenso fisso (${fmtEuro(fixedY)})</strong><span>${pct(feesY + arrY + fcY)}% con il forecast</span></div>
+      <div class="fatt-goal-track">
+        <div class="fg-fees" style="width:${bw2(feesY)}%;"></div><div class="fg-arrivo" style="width:${bw2(arrY)}%;"></div><div class="fg-fc" style="width:${bw2(fcY)}%;"></div>
+        <i class="fg-target" style="left:${bw2(fixedY)}%;" title="pareggio"></i>
+      </div>
+      <div class="fatt-goal-legend"><span><i class="fg-fees"></i>maturate ${fmtEuro(feesY)} (${pct(feesY)}%)</span><span><i class="fg-arrivo"></i>in arrivo da ordini confermati ${fmtEuro(arrY)}</span><span><i class="fg-fc"></i>dal forecast ${fmtEuro(fcY)}</span></div>
+      <div class="fc-note" style="margin-top:6px;">${gapSure <= 0 ? `<strong>Pareggio coperto</strong> con le provvigioni maturate e quelle degli ordini già confermati.`
+        : gapAll <= 0 ? `Con gli ordini confermati mancano ${fmtEuro(gapSure)} di provvigioni (${fmtEuro(gapSure / c.quota)} di merce): il forecast li copre se le offerte si chiudono come previsto.`
+        : `Mancano <strong>${fmtEuro(gapAll)}</strong> di provvigioni oltre a ordini confermati e forecast: servono altri <strong>${fmtEuro(gapAll / c.quota)}</strong> di merce consegnata${monthsLeft ? ` entro dicembre, circa ${fmtEuro(gapAll / c.quota / monthsLeft)} al mese` : ''}.`}
+        Per coprire tutto l'anno servono ${fmtEuro(fixedY / c.quota)} di merce (${fmtEuro(fixedY / c.quota / 12)} al mese).
+        ${nextArr || nextFc ? ` Nel ${next} ci sono già ${fmtEuro(nextArr)} di provvigioni da ordini confermati e ${fmtEuro(nextFc)} dal forecast (${pct(nextArr + nextFc)}% del pareggio).` : ''}</div>
+    </div>`;
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
       <h3 style="margin:0;">Riepilogo dell'anno</h3>
@@ -5592,16 +5671,20 @@ function fattSummaryHtml(){
     </div>
     <div class="fc-tiles">
       <div class="fc-tile"><div class="fc-label">Totale ${year}</div><div class="fc-value">${fmtEuro(sum(data, 'tot'))}</div><div class="fc-note">emesso ${fmtEuro(sum(em, 'tot'))}${open.length ? ` · da emettere ${fmtEuro(sum(open, 'tot'))}` : ''}</div></div>
-      <div class="fc-tile"><div class="fc-label">Provvigioni</div><div class="fc-value">${fmtEuro(sum(data, 'fees'))}</div><div class="fc-note">su merce fatturata ${fmtEuro(sum(data, 'merce'))}</div></div>
-      <div class="fc-tile"><div class="fc-label">Auto e compenso fisso</div><div class="fc-value">${fmtEuro(sum(data, 'fixed'))}</div><div class="fc-note">${data.length} ${data.length===1 ? 'mese' : 'mesi'}</div></div>
-      <div class="fc-tile"><div class="fc-label">Commesse fatturate</div><div class="fc-value">${comm.size}</div><div class="fc-note">media ${fmtEuro(data.length ? sum(data, 'tot') / data.length : 0)} al mese</div></div>
+      <div class="fc-tile"><div class="fc-label">Provvigioni</div><div class="fc-value">${fmtEuro(feesY)}</div><div class="fc-note">su merce fatturata ${fmtEuro(sum(data, 'merce'))}</div></div>
+      <div class="fc-tile"><div class="fc-label">In arrivo nel ${year}</div><div class="fc-value">${fmtEuro(arrY)}</div><div class="fc-note">da ordini confermati · forecast ${fmtEuro(fcY)}</div></div>
+      <div class="fc-tile"><div class="fc-label">Commesse fatturate</div><div class="fc-value">${comm.size}</div><div class="fc-note">auto e fisso ${fmtEuro(sum(data, 'fixed'))}</div></div>
     </div>
-    <div class="dash-legend" style="margin-top:10px;"><span><i style="background:var(--accent);"></i>Provvigioni</span><span><i style="background:var(--border-strong);"></i>Auto e compenso fisso</span><span><i class="fb-draft-key"></i>Da emettere</span></div>
-    <svg viewBox="0 0 ${W} ${H}" class="fatt-chart" role="img" aria-label="Fatturato ${year} mese per mese"><line x1="${pl}" y1="${pt + ih}" x2="${W - pr}" y2="${pt + ih}" stroke="var(--border)"></line>${bars}</svg>
+    ${goal}
+    <div class="dash-legend" style="margin-top:12px;"><span><i style="background:var(--accent);"></i>Provvigioni</span><span><i style="background:var(--border-strong);"></i>Auto e compenso fisso</span><span><i class="fb-arrivo-key"></i>In arrivo (ordini confermati)</span><span><i class="fb-fc-key"></i>Forecast (offerte, ponderato)</span></div>
+    <svg viewBox="0 0 ${W} ${H}" class="fatt-chart" role="img" aria-label="Fatturato ${year} mese per mese, con le provvigioni in arrivo"><line x1="${pl}" y1="${pt + ih}" x2="${W - pr}" y2="${pt + ih}" stroke="var(--border)"></line>${bars}</svg>
     <details style="margin-top:6px;"><summary class="fc-note" style="cursor:pointer;">Mese per mese</summary>
       <div class="fatt-table"><div class="fatt-trow fatt-th"><span>Mese</span><span>Merce</span><span>Provvigioni</span><span>Fisso</span><span>Totale</span></div>
         ${data.slice().reverse().map(d=>`<div class="fatt-trow"><span class="name-link" data-fatt-goto="${d.m}">${monthLabel(d.m)}${d.emessa ? '' : ' (da emettere)'}</span><span>${fmtEuro(d.merce)}</span><span>${fmtEuro(d.fees)}</span><span>${fmtEuro(d.fixed)}</span><strong>${fmtEuro(d.tot)}</strong></div>`).join('')}
-        <div class="fatt-trow fatt-ttot"><span>Totale ${year}</span><span>${fmtEuro(sum(data, 'merce'))}</span><span>${fmtEuro(sum(data, 'fees'))}</span><span>${fmtEuro(sum(data, 'fixed'))}</span><strong>${fmtEuro(sum(data, 'tot'))}</strong></div></div>
+        <div class="fatt-trow fatt-ttot"><span>Totale ${year}</span><span>${fmtEuro(sum(data, 'merce'))}</span><span>${fmtEuro(feesY)}</span><span>${fmtEuro(sum(data, 'fixed'))}</span><strong>${fmtEuro(sum(data, 'tot'))}</strong></div>
+        ${cols.some(x=>x.arrivo || x.fc) ? `<div class="fatt-trow fatt-th" style="margin-top:8px;"><span>In arrivo</span><span></span><span>Confermati</span><span>Forecast</span><span></span></div>
+          ${cols.filter(x=>x.arrivo || x.fc).map(x=>`<div class="fatt-trow"><span>${monthLabel(x.m)}</span><span></span><span>${fmtEuro(x.arrivo)}</span><span>${fmtEuro(x.fc)}</span><span></span></div>`).join('')}` : ''}
+      </div>
     </details>
   </div>`;
 }
