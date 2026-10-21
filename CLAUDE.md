@@ -35,7 +35,6 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `tests/` — **controlli automatici da lanciare prima di ogni pubblicazione**: `cd tests`,
   `npm install` (la prima volta), `npm test` (`node run.mjs`; `--show` apre il browser, `--shots`
   salva le schermate del telefono in una cartella temporanea). playwright-core usa Chrome/Edge
-  Le date dei test sono locali (`iso`), come nell'app: con toISOString tra mezzanotte e le 2 fallivano.
   installato; `fake-firebase.js` sostituisce gli script Firebase (stessa interfaccia compat, dati
   in memoria da `window.__seed`, accesso dai test con `window.__fake`); functions, Nominatim,
   mappe e font sono simulati. Controlla: tutte le pagine senza errori, cifre di forecast e budget,
@@ -44,6 +43,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
   PDF di prova (dati di clienti, testo coperto da copyright) stanno FUORI dal repo in
   `../test-fixtures/` (`conferma-ordine.pdf`, `portale.pdf`): se mancano quei test si saltano. Mai
   committarli. `/tests/*` non e' servito da Netlify; `node_modules/` e' ignorato da git.
+  Le date dei test sono locali (`iso`), come nell'app: con toISOString tra mezzanotte e le 2 fallivano.
 - `package.json` (dipendenze: `firebase-admin`, `@netlify/blobs`, `@anthropic-ai/sdk`) e `netlify.toml` (build minimale,
   `functions = "netlify/functions"`, redirect della radice verso l'app e blocco dei file
   che non devono essere serviti: `CLAUDE.md`, `package.json`, `netlify.toml`, `netlify/*`).
@@ -237,6 +237,11 @@ Campi principali:
   Impostazioni (`settings.promemoria`, default `TODO_DEFAULTS`). Sotto, "Dati da completare"
   (commesse aperte senza importo/chiusura prevista, confermate senza deliberato ne' offerta,
   contatti dei progetti senza email/telefono).
+  **Revisione del forecast** (blocco omonimo, 2026-10-21): riquadro in Oggi dal lunedi' (non sabato e domenica) finche'
+  non si preme "Revisione fatta" (`settings.revisioneForecast`, si riapre il lunedi' dopo): commesse aperte con
+  chiusura prevista superata o mancante, probabilita' non indicata, o senza aggiornamenti (updatedAt, fasi, attivita'
+  collegate) da `REV_DAYS` (30) giorni (`forecastReviewItems`, per importo); probabilita' e chiusura modificabili li',
+  "Ancora valida" aggiorna updatedAt. `forecastReviewHtml(now)` accetta la data per i test.
 - **Consegne** (voce di menu dopo Progetti, blocco "Consegne", `view='deliveries'`): tutti gli ordini
   dei progetti non persi per data di consegna: In ritardo, Oggi, Prossimi 7 giorni, poi per mese,
   Senza data, Consegnate (chiuse in un `<details>`, ultime 60). "Posticipa" (data, +1 giorno, +1

@@ -145,6 +145,12 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .fatt-trow > :first-child{text-align:left;}
 .fatt-trow.fatt-th{font-size:11px;color:var(--muted);text-transform:uppercase;}
 .fatt-ttot{border-top:2px solid var(--accent);font-weight:600;}
+.rev-row{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
+.rev-main{flex:1 1 260px;min-width:0;font-size:13.5px;}
+.rev-edit{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;}
+.rev-edit label{margin:0;font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:2px;}
+.rev-edit input{width:auto;padding:4px 6px;}
+.rev-edit input[data-rev-prob]{width:64px;}
 .fatt-addr{display:block;font-size:12px;color:var(--muted);}
 .fatt-rowact{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:4px;}
 .fatt-add{margin-top:10px;}
@@ -1289,6 +1295,7 @@ function renderMain(){
       btn.addEventListener('click', ()=>{ btn.disabled = true; markMailSent(btn.dataset.mailDone); });
     });
     bindTodo(main);
+    bindForecastReview(main);
     document.getElementById('repGoBtn')?.addEventListener('click', ()=>{ repSetPeriod('week'); dashboardDrilldown = null; dashboardSubView = 'report'; view = 'dashboard'; setActiveTab('navDashboard'); renderMain(); });
     foldTodayCards(main);
     return;
@@ -5918,6 +5925,67 @@ function bindFatt(main){
 }
 
 // ---------------------------------------------------------------------------
+// Revisione del forecast (in Oggi, richiesta dell'utente 2026-10-21): dal lunedi' finche' non si preme
+// "Revisione fatta" (settings.revisioneForecast = data), le commesse aperte con chiusura prevista
+// superata, senza probabilita' indicata o senza aggiornamenti (modifiche, fasi, attivita' collegate) da
+// REV_DAYS giorni; probabilita' e chiusura si correggono li', "Ancora valida" segna l'aggiornamento.
+// Le confermate con merce da spedire e senza ordini con consegna futura chiedono la ripartizione per anno.
+// ---------------------------------------------------------------------------
+const REV_DAYS = 30;
+function forecastReviewItems(){
+  const t = todayISO(), ym = t.slice(0,7), out = [];
+  openForecastProjects().forEach(p=>{
+    const last = [p.updatedAt ? isoDay(new Date(p.updatedAt)) : '', ...Object.values(p.fasi || {}).filter(d=>d <= t), linkedActivityDate(p)].filter(Boolean).sort().pop() || '';
+    const why = [];
+    if(p.chiusuraPrevista && p.chiusuraPrevista < ym) why.push(`chiusura prevista superata (${monthLabel(p.chiusuraPrevista)})`);
+    if(!p.chiusuraPrevista) why.push('manca la chiusura prevista');
+    if(forecastProb(p).suggested) why.push(`probabilità non indicata (suggerita ${forecastProb(p).value}%)`);
+    const days = last ? daysBetween(last, t) : null;
+    if(days==null || days >= REV_DAYS) why.push(days==null ? 'mai aggiornata' : `nessun aggiornamento da ${days} giorni`);
+    if(why.length) out.push({ p, why, days });
+  });
+  return out.sort((a,b)=>(Number(b.p.importoOfferta) || 0) - (Number(a.p.importoOfferta) || 0));
+}
+function forecastReviewHtml(now = new Date()){
+  const day = now.getDay();
+  if(day===0 || day===6) return '';
+  const done = appSettings.revisioneForecast || '';
+  if(done >= weekStartISO(now)) return '';
+  const items = forecastReviewItems();
+  if(!items.length) return '';
+  return `<div class="card" id="fcReview">
+    <h3>Revisione del forecast (${items.length})</h3>
+    <div class="fc-note" style="margin-bottom:6px;">Una volta a settimana: probabilità e chiusura aggiornate tengono giuste le provvigioni in arrivo e l'obiettivo. Le correzioni si salvano subito.</div>
+    ${items.slice(0, 15).map(({ p, why })=>`<div class="rev-row">
+      <div class="rev-main"><span class="proj-code">${esc(p.codice || '')}</span> <span class="name-link" data-open-project="${p.id}">${esc(p.nome || 'Progetto')}</span>
+        <span class="fc-note">${p.importoOfferta!=null ? fmtEuro(p.importoOfferta) : 'senza importo'}${projectPhase(p) ? ' · '+esc(projectPhase(p).label) : ''}</span>
+        <div class="fatt-warn">${esc(why.join(' · '))}</div></div>
+      <div class="rev-edit">
+        <label>Prob. %<input data-rev-prob="${p.id}" inputmode="numeric" value="${forecastProb(p).suggested ? '' : esc(String(p.probabilita))}" placeholder="${forecastProb(p).value}"></label>
+        <label>Chiusura<input type="month" data-rev-close="${p.id}" value="${esc(p.chiusuraPrevista || '')}"></label>
+        <button class="btn secondary small" data-rev-ok="${p.id}">Ancora valida</button>
+      </div>
+    </div>`).join('')}
+    ${items.length > 15 ? `<div class="fc-note" style="margin-top:6px;">e altre ${items.length - 15}: le trovi nel Forecast.</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button class="btn small" id="revDoneBtn">Revisione fatta</button><button class="btn secondary small" id="revFcBtn">Apri il Forecast</button></div>
+  </div>`;
+}
+function bindForecastReview(main){
+  const box = main.querySelector('#fcReview'); if(!box) return;
+  const upd = (id, data)=>db.collection('projects').doc(id).update({ ...data, updatedAt: Date.now() }).catch(e=>alert('Non salvato: '+(e.message || e.code || '')));
+  box.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
+  box.querySelectorAll('[data-rev-prob]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const v = inp.value.trim(), n = Number(v);
+    if(v && (!isFinite(n) || n < 0 || n > 100)){ inp.value = ''; return; }
+    upd(inp.dataset.revProb, { probabilita: v==='' ? null : n });
+  }));
+  box.querySelectorAll('[data-rev-close]').forEach(inp=>inp.addEventListener('change', ()=>{ if(!inp.value || /^\d{4}-\d{2}$/.test(inp.value)) upd(inp.dataset.revClose, { chiusuraPrevista: inp.value || '' }); }));
+  box.querySelectorAll('[data-rev-ok]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd(b.dataset.revOk, {}); }));
+  box.querySelector('#revDoneBtn')?.addEventListener('click', ()=>saveSettings({ revisioneForecast: todayISO() }));
+  box.querySelector('#revFcBtn')?.addEventListener('click', ()=>{ view = 'forecast'; setActiveTab('navForecast'); renderMain(); });
+}
+
+// ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
 // stesso studio stanno in un solo punto) e cantieri (quadrati: in corso / confermati /
 // persi). Leaflet + OpenStreetMap da cdnjs. Coordinate da Nominatim (OpenStreetMap),
@@ -9332,6 +9400,7 @@ function agendaView(){
     </div>
     ${zoneCardHtml()}
     ${waitingCardHtml()}
+    ${forecastReviewHtml()}
     ${todoCardHtml()}
     ${aiCardHtml()}
     ${completeCardHtml()}`;

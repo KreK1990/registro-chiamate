@@ -648,7 +648,7 @@ await test('fasi: in attesa di Michael, file allegato alla fase dalla timeline e
   expect(p4.fasi.propostaTecnica === daysAgo(0) && (p4.allegati || []).some(a => a.tag === 'propostaTecnica' && a.nome === 'proposta-tecnica.pdf'), 'file o fase non registrati: ' + JSON.stringify(p4));
   await page.waitForFunction(() => (projects.find(p => p.id === 'p4').fasi || {}).propostaTecnica);   // l'app riceve l'aggiornamento un attimo dopo
   txt = await show_(page, 'agenda');
-  expect(!txt.includes('Torre Delta'), 'dopo l\'arrivo la commessa non deve essere piu\' in attesa');
+  expect(!(await page.textContent('#waitingCard')).includes('Torre Delta'), 'dopo l\'arrivo la commessa non deve essere piu\' in attesa');
   expect(await page.$('#waitingCard:not([open])'), 'senza commesse in attesa il riquadro deve restare chiuso');
   await show_(page, 'projectDetail', "selectedProjectId='p4'");
   expect((await page.textContent('#main .timeline')).includes('proposta-tecnica.pdf'), 'il file non compare sotto la fase');
@@ -1131,6 +1131,30 @@ await test('fatturazione provvigioni: compenso, margine, sposta mese, emessa, Ex
   }
 });
 
+await test('revisione del forecast in Oggi: commesse da aggiornare, correzioni, revisione fatta', async () => {
+  await page.evaluate(() => saveSettings({ revisioneForecast: '' }));
+  const items = await page.evaluate(() => forecastReviewItems().map(x => ({ id: x.p.id, why: x.why.join(' | ') })));
+  await page.evaluate(() => window.__fake.put('projects', 'prev', { codice: '4800099', nome: 'Commessa ferma', importoOfferta: 5000, probabilita: 40, chiusuraPrevista: '2020-01', partecipanti: [], fasi: { richiesta: '2020-01-01' }, createdAt: 9, updatedAt: 9 }));
+  await page.waitForFunction(() => projects.some(p => p.id === 'prev'));
+  const it = await page.evaluate(() => forecastReviewItems().find(x => x.p.id === 'prev'));
+  expect(it && /chiusura prevista superata/.test(it.why.join()) && /nessun aggiornamento da \d+ giorni/.test(it.why.join()), 'commessa ferma non segnalata: ' + JSON.stringify(it && it.why));
+  const html = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return forecastReviewHtml(d); });
+  expect(/Revisione del forecast/.test(html), 'riquadro del lunedì mancante');
+  expect(await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + 6); return forecastReviewHtml(d); }) === '', 'la domenica il riquadro non deve comparire');
+  const weekday = await page.evaluate(() => { const g = new Date().getDay(); return g > 0 && g < 6; });
+  if (weekday) {
+    await show_(page, 'agenda');
+    await page.waitForSelector('#fcReview [data-rev-close="prev"]');
+    await page.fill('#fcReview [data-rev-prob="prev"]', '70'); await page.press('#fcReview [data-rev-prob="prev"]', 'Tab');
+    await page.waitForFunction(() => window.__fake.docs('projects').find(p => p.id === 'prev').probabilita === 70);
+    await page.evaluate(() => { document.activeElement && document.activeElement.blur(); renderMain(); });
+    await page.click('#revDoneBtn');
+    await page.waitForFunction(() => appSettings.revisioneForecast === todayISO());
+    await page.evaluate(() => renderMain());
+    expect(!(await page.$('#fcReview')), 'dopo "Revisione fatta" il riquadro deve sparire fino al lunedì dopo');
+  }
+});
+
 await test('rete di collaborazioni: commesse, portale, collegamento a mano, opportunità', async () => {
   await page.evaluate(() => window.__fake.put('portale', 'psnet', { pid: '9000077', stato: 'seguito', seguitoIl: 1, aggiornatoIl: 1, dati: {
     id: '9000077', titolo: 'Residenza Collina', comune: 'Pino Torinese', nuovaCostruzione: true, fase: 'Progettazione', unita: 12, soggetti: [
@@ -1170,7 +1194,7 @@ await test('rete di collaborazioni: commesse, portale, collegamento a mano, oppo
   await page.evaluate(() => { reteFocus = null; renderMain(); });
   await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim, null, { timeout: 20000 });
   await page.waitForFunction(() => reteSim.alpha() < 0.02, null, { timeout: 20000 }).catch(() => {});
-  const pt = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.key === 'x:studio nuovo') || reteSim.nodes()[0]; const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { key: d.key, x: r.left + d.x, y: r.top + d.y, n: reteSim.nodes().length }; });
+  const pt = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.key === 'x:studio nuovo') || reteSim.nodes()[0]; document.getElementById('reteGraph').scrollIntoView({ block: 'center' }); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { key: d.key, x: r.left + d.x, y: r.top + d.y, n: reteSim.nodes().length }; });
   expect(pt.n >= 2, 'mappa vuota');
   await page.mouse.click(pt.x, pt.y);
   await page.waitForFunction(k => reteFocus === k, pt.key, { timeout: 5000 }).catch(() => {});
@@ -1179,13 +1203,13 @@ await test('rete di collaborazioni: commesse, portale, collegamento a mano, oppo
   // punto in rubrica sulla mappa -> anagrafica con le collaborazioni
   await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim && reteSim.nodes().some(n => n.n.members.length), null, { timeout: 20000 });
   await page.waitForFunction(() => reteSim.alpha() < 0.02, null, { timeout: 20000 }).catch(() => {});
-  const pm = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.n.members.length); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y, ids: d.n.members.map(m => m.id) }; });
+  const pm = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.n.members.length); document.getElementById('reteGraph').scrollIntoView({ block: 'center' }); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y, ids: d.n.members.map(m => m.id) }; });
   await page.mouse.click(pm.x, pm.y);
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => view) === 'rete', 'il primo tocco deve solo aprire il punto nella rete');
   await page.waitForFunction(() => document.querySelector('#reteGraph canvas') && reteSim, null, { timeout: 20000 });
   await page.waitForFunction(() => reteSim.alpha() < 0.02, null, { timeout: 20000 }).catch(() => {});
-  const pm2 = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.key === reteFocus); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y }; });
+  const pm2 = await page.evaluate(() => { const d = reteSim.nodes().find(n => n.key === reteFocus); document.getElementById('reteGraph').scrollIntoView({ block: 'center' }); const r = document.querySelector('#reteGraph canvas').getBoundingClientRect(); return { x: r.left + d.x, y: r.top + d.y }; });
   await page.mouse.click(pm2.x, pm2.y);
   await page.waitForFunction(() => view === 'detail', null, { timeout: 5000 }).catch(() => {});
   const sd = await page.evaluate(() => ({ view, selectedId, card: !!document.getElementById('collabCard') }));
