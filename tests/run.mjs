@@ -413,7 +413,7 @@ await ctx.close();
 await page.evaluate(() => new Promise(r => navigator.geolocation.getCurrentPosition(r, r, { timeout: 5000 })));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"], ['rete']];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries', "delTab='fatt'"], ['deliveries', "delTab='consegne'"], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"], ['rete']];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
@@ -1015,6 +1015,66 @@ await test('report del periodo: attività, note modificabili, obiettivo, PDF sal
   await page.click('[data-rep-del]');
   await page.click('[data-rep-del-yes]');
   await page.waitForFunction(() => window.__fake.docs('report').length === 0);
+});
+
+await test('fatturazione provvigioni: compenso, margine, sposta mese, emessa, Excel, importazione', async () => {
+  const ym = await page.evaluate(() => todayISO().slice(0, 7)), prev = await page.evaluate(m => ymAdd(m, -1), ym);
+  await page.evaluate(() => {
+    const t = todayISO(), p1 = projects.find(p => p.id === 'p1'), p2 = projects.find(p => p.id === 'p2');
+    return Promise.all([
+      db.collection('projects').doc('p1').update({ ordini: [...(p1.ordini || []), { id: 'of1', data: t, numero: '9001', importo: 3642.06, consegnatoIl: t }, { id: 'of2', data: t, numero: '9002', importo: 13628.47, consegnatoIl: t }] }),
+      db.collection('projects').doc('p2').update({ ordini: [...(p2.ordini || []), { id: 'of3', data: t, numero: '9003', importo: 2335.16, consegnatoIl: t, righe: [{ codice: '1', descrizione: 'BOLE O/U 12-330-2/450', qta: 10, um: 'PZ', prezzo: 233.516, totale: 2335.16 }] }] }),
+    ]);
+  });
+  await page.waitForFunction(() => (projects.find(p => p.id === 'p2').ordini || []).some(o => o.id === 'of3'));
+  let txt = await show_(page, 'deliveries', "delTab='fatt'; fattMese=null; fattMsg=''");
+  expect(/Fattura di/.test(txt) && /4800001[\s\S]*17\.270,53[\s\S]*4\.317,63/.test(txt), 'righe della commessa (ordini sommati, 25%):\n' + txt.slice(0, 1200));
+  expect(/Bole, Tronsole o altri prodotti/.test(txt), 'manca l\'avviso sul margine da verificare');
+  // margine 18% sulla commessa con Bole
+  await page.fill('[data-fatt-db="p2"]', '18');
+  await page.press('[data-fatt-db="p2"]', 'Tab');
+  await page.waitForFunction(m => ((window.__fake.docs('fatture').find(d => d.id === m) || {}).db || {}).p2 === 0.18, ym);
+  await page.evaluate(() => { document.activeElement && document.activeElement.blur(); renderMain(); });
+  txt = await page.evaluate(() => document.getElementById('main').innerText);
+  expect(/420,33/.test(txt) && /Totale fattura\s*8\.237,96/.test(txt), 'compenso con margine 18% o totale (4317,63 + 420,33 + 1000 + 2500):\n' + txt.slice(0, 1500));
+  if (shotsDir) {
+    await page.screenshot({ path: path.join(shotsDir, 'fatturazione-pc.png'), fullPage: true });
+    const vs = page.viewportSize(); await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+    await page.evaluate(() => { for (let el = document.getElementById('main'); el; el = el.parentElement) { el.style.height = 'auto'; el.style.maxHeight = 'none'; el.style.overflow = 'visible'; } });
+    await page.screenshot({ path: path.join(shotsDir, 'fatturazione-telefono.png'), fullPage: true });
+    await page.evaluate(() => { for (let el = document.getElementById('main'); el; el = el.parentElement) el.removeAttribute('style'); });
+    await page.setViewportSize(vs);
+  }
+  // sposta un ordine al mese precedente
+  await page.click('[data-fatt-toggle="p1"]');
+  await page.selectOption('[data-fatt-move="p1|of2"]', prev);
+  await page.waitForFunction(m => projects.find(p => p.id === 'p1').ordini.find(o => o.id === 'of2').meseFattura === m, prev);
+  await page.evaluate(() => renderMain());
+  txt = await page.evaluate(() => document.getElementById('main').innerText);
+  expect(/4800001[\s\S]*3\.642,06/.test(txt) && !/17\.270,53/.test(txt), 'ordine spostato ancora nel mese');
+  await page.evaluate(() => db.collection('projects').doc('p1').update({ ordini: projects.find(p => p.id === 'p1').ordini.map(o => { if (o.id !== 'of2') return o; const { meseFattura, ...r } = o; return r; }) }));
+  await page.waitForFunction(() => !projects.find(p => p.id === 'p1').ordini.find(o => o.id === 'of2').meseFattura);
+  // emessa: fotografia delle righe
+  await page.evaluate(() => renderMain());
+  await page.click('#fattEmitBtn');
+  await page.waitForFunction(m => (window.__fake.docs('fatture').find(d => d.id === m) || {}).stato === 'emessa', ym);
+  const doc = await page.evaluate(m => window.__fake.docs('fatture').find(d => d.id === m), ym);
+  expect(doc.righe.length === 2 && doc.totale === 8237.96 && doc.voci.length === 2, 'fattura emessa: ' + JSON.stringify(doc).slice(0, 400));
+  // Excel: un foglio per mese con le formule
+  await page.evaluate(() => renderMain());
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#fattXlsBtn')]);
+  const b64 = fs.readFileSync(await dl.path()).toString('base64');
+  const xl = await page.evaluate(([b, m]) => { const wb = XLSX.read(b, { type: 'base64', cellFormula: true }), ws = wb.Sheets[m.replace('-', '_')]; return { names: wb.SheetNames, f1: ws.F1.v, a2: ws.A2.v, d3: ws.D3 && ws.D3.v, e2f: ws.E2.f, tot: Object.keys(ws).filter(k => ws[k] && ws[k].v === 'invoice total').map(k => ws['E' + k.slice(1)]) }; }, [b64, ym]);
+  expect(xl.names.includes(ym.replace('-', '_')) && xl.f1 === 0.25 && xl.e2f === 'IF(A2="","",IF(D2>=0.25,C2*$F$1,C2*D2))' && xl.tot[0] && xl.tot[0].v === 8237.96 && /^SUM\(E2:E\d+\)$/.test(xl.tot[0].f), 'Excel: ' + JSON.stringify(xl));
+  // importazione di un mese passato dal file dell'utente
+  const r = await page.evaluate(async () => {
+    const aoa = [['N° project', 'Project name', 'sales amount', 'DB > 25 ?', 'fee', 0.25], [4830685, 'Cabinovia - Scopello', 2335.16, 0.18, 420.3288], ['', '', '', '', ''], [], [], [], [], ['spese tecniche assistenze in cantiere', '', '', '', 'detail'], ['', '', '', '', 1000, 'car from 01-04 to 30-04'], ['', '', '', '', 2500, 'monthly fee from 01-04 to 30-04'], ['', '', '', 'invoice total', 3920.3288]];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '2025_04');
+    const file = new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], 'INVOICE.xlsx');
+    return fattImportXlsx(file);
+  });
+  const imp = await page.evaluate(() => window.__fake.docs('fatture').find(d => d.id === '2025-04'));
+  expect(r.done.length === 1 && imp && imp.stato === 'emessa' && imp.importato && imp.righe[0].db === 0.18 && imp.righe[0].fee === 420.33 && imp.totale === 3920.33 && imp.voci.length === 2, 'importazione: ' + JSON.stringify({ r, imp }).slice(0, 500));
 });
 
 await test('rete di collaborazioni: commesse, portale, collegamento a mano, opportunità', async () => {

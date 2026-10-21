@@ -22,7 +22,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
   download, "Fai una copia adesso"): backup JSON di
-  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report,collegamenti}` (version 2; restano fuori
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report,collegamenti,fatture}` (version 2; restano fuori
   `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
   chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
   manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
@@ -245,6 +245,20 @@ Campi principali:
   "Annulla consegna" la toglie (e svuota merceCantiere se era quella data e nessun altro ordine).
   Badge `delBadge` (e nel menu) = consegne di oggi o in ritardo non segnate (`deliveriesDue`).
   `delEdit` = modulo aperto (blocca i ridisegni automatici in `canAutoRender`).
+- **Fatturazione provvigioni** (Consegne -> scheda "Fatturazione", `delTab`, blocco omonimo, 2026-10-21; modello: il
+  file Excel mensile dell'utente, fuori dal repo): un mese = ordini consegnati nel mese (`consegnatoIl`) o spostati a
+  mano (`ordini[].meseFattura` 'YYYY-MM', es. merce uscita dal magazzino a fine mese), sommati per commessa.
+  Compenso = merce x quota (25%) se il margine DB e' >= quota ("SI", default), altrimenti merce x DB (`fattFee`, come
+  la formula IF(D>=0.25,C*$F$1,C*D) del file). Ordini con prodotti non Isokorb (Bole, Tronsole...) segnalati "margine
+  da verificare con l'azienda" (scelta dell'utente). Voci: auto 1.000 e compenso mensile 2.500 (`settings.fatturazione`
+  {quota, auto, fisso}, `FATT_DEF`) + voci libere (spese tecniche assistenze in cantiere). Collection `fatture` (id
+  'YYYY-MM', nei backup): {mese, stato bozza|emessa, db {projectId: num|null}, voci, righe (fotografia all'emissione),
+  totale, emessaIl, importato}. "Segna come emessa" fotografa righe e totale; "Riapri" ricalcola. Avvisi: ordini con
+  consegna prevista nel mese non segnati; ordini consegnati in mesi gia' emessi rimasti fuori ("Metti in <mese>").
+  "Scarica Excel" (`fattExportXlsx`, SheetJS): un foglio per mese "YYYY_MM" con le colonne del file dell'utente
+  (N° project, Project name, sales amount, DB > 25 ?, fee + F1 = quota), formula del compenso, "spese tecniche
+  assistenze in cantiere", voci e "invoice total" = SUM. "Importa dal mio Excel" (`fattImportXlsx`): i fogli dei
+  mesi passati diventano fatture emesse (importato); il mese in corso lo calcola l'app.
 - **Torna indietro** (blocco "Torna indietro: cronologia delle schermate visitate", 2026-10-14): `navTrack` (all'inizio di
   `renderMain` e `renderCallFlow`) confronta la posizione (`navKey`: vista, contatto, attivita', progetto, passo e
   sotto-viste) con l'attuale; se cambia mette la precedente (con scorrimento di #main e voce di menu) in `navStack`

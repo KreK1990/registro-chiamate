@@ -109,6 +109,23 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .rete-dot-acquisito{background:var(--net-acq);} .rete-dot-trattativa{background:var(--net-tratt);} .rete-dot-contattato{background:var(--net-cont);} .rete-dot-rubrica{background:var(--net-rub);}
 .rete-dot-nuovo{background:var(--panel);border-style:dashed;}
 .rete-line{display:inline-block;width:18px;border-top:2px dashed var(--accent);}
+.fatt-cells{display:grid;grid-template-columns:78px minmax(0,1fr) 110px 74px 110px;gap:8px;align-items:center;}
+.fatt-th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;padding:10px 0 4px;border-bottom:1px solid var(--border);}
+.fatt-row{padding:7px 0;border-bottom:1px solid var(--border);font-size:13.5px;}
+.fatt-row.check{box-shadow:inset 3px 0 0 var(--danger);padding-left:6px;}
+.fatt-num{text-align:right;white-space:nowrap;}
+.fatt-db input{width:100%;min-width:0;text-align:center;padding:4px;}
+.fatt-name{min-width:0;}
+.fatt-warn{font-size:12.5px;color:var(--danger);margin-top:4px;}
+.fatt-orders{margin:6px 0 0 86px;}
+.fatt-order{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;font-size:12.5px;padding:3px 0;color:var(--muted);}
+.fatt-move{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:12px;}
+.fatt-move select{width:auto;padding:2px 6px;font-size:12px;}
+.fatt-sub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:14px 0 4px;}
+.fatt-voce{grid-template-columns:minmax(0,1fr) 120px auto;padding:3px 0;font-size:13.5px;}
+.fatt-voce input{padding:5px 8px;}
+.fatt-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:8px;border-top:2px solid var(--accent);font-size:15px;}
+.fatt-total strong{font-size:18px;color:var(--accent);}
 .net-row{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);}
 .net-row:last-child{border-bottom:none;}
 .net-main{flex:1;min-width:0;font-size:13.5px;}
@@ -761,6 +778,15 @@ h2{color:var(--accent);font-weight:800;}
   .top-actions{margin-bottom:8px;}
   .page-bar.stuck{top:-12px;margin:-12px -12px 8px;padding:8px 12px;}
   .rete-graph{height:420px;}
+  .fatt-th{display:none;}
+  .fatt-row .fatt-cells{grid-template-columns:minmax(0,1fr) 60px 92px;gap:2px 8px;}
+  .fatt-row .fatt-cells > :nth-child(1){grid-column:1;grid-row:1;font-size:11.5px;}
+  .fatt-row .fatt-cells > :nth-child(2){grid-column:1;grid-row:2;}
+  .fatt-row .fatt-cells > :nth-child(3){grid-column:1;grid-row:3;text-align:left;color:var(--muted);font-size:12.5px;}
+  .fatt-row .fatt-cells > :nth-child(4){grid-column:2;grid-row:1 / span 3;}
+  .fatt-row .fatt-cells > :nth-child(5){grid-column:3;grid-row:1 / span 3;}
+  .fatt-orders{margin-left:0;}
+  .fatt-voce{grid-template-columns:minmax(0,1fr) 92px auto;}
   .map-embed{height:200px;}
   .imp-map{grid-template-columns:1fr;gap:3px;}
   .funnel-row{grid-template-columns:1fr auto;grid-template-areas:"label num" "track track" "note note";gap:4px 10px;}
@@ -1152,6 +1178,7 @@ function startApp(uid){
   unsubscribers.push(db.collection('sopralluoghi').onSnapshot(onSopSnapshot, showDataError));
   unsubscribers.push(db.collection('report').onSnapshot(onReportSnapshot, showDataError));
   unsubscribers.push(db.collection('collegamenti').onSnapshot(onCollegamentiSnapshot, showDataError));
+  unsubscribers.push(db.collection('fatture').onSnapshot(onFattureSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -2756,6 +2783,10 @@ function deliveryRowHtml(r, kind){
   </div>`;
 }
 function deliveriesView(){
+  const tabs = `<div class="subnav" style="margin-bottom:12px;"><button id="delTabCons" class="${delTab==='consegne' ? 'active' : ''}">Consegne</button><button id="delTabFatt" class="${delTab==='fatt' ? 'active' : ''}">Fatturazione</button></div>`;
+  return delTab==='fatt' ? `<h2 style="margin-bottom:4px;">Fatturazione provvigioni</h2>${tabs}${fattView()}` : deliveriesListView(tabs);
+}
+function deliveriesListView(tabs){
   const t = todayISO(), in7 = addDaysISO(t, 7), rows = deliveryRows();
   const open = rows.filter(r=>!r.o.consegnatoIl), byDate = (a,b)=>(a.o.consegna||'').localeCompare(b.o.consegna||'') || (a.p.codice||'').localeCompare(b.p.codice||'');
   const late = open.filter(r=>r.o.consegna && r.o.consegna < t).sort(byDate);
@@ -2767,7 +2798,7 @@ function deliveriesView(){
   const months = new Map(); later.forEach(r=>{ const m = r.o.consegna.slice(0,7); (months.get(m) || months.set(m, []).get(m)).push(r); });
   const sum = list=>fmtEuro(list.reduce((s,r)=>s+(Number(r.o.importo)||0), 0));
   const sect = (title, list, kind, extra)=>list.length ? `<div class="card del-sect ${kind}"><h3>${title} <span class="fc-note">(${list.length} · ${sum(list)})</span></h3>${extra||''}${list.map(r=>deliveryRowHtml(r, kind)).join('')}</div>` : '';
-  return `<h2 style="margin-bottom:4px;">Consegne</h2>
+  return `<h2 style="margin-bottom:4px;">Consegne</h2>${tabs}
     <div class="fc-note" style="margin-bottom:12px;">Tutti gli ordini dei progetti con la data di consegna prevista. "Posticipa" sposta la data (resta traccia dei rinvii), "Consegnato" registra l'arrivo della merce. Gli ordini si aggiungono dalla scheda del progetto.</div>
     ${!rows.length ? '<div class="empty">Nessun ordine registrato: aggiungili dalla scheda del progetto (anche da PDF della conferma d\'ordine).</div>' : ''}
     ${sect('In ritardo', late, 'late')}
@@ -2802,6 +2833,9 @@ async function saveDelivery(key, change){
 }
 function bindDeliveries(){
   const main = document.getElementById('main');
+  main.querySelector('#delTabCons')?.addEventListener('click', ()=>{ delTab = 'consegne'; renderMain(); });
+  main.querySelector('#delTabFatt')?.addEventListener('click', ()=>{ delTab = 'fatt'; renderMain(); });
+  if(delTab==='fatt'){ bindFatt(main); return; }
   const okDate = v=>/^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0,4)>=2000 && +v.slice(0,4)<=2100;
   const keyOf = el=>el.closest('[data-del-key]').dataset.delKey;
   const err = (key, t)=>{ const e = document.getElementById('delErr-'+key.replace('|','-')); if(e) e.textContent = t; };
@@ -5339,6 +5373,277 @@ async function mountReteGraph(){
     reteFocus = d.key; renderMain();
   });
   draw();
+}
+
+// ---------------------------------------------------------------------------
+// Fatturazione delle provvigioni (Consegne -> "Fatturazione", richiesta dell'utente 2026-10-21)
+// Ogni mese l'utente fattura all'azienda: per ogni commessa la merce consegnata nel mese (ordini
+// sommati per progetto), compenso = importo x 25% se il margine (DB) e' almeno il 25% ("SI"),
+// altrimenti importo x DB; piu' le voci fisse (auto 1.000, compenso mensile 2.500, eventuali spese
+// tecniche). Mese di un ordine = mese di consegnatoIl, o `ordini[].meseFattura` ('YYYY-MM') se spostato
+// (merce uscita dal magazzino a fine mese e consegnata il mese dopo). Documento per mese in collection
+// `fatture` (id 'YYYY-MM'): {mese, stato:'bozza'|'emessa', db:{projectId: numero|null}, voci:[{desc,
+// importo}], righe (fotografia all'emissione), totale, emessaIl, importato}. Isokorb: DB "SI" di
+// default; ordini con Bole, Tronsole o altro: "margine da verificare con l'azienda". Excel come quello
+// dell'utente (un foglio per mese "YYYY_MM", stesse colonne e formule) e importazione dei mesi passati.
+// ---------------------------------------------------------------------------
+const FATT_DEF = { quota: 0.25, auto: 1000, fisso: 2500 };
+let fatture = new Map(), fattMese = null, delTab = 'consegne', fattMsg = '', fattOpen = new Set(), fattBusy = '';
+function onFattureSnapshot(snap){
+  fatture = new Map(snap.docs.map(d=>[d.id, { id:d.id, ...d.data() }]));
+  if(view==='deliveries' && delTab==='fatt' && canAutoRender()) renderMain();
+}
+function fattCfg(){
+  const s = appSettings.fatturazione || {}, n = (v, d)=>v!=null && v!=='' && isFinite(Number(v)) ? Number(v) : d;
+  return { quota: n(s.quota, FATT_DEF.quota), auto: n(s.auto, FATT_DEF.auto), fisso: n(s.fisso, FATT_DEF.fisso) };
+}
+const round2 = v=>Math.round((Number(v) || 0) * 100) / 100;
+function ymAdd(ym, n){ const d = new Date(+ym.slice(0,4), +ym.slice(5,7) - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+function orderBillMonth(o){ return o.meseFattura || (o.consegnatoIl ? o.consegnatoIl.slice(0,7) : ''); }
+function orderNeedsCheck(o){ return (o.righe || []).some(r=>!/isokorb/i.test(r.descrizione || '')); }
+function fattRate(db, quota){ return db==null || db >= quota ? quota : db; }
+function fattFee(importo, db, quota){ return round2(importo * fattRate(db, quota)); }
+function fattDbLabel(db){ return db==null ? 'SI' : (Math.round(db * 1000) / 10).toLocaleString('it-IT')+'%'; }
+function fattDefaultVoci(ym){
+  const c = fattCfg(), last = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(), mm = ym.slice(5,7);
+  return [{ desc: `car from 01-${mm} to ${last}-${mm}`, importo: c.auto }, { desc: `monthly fee from 01-${mm} to ${last}-${mm}`, importo: c.fisso }];
+}
+// Righe del mese calcolate dagli ordini (bozza) o fotografate all'emissione.
+function fattRows(ym){
+  const doc = fatture.get(ym) || {}, c = fattCfg();
+  if(doc.stato==='emessa' && doc.righe) return doc.righe.map(r=>({ ...r, ordini: r.ordini || [] }));
+  const map = new Map();
+  projects.filter(p=>!isLost(p)).forEach(p=>(p.ordini || []).forEach(o=>{
+    if(orderBillMonth(o)!==ym) return;
+    const r = map.get(p.id) || { pid: p.id, codice: p.codice || '', nome: p.nome || '', importo: 0, ordini: [], check: false };
+    r.importo = round2(r.importo + (Number(o.importo) || 0)); r.ordini.push({ pid: p.id, oid: o.id }); r.check = r.check || orderNeedsCheck(o);
+    map.set(p.id, r);
+  }));
+  return [...map.values()].sort((a,b)=>String(a.codice).localeCompare(String(b.codice))).map(r=>{
+    const db = doc.db && Object.prototype.hasOwnProperty.call(doc.db, r.pid) ? doc.db[r.pid] : null;
+    return { ...r, db, fee: fattFee(r.importo, db, c.quota) };
+  });
+}
+function fattVoci(ym){ const doc = fatture.get(ym); return doc && doc.voci ? doc.voci : fattDefaultVoci(ym); }
+function fattTotal(ym){
+  const doc = fatture.get(ym);
+  if(doc && doc.stato==='emessa' && doc.totale!=null) return doc.totale;
+  return round2(fattRows(ym).reduce((s,r)=>s+r.fee, 0) + fattVoci(ym).reduce((s,v)=>s+(Number(v.importo) || 0), 0));
+}
+function fattMonths(){
+  const cur = todayISO().slice(0,7), set = new Set([cur, ...fatture.keys()]);
+  projects.forEach(p=>(p.ordini || []).forEach(o=>{ const m = orderBillMonth(o); if(m && m <= cur) set.add(m); }));
+  const list = [...set].filter(m=>/^\d{4}-\d{2}$/.test(m)).sort();
+  // mesi senza buchi dal primo all'ultimo
+  const out = []; for(let m = list[0]; m && m <= list[list.length - 1]; m = ymAdd(m, 1)) out.push(m);
+  return out.reverse();
+}
+const orderRef = (pid, oid)=>{ const p = projects.find(x=>x.id===pid), o = p && (p.ordini || []).find(x=>x.id===oid); return p && o ? { p, o } : null; };
+// Ordini consegnati in mesi gia' fatturati ma rimasti fuori dalla fattura emessa.
+function fattLeftOut(){
+  const out = [];
+  projects.filter(p=>!isLost(p)).forEach(p=>(p.ordini || []).forEach(o=>{
+    const m = orderBillMonth(o), doc = m && fatture.get(m);
+    if(!doc || doc.stato!=='emessa' || doc.importato) return;
+    if(!(doc.righe || []).some(r=>(r.ordini || []).some(x=>x.oid===o.id))) out.push({ p, o, m });
+  }));
+  return out;
+}
+function fattView(){
+  const cur = todayISO().slice(0,7), months = fattMonths();
+  if(!fattMese || !months.includes(fattMese)) fattMese = cur;
+  const ym = fattMese, doc = fatture.get(ym) || {}, emessa = doc.stato==='emessa', c = fattCfg();
+  const rows = fattRows(ym), voci = fattVoci(ym), tot = fattTotal(ym);
+  const monthEnd = isoDay(new Date(+ym.slice(0,4), +ym.slice(5,7), 0));
+  const notDone = emessa ? [] : deliveryRows().filter(r=>!r.o.consegnatoIl && !r.o.meseFattura && r.o.consegna && r.o.consegna <= monthEnd && r.o.consegna.slice(0,7) >= ymAdd(ym, -1));
+  const leftOut = !emessa && ym===cur ? fattLeftOut() : [];
+  const title = monthLabel(ym).replace(/^./, s=>s.toUpperCase());
+  const rowHtml = r=>{ const open = fattOpen.has(r.pid);
+    return `<div class="fatt-row ${r.check ? 'check' : ''}">
+      <div class="fatt-cells">
+        <span class="proj-code">${esc(r.codice)}</span>
+        <span class="fatt-name">${r.pid && projects.some(p=>p.id===r.pid) ? `<span class="name-link" data-open-project="${r.pid}">${esc(r.nome)}</span>` : esc(r.nome)}
+          ${!emessa && r.ordini.length ? `<button type="button" class="net-focus-btn" data-fatt-toggle="${r.pid}">${r.ordini.length} ${r.ordini.length===1 ? 'ordine' : 'ordini'}</button>` : ''}</span>
+        <span class="fatt-num">${fmtEuro(r.importo)}</span>
+        <span class="fatt-db">${emessa ? fattDbLabel(r.db) : `<input data-fatt-db="${r.pid}" value="${esc(fattDbLabel(r.db).replace('%',''))}" inputmode="decimal" aria-label="Margine DB" title="SI = margine almeno del ${c.quota*100}%; altrimenti la percentuale">`}</span>
+        <span class="fatt-num"><strong>${fmtEuro(r.fee)}</strong></span>
+      </div>
+      ${r.check && !emessa ? '<div class="fatt-warn">Contiene Bole, Tronsole o altri prodotti: margine da verificare con l\'azienda.</div>' : ''}
+      ${open && !emessa ? `<div class="fatt-orders">${r.ordini.map(x=>{ const ref = orderRef(x.pid, x.oid); if(!ref) return ''; const o = ref.o;
+          return `<div class="fatt-order"><span>Ordine${o.numero ? ' n° '+esc(o.numero) : ''} · ${fmtEuro(o.importo)} · ${o.consegnatoIl ? 'consegnato il '+fmtDate(o.consegnatoIl) : 'non ancora consegnato'}${o.meseFattura ? ' · <strong>spostato a mano</strong>' : ''}</span>
+            <label class="fatt-move">Fattura in <select data-fatt-move="${x.pid}|${x.oid}">${[-1, 0, 1].map(n=>{ const m = ymAdd(ym, n); return `<option value="${m}" ${n===0 ? 'selected' : ''}>${monthLabel(m)}</option>`; }).join('')}${o.meseFattura ? '<option value="">mese della consegna</option>' : ''}</select></label></div>`; }).join('')}</div>` : ''}
+    </div>`; };
+  return `<div class="card fatt-head">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <select id="fattMese" style="width:auto;" aria-label="Mese">${months.map(m=>{ const d = fatture.get(m) || {}; return `<option value="${m}" ${m===ym ? 'selected' : ''}>${monthLabel(m)} · ${d.stato==='emessa' ? 'emessa' : m===cur ? 'in corso' : 'da emettere'} · ${fmtEuro(fattTotal(m))}</option>`; }).join('')}</select>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn secondary small" id="fattXlsBtn" ${fattBusy ? 'disabled' : ''}>⬇ Scarica Excel</button>
+          <button class="btn secondary small" id="fattImportBtn" ${fattBusy ? 'disabled' : ''}>Importa dal mio Excel</button>
+        </div>
+      </div>
+      ${fattMsg ? `<div class="fc-note" style="margin-top:8px;">${fattMsg}</div>` : ''}
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <h3 style="margin:0;">Fattura di ${esc(title)}</h3>
+        <span class="del-tag ${emessa ? 'done' : ''}">${emessa ? `emessa${doc.emessaIl ? ' il '+fmtDate(doc.emessaIl) : ''}${doc.importato ? ' (dal tuo Excel)' : ''}` : 'bozza'}</span>
+      </div>
+      <div class="fatt-cells fatt-th"><span>N° progetto</span><span>Progetto</span><span class="fatt-num">Merce</span><span class="fatt-db">DB ≥ ${c.quota*100}%?</span><span class="fatt-num">Compenso</span></div>
+      ${rows.length ? rows.map(rowHtml).join('') : `<div class="empty" style="padding:6px 0;">${emessa ? 'Nessuna commessa in questa fattura.' : 'Nessuna fornitura consegnata in questo mese: le consegne si segnano nella scheda Consegne.'}</div>`}
+      <div class="fatt-sub">Spese tecniche, auto e compenso fisso</div>
+      ${voci.map((v, i)=>`<div class="fatt-cells fatt-voce">
+          ${emessa ? `<span class="fatt-vdesc">${esc(v.desc)}</span><span class="fatt-num">${fmtEuro(v.importo)}</span>`
+            : `<input class="fatt-vdesc" data-fatt-vdesc="${i}" value="${esc(v.desc)}" aria-label="Descrizione"><input class="fatt-num" data-fatt-vimp="${i}" value="${esc(fmtNum(v.importo))}" inputmode="decimal" aria-label="Importo"><button type="button" class="net-focus-btn" data-fatt-vdel="${i}">togli</button>`}
+        </div>`).join('')}
+      ${emessa ? '' : `<button class="btn secondary small" id="fattVoceAdd" style="margin-top:6px;">+ Voce (es. spese tecniche assistenze in cantiere)</button>`}
+      <div class="fatt-total"><span>Totale fattura</span><strong>${fmtEuro(tot)}</strong></div>
+      ${notDone.length ? `<div class="fatt-warn" style="margin-top:8px;">${notDone.length} ${notDone.length===1 ? 'ordine con consegna prevista entro il mese non è segnato' : 'ordini con consegna prevista entro il mese non sono segnati'} come consegnati: ${notDone.map(r=>`${esc(r.p.codice||'')} ${esc(r.p.nome||'')} (${fmtDate(r.o.consegna)})`).join(', ')}. Segnali nella scheda <span class="name-link" id="fattToDel">Consegne</span>.</div>` : ''}
+      ${leftOut.length ? `<div class="fatt-warn" style="margin-top:8px;">Consegnati in mesi già fatturati ma rimasti fuori: ${leftOut.map(x=>`${esc(x.p.codice||'')} ${esc(x.p.nome||'')} (${fmtEuro(x.o.importo)}, ${monthLabel(x.m)}) <button class="btn secondary small" data-fatt-move-here="${x.p.id}|${x.o.id}">Metti in ${esc(monthLabel(ym))}</button>`).join(' ')}</div>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        ${emessa ? `<button class="btn secondary small" id="fattReopenBtn">Riapri la fattura</button>` : `<button class="btn small" id="fattEmitBtn" ${rows.length || voci.length ? '' : 'disabled'}>Segna come emessa</button>`}
+      </div>
+      <div class="fc-note" style="margin-top:6px;">${emessa ? 'La fattura emessa resta com\'era anche se poi cambiano gli ordini; "Riapri" la ricalcola.' : `Compenso = merce × ${c.quota*100}% se il margine è almeno del ${c.quota*100}% ("SI"), altrimenti merce × margine (scrivi la percentuale, es. 18). Una fornitura uscita dal magazzino a fine mese e consegnata il mese dopo: apri gli ordini della commessa e scegli il mese.`}</div>
+    </div>
+    <details class="card"><summary><strong>Impostazioni del compenso</strong></summary>
+      <div class="field-row" style="margin-top:8px;">
+        <div><label>Provvigione (%)</label><input data-fatt-cfg="quota" inputmode="decimal" value="${esc(fmtNum(c.quota*100))}"></div>
+        <div><label>Auto (€/mese)</label><input data-fatt-cfg="auto" inputmode="decimal" value="${esc(fmtNum(c.auto))}"></div>
+        <div><label>Compenso mensile (€)</label><input data-fatt-cfg="fisso" inputmode="decimal" value="${esc(fmtNum(c.fisso))}"></div>
+      </div>
+      <div class="fc-note">Valgono per le bozze dei mesi nuovi; le fatture emesse non cambiano.</div>
+    </details>`;
+}
+async function fattSave(ym, patch){
+  const doc = fatture.get(ym) || {};
+  const data = { mese: ym, stato: doc.stato || 'bozza', db: doc.db || {}, voci: doc.voci || fattDefaultVoci(ym), ...patch, aggiornatoIl: Date.now() };
+  await db.collection('fatture').doc(ym).set(data);
+}
+async function setOrderBillMonth(pid, oid, ym){
+  const p = projects.find(x=>x.id===pid); if(!p) return;
+  const ordini = (p.ordini || []).map(o=>{
+    if(o.id!==oid) return o;
+    const n = { ...o };
+    if(!ym || (o.consegnatoIl && o.consegnatoIl.slice(0,7)===ym)) delete n.meseFattura; else n.meseFattura = ym;
+    return n;
+  });
+  await db.collection('projects').doc(pid).update({ ordini, updatedAt: Date.now() });
+}
+function parseDb(v){
+  const s = String(v || '').trim().replace('%', '').replace(',', '.');
+  if(!s || /^si$/i.test(s)) return null;
+  const n = Number(s);
+  if(!isFinite(n) || n < 0) return undefined;
+  return n > 1 ? n / 100 : n;
+}
+// Excel come quello dell'utente: un foglio per mese, righe progetto, voci, totale con formule.
+async function fattExportXlsx(){
+  await loadXLSX();
+  const wb = XLSX.utils.book_new(), c = fattCfg();
+  const months = fattMonths().slice().reverse().filter(m=>fatture.has(m) || fattRows(m).length || m===todayISO().slice(0,7));
+  months.forEach(ym=>{
+    const rows = fattRows(ym), voci = fattVoci(ym), ws = {};
+    const put = (ref, cell)=>{ ws[ref] = cell; };
+    put('A1', { t:'s', v:'N° project' }); put('B1', { t:'s', v:'Project name' }); put('C1', { t:'s', v:'sales amount' });
+    put('D1', { t:'s', v:'DB > 25 ?' }); put('E1', { t:'s', v:'fee' }); put('F1', { t:'n', v: c.quota });
+    const nRows = Math.max(6, rows.length);
+    rows.forEach((r, i)=>{ const n = i + 2;
+      put('A'+n, /^\d+$/.test(String(r.codice)) ? { t:'n', v: Number(r.codice) } : { t:'s', v: String(r.codice) });
+      put('B'+n, { t:'s', v: r.nome }); put('C'+n, { t:'n', v: r.importo, z:'#,##0.00' });
+      put('D'+n, r.db==null ? { t:'s', v:'SI' } : { t:'n', v: r.db });
+      put('E'+n, { t:'n', v: r.fee, f:`IF(A${n}="","",IF(D${n}>=0.25,C${n}*$F$1,C${n}*D${n}))`, z:'#,##0.00' });
+    });
+    const lab = nRows + 3;   // come nel file: riga vuota, poi la riga delle spese
+    put('A'+lab, { t:'s', v:'spese tecniche assistenze in cantiere' }); put('E'+lab, { t:'s', v:'detail' });
+    voci.forEach((v, i)=>{ const n = lab + 1 + i; put('E'+n, { t:'n', v: Number(v.importo) || 0, z:'#,##0.00' }); put('F'+n, { t:'s', v: v.desc }); });
+    const totR = lab + 1 + voci.length;
+    put('D'+totR, { t:'s', v:'invoice total' }); put('E'+totR, { t:'n', v: fattTotal(ym), f:`SUM(E2:E${totR - 1})`, z:'#,##0.00' });
+    ws['!ref'] = `A1:F${totR}`;
+    ws['!cols'] = [{ wch:12 }, { wch:38 }, { wch:14 }, { wch:11 }, { wch:14 }, { wch:34 }];
+    XLSX.utils.book_append_sheet(wb, ws, ym.replace('-', '_'));
+  });
+  const years = [...new Set(months.map(m=>m.slice(0,4)))];
+  XLSX.writeFile(wb, `INVOICE ${years[years.length - 1] || todayISO().slice(0,4)}.xlsx`);
+}
+// Importa i mesi gia' fatturati dal file dell'utente (fogli "YYYY_MM"): diventano fatture emesse.
+async function fattImportXlsx(file){
+  await loadXLSX();
+  const wb = XLSX.read(await file.arrayBuffer(), { type:'array' }), cur = todayISO().slice(0,7);
+  const done = [], skipped = [];
+  for(const name of wb.SheetNames){
+    const m = /^(\d{4})_(\d{2})$/.exec(name.trim()); if(!m) continue;
+    const ym = `${m[1]}-${m[2]}`;
+    if(ym >= cur){ skipped.push(`${monthLabel(ym)} (mese in corso: lo calcola l'app)`); continue; }
+    if(fatture.has(ym) && fatture.get(ym).stato==='emessa' && !fatture.get(ym).importato){ skipped.push(`${monthLabel(ym)} (già emessa nell'app)`); continue; }
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header:1, raw:true, defval:'' });
+    const righe = [], voci = []; let totale = null, inVoci = false;
+    for(let i = 1; i < aoa.length; i++){
+      const [A, B, C, D, E, F] = aoa[i];
+      if(/spese tecniche/i.test(String(A))){ inVoci = true; continue; }
+      if(/invoice total/i.test(String(D))){ totale = round2(E); continue; }
+      if(!inVoci){
+        if(A==='' && C==='') continue;
+        const importo = round2(C), dbv = typeof D==='number' ? (D > 1 ? D / 100 : D) : null;
+        const p = projects.find(x=>String(x.codice||'')===String(A).trim());
+        righe.push({ pid: p ? p.id : '', codice: String(A).trim(), nome: String(B).trim(), importo, db: dbv, fee: typeof E==='number' ? round2(E) : fattFee(importo, dbv, fattCfg().quota), ordini: [] });
+      } else if(typeof E==='number') voci.push({ desc: String(F || '').trim(), importo: round2(E) });
+    }
+    if(totale==null) totale = round2(righe.reduce((s,r)=>s+r.fee, 0) + voci.reduce((s,v)=>s+v.importo, 0));
+    await db.collection('fatture').doc(ym).set({ mese: ym, stato:'emessa', importato: true, righe, voci, totale, db: {}, emessaIl: '', aggiornatoIl: Date.now() });
+    done.push(monthLabel(ym));
+  }
+  return { done, skipped };
+}
+function bindFatt(main){
+  const ym = fattMese, fail = e=>{ fattMsg = 'Non salvato: '+esc(e.message || e.code || ''); renderMain(); };
+  main.querySelector('#fattMese')?.addEventListener('change', e=>{ fattMese = e.target.value; fattMsg = ''; renderMain(); });
+  main.querySelector('#fattToDel')?.addEventListener('click', ()=>{ delTab = 'consegne'; renderMain(); });
+  main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
+  main.querySelectorAll('[data-fatt-toggle]').forEach(b=>b.addEventListener('click', ()=>{ const k = b.dataset.fattToggle; fattOpen.has(k) ? fattOpen.delete(k) : fattOpen.add(k); renderMain(); }));
+  main.querySelectorAll('[data-fatt-db]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const v = parseDb(inp.value);
+    if(v===undefined){ inp.value = 'SI'; fattMsg = 'Margine non valido: scrivi SI oppure la percentuale (es. 18).'; renderMain(); return; }
+    const doc = fatture.get(ym) || {};
+    fattSave(ym, { db: { ...(doc.db || {}), [inp.dataset.fattDb]: v } }).catch(fail);
+  }));
+  main.querySelectorAll('[data-fatt-move]').forEach(sel=>sel.addEventListener('change', ()=>{
+    const [pid, oid] = sel.dataset.fattMove.split('|');
+    setOrderBillMonth(pid, oid, sel.value).catch(fail);
+  }));
+  main.querySelectorAll('[data-fatt-move-here]').forEach(b=>b.addEventListener('click', ()=>{ const [pid, oid] = b.dataset.fattMoveHere.split('|'); b.disabled = true; setOrderBillMonth(pid, oid, ym).catch(fail); }));
+  const voci = ()=>fattVoci(ym).map(v=>({ ...v }));
+  main.querySelectorAll('[data-fatt-vdesc]').forEach(inp=>inp.addEventListener('change', ()=>{ const vv = voci(); vv[+inp.dataset.fattVdesc].desc = inp.value.trim(); fattSave(ym, { voci: vv }).catch(fail); }));
+  main.querySelectorAll('[data-fatt-vimp]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const n = parseEuro(inp.value); if(n===null || Number.isNaN(n)){ fattMsg = 'Importo non valido.'; renderMain(); return; }
+    const vv = voci(); vv[+inp.dataset.fattVimp].importo = round2(n); fattSave(ym, { voci: vv }).catch(fail); }));
+  main.querySelectorAll('[data-fatt-vdel]').forEach(b=>b.addEventListener('click', ()=>{ const vv = voci(); vv.splice(+b.dataset.fattVdel, 1); fattSave(ym, { voci: vv }).catch(fail); }));
+  main.querySelector('#fattVoceAdd')?.addEventListener('click', ()=>fattSave(ym, { voci: [...voci(), { desc:'spese tecniche assistenze in cantiere', importo: 0 }] }).catch(fail));
+  main.querySelector('#fattEmitBtn')?.addEventListener('click', ()=>{
+    const rows = fattRows(ym).map(r=>({ pid: r.pid, codice: r.codice, nome: r.nome, importo: r.importo, db: r.db, fee: r.fee, ordini: r.ordini }));
+    fattSave(ym, { stato:'emessa', righe: rows, voci: fattVoci(ym), totale: fattTotal(ym), emessaIl: todayISO() }).then(()=>{ fattMsg = `Fattura di ${monthLabel(ym)} segnata come emessa.`; }).catch(fail);
+  });
+  main.querySelector('#fattReopenBtn')?.addEventListener('click', ()=>fattSave(ym, { stato:'bozza', righe: null, totale: null, emessaIl: '', importato: false }).catch(fail));
+  main.querySelector('#fattXlsBtn')?.addEventListener('click', async ()=>{
+    fattBusy = 'x'; renderMain();
+    try{ await fattExportXlsx(); fattMsg = ''; }catch(e){ fattMsg = 'Impossibile creare il file: '+esc(e.message || e); }
+    fattBusy = ''; renderMain();
+  });
+  main.querySelector('#fattImportBtn')?.addEventListener('click', ()=>{
+    const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx,.xls';
+    input.addEventListener('change', async ()=>{
+      const f = input.files && input.files[0]; if(!f) return;
+      fattBusy = 'i'; fattMsg = 'Lettura del file…'; renderMain();
+      try{ const r = await fattImportXlsx(f); fattMsg = (r.done.length ? `Importati come fatture emesse: ${r.done.join(', ')}.` : 'Nessun mese importato (fogli chiamati AAAA_MM).') + (r.skipped.length ? ` Saltati: ${r.skipped.join('; ')}.` : ''); }
+      catch(e){ fattMsg = 'Impossibile leggere il file: '+esc(e.message || e); }
+      fattBusy = ''; renderMain();
+    });
+    input.click();
+  });
+  main.querySelectorAll('[data-fatt-cfg]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const n = parseEuro(inp.value); if(n===null || Number.isNaN(n) || n < 0){ fattMsg = 'Valore non valido.'; renderMain(); return; }
+    const k = inp.dataset.fattCfg, cur = { ...(appSettings.fatturazione || {}) };
+    cur[k] = k==='quota' ? n / 100 : n;
+    saveSettings({ fatturazione: cur });
+  }));
 }
 
 // ---------------------------------------------------------------------------
