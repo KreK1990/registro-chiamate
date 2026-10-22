@@ -552,7 +552,7 @@ await test('sopralluoghi: pianifica dal progetto, agenda, mappa, esito, elimina'
   expect((await page.textContent('.planner .plan-ev.sop')).includes('Via Po 10, Torino'), 'manca l\'indirizzo sotto il nome');
   await page.$eval('.planner .plan-ev.sop', el => el.click());
   const info = await page.textContent('.planner .plan-info');
-  expect(await page.isVisible('.planner .plan-info') && info.includes('Via Po 10, Torino · Indicazioni') && info.includes('verificare i balconi'), 'scheda dell\'impegno: ' + info);
+  expect(await page.isVisible('.planner .plan-info') && info.includes('Via Po 10, Torino · Vedi su Maps') && info.includes('verificare i balconi'), 'scheda dell\'impegno: ' + info);
   expect(await page.evaluate(() => view) === 'sop', 'toccare un impegno non deve uscire dal modulo');
   // trascinamento: impegno gia' fissato (con conferma) e blocco "questo"
   const drag = async (fromSel, toSel) => {
@@ -592,13 +592,13 @@ await test('sopralluoghi: pianifica dal progetto, agenda, mappa, esito, elimina'
   await page.waitForSelector('.map-mk.sop', { timeout: 15000 });
   // apertura dal calendario, esito ed eliminazione
   await show_(page, 'appt', "apptSubView='list'");
-  await page.click('#main [data-sop-id="sx"]');
+  await page.click('#main [data-sop-id="sx"] .sop-tag');   // sul titolo: al centro della scheda c'e' il link alla mappa
   await page.waitForSelector('#sopNoteDopo');
   await page.fill('#sopNoteDopo', 'getto previsto a novembre');
   await page.click('#sopSaveBtn');
   await page.waitForFunction(() => (window.__fake.docs('sopralluoghi').find(s => s.id === 'sx') || {}).noteDopo === 'getto previsto a novembre');
   await page.waitForFunction(() => view === 'appt');
-  await page.click('#main [data-sop-id="sx"]');
+  await page.click('#main [data-sop-id="sx"] .sop-tag');   // sul titolo: al centro della scheda c'e' il link alla mappa
   await page.click('#sopDelBtn');
   await page.click('#sopDelYes');
   await page.waitForFunction(() => !window.__fake.docs('sopralluoghi').some(s => s.id === 'sx'));
@@ -691,6 +691,12 @@ await test('cosa fare in zona e la mia posizione sulla mappa', async () => {
   await page.click('.zone-card [data-zone-map]');
   await page.waitForFunction(() => view === 'map');
   await page.waitForSelector('.me-dot', { timeout: 15000 });
+});
+
+await test('indirizzi: aprono la posizione su Maps, non le indicazioni', async () => {
+  await show_(page, 'detail', "selectedId='c1'");
+  const href = await page.getAttribute('#main a.addr-link[href*="google.com/maps"]', 'href');
+  expect(href.startsWith('https://www.google.com/maps/search/?api=1&query=') && !href.includes('/dir/') && /Vedi su Maps/.test(await page.textContent('#main a.addr-link[href*="google.com/maps"]')), 'link indirizzo: ' + href);
 });
 
 await test('contatto: salva nella rubrica del telefono (vCard)', async () => {

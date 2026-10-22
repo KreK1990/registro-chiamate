@@ -1454,7 +1454,7 @@ function renderMain(){
         <h2>${esc(fullName(c))}${offTag(c)}</h2>
         <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
         <div style="margin-top:8px;font-size:14px;">${phoneLinks(c)}${(c.cellulare||c.telefono)&&c.email?' · ':''}${c.email?`<a href="mailto:${esc(c.email)}" class="addr-link">${esc(c.email)}</a>`:''}</div>
-        ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
+        ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Vedi su Maps</a></div>`:''}
         ${fullAddress(c) && !geoEditing('contacts', c.id) ? `<div style="margin-top:6px;">${geoEditBtn('contacts', c)}</div>` : ''}
         ${fullAddress(c)? (geoEditing('contacts', c.id) ? geoEditHtml(c) : `<div class="map-embed"><iframe src="${mapEmbedUrl(c)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mappa: ${esc(fullAddress(c))}"></iframe></div>`):''}
         ${c.cellulare || c.telefono || c.email ? `<div class="contact-tools">${c.cellulare || c.telefono || c.email ? '<button type="button" class="btn secondary small" id="vcardBtn">Salva nella rubrica del telefono</button>' : ''}${mailPresBtn(c)}${c.mailPresentazioneIl ? `<span class="fc-note">mail di presentazione aperta il ${fmtDate(c.mailPresentazioneIl)}</span>` : ''}</div>` : ''}
@@ -1666,7 +1666,7 @@ function renderFooter(){
           ${footerSelectedDay ? sopOnDay(footerSelectedDay).map(sopDayRow).join('') : ''}${dayList.length? dayList.map(k=>{ const c=byId[k.contactId]||{}; const t=new Date(k.appuntamento); const hh=String(t.getHours()).padStart(2,'0'),mm=String(t.getMinutes()).padStart(2,'0');
             return `<div class="day-appt-row" data-appt-call-id="${k.id}" style="flex-direction:column;align-items:stretch;">
           <span>${hh}:${mm} — ${esc(fullName(c))}${k.progetto?' · '+esc(k.progetto):''}</span>
-          ${fullAddress(c)?`<a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(fullAddress(c))} · Indicazioni</a>`:''}
+          ${fullAddress(c)?`<a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(fullAddress(c))} · Vedi su Maps</a>`:''}
         </div>`;
           }).join('') : (sopOnDay(footerSelectedDay).length ? '' : `<div class="empty" style="padding:0;">Nessun appuntamento in questo giorno.</div>`)}
         </div>
@@ -2806,7 +2806,7 @@ function deliveryRowHtml(r, kind){
     <div class="del-main">
       <div><span class="proj-code">${esc(p.codice||'')}</span> <span class="name-link" data-open-project="${p.id}" style="font-weight:600;">${esc(p.nome||'Progetto')}</span>
         ${kind==='late' ? `<span class="del-tag late">in ritardo di ${late} ${late===1 ? 'giorno' : 'giorni'}</span>` : ''}${kind==='done' ? '<span class="del-tag done">consegnato</span>' : ''}</div>
-      ${addr ? `<div class="todo-sub"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc(addr)} · Indicazioni</a></div>` : ''}
+      ${addr ? `<div class="todo-sub"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc(addr)} · Vedi su Maps</a></div>` : ''}
       <div class="todo-sub">Ordine${o.numero ? ` n° ${esc(o.numero)}` : ''} del ${fmtDate(o.data)} · ${fmtEuro(o.importo)}${kind==='done' && o.consegna && o.consegna!==o.consegnatoIl ? ` · prevista per il ${fmtDate(o.consegna)}` : ''}</div>
       ${o.rinvii ? `<div class="todo-sub">Rinviata ${o.rinvii===1 ? 'una volta' : o.rinvii+' volte'}${o.consegnaIniziale ? ` (prevista all'inizio per il ${fmtDate(o.consegnaIniziale)})` : ''}</div>` : ''}
       ${o.note ? `<div class="todo-sub">${esc(o.note)}</div>` : ''}
@@ -3020,7 +3020,7 @@ function sopMatches(s){
 function sopCardHtml(s){
   return `<div class="card sop-card" data-sop-id="${s.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
     <div><div style="font-weight:600;font-size:15px;"><span class="sop-tag">Sopralluogo</span> ${esc(sopTitle(s))}</div>
-      ${sopAddr(s) ? `<div style="font-size:12.5px;margin-top:4px;"><a href="${sopMapsUrl(s)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(sopAddr(s))} · Indicazioni</a></div>` : ''}
+      ${sopAddr(s) ? `<div style="font-size:12.5px;margin-top:4px;"><a href="${sopMapsUrl(s)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(sopAddr(s))} · Vedi su Maps</a></div>` : ''}
       ${s.note ? `<div style="font-size:13px;margin-top:4px;white-space:pre-wrap;">${esc(s.note)}</div>` : ''}
       ${s.noteDopo ? `<div style="font-size:13px;margin-top:4px;white-space:pre-wrap;"><strong>Esito:</strong> ${esc(s.noteDopo)}</div>` : ''}</div>
     <div class="followup ok">${fmtDateTime(s.quando)}</div></div>`;
@@ -3028,7 +3028,7 @@ function sopCardHtml(s){
 function sopDayRow(s){
   return `<div class="day-appt-row sop" data-sop-id="${s.id}" style="flex-direction:column;align-items:stretch;margin-bottom:8px;">
     <span><span style="font-family:var(--mono);">${sopTime(s)}</span> — <span class="sop-tag">Sopralluogo</span> ${esc(sopTitle(s))}</span>
-    ${sopAddr(s) ? `<a href="${sopMapsUrl(s)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(sopAddr(s))} · Indicazioni</a>` : ''}
+    ${sopAddr(s) ? `<a href="${sopMapsUrl(s)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(sopAddr(s))} · Vedi su Maps</a>` : ''}
   </div>`;
 }
 function sopMiniRow(s){ return `<div class="mini-row" data-sop-id="${s.id}"><span class="mini-time">${sopTime(s)}</span><span class="sop-tag">S</span> ${esc(sopTitle(s))}</div>`; }
@@ -3091,7 +3091,7 @@ function sopFormView(){
     <div id="sopErr" style="color:var(--danger);font-size:13px;margin-top:6px;"></div>
     <div class="todo-actions" style="margin-top:10px;align-items:center;">
       <button class="btn" id="sopSaveBtn">Salva</button>
-      ${sopAddr(s) ? `<a class="btn secondary" href="${sopMapsUrl(s)}" target="_blank" rel="noopener">Indicazioni</a>` : ''}
+      ${sopAddr(s) ? `<a class="btn secondary" href="${sopMapsUrl(s)}" target="_blank" rel="noopener">Su Maps</a>` : ''}
       ${isNew ? '' : confirmDeleteSopId===sopEdit.id
         ? `<span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare il sopralluogo?</span><button class="btn small" id="sopDelYes" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì, elimina</button><button class="btn secondary small" id="sopDelNo">No</button>`
         : '<button class="btn secondary" id="sopDelBtn">Elimina</button>'}
@@ -3316,7 +3316,7 @@ function mountPlanners(){
         const end = tripHM(tripMin(ev.t.slice(11,16)) + ev.min);
         info.innerHTML = `<div class="plan-info-main"><strong>${fmtLongDate(ev.t.slice(0,10)+'T12:00:00')}, ${ev.t.slice(11,16)}–${end}</strong> · ${esc(ev.label)}
             ${ev.sub ? `<div class="todo-sub">${esc(ev.sub)}</div>` : ''}
-            <div class="todo-sub">${ev.addr ? `<a href="${ev.maps}" target="_blank" rel="noopener" class="addr-link">${esc(ev.addr)} · Indicazioni</a>` : 'Indirizzo non indicato'}${ev.tel ? ` · <a href="tel:${esc(ev.tel)}" class="tel-link">${esc(ev.tel)}</a>` : ''}</div>
+            <div class="todo-sub">${ev.addr ? `<a href="${ev.maps}" target="_blank" rel="noopener" class="addr-link">${esc(ev.addr)} · Vedi su Maps</a>` : 'Indirizzo non indicato'}${ev.tel ? ` · <a href="tel:${esc(ev.tel)}" class="tel-link">${esc(ev.tel)}</a>` : ''}</div>
             ${ev.note ? `<div class="todo-sub">${esc(ev.note)}</div>` : ''}</div>
           <button type="button" class="btn secondary small" data-plan-close aria-label="Chiudi">Chiudi</button>`;
         info.classList.remove('hidden');
@@ -6142,21 +6142,21 @@ function mapPopupHtml(pt){
   if(pt.kind==='sop'){ const s = pt.s;
     return `<div class="map-pop"><div class="fc-note">Sopralluogo · ${fmtDateTime(s.quando)}</div><strong>${esc(sopTitle(s))}</strong><div>${esc(pt.addr)}</div>
       ${s.note ? `<div class="fc-note">${esc(s.note)}</div>` : ''}
-      <div class="map-pop-actions"><button class="btn small" data-sop-id="${s.id}">Apri</button><a class="btn secondary small" href="${sopMapsUrl(s)}" target="_blank" rel="noopener">Indicazioni</a></div></div>`; }
+      <div class="map-pop-actions"><button class="btn small" data-sop-id="${s.id}">Apri</button><a class="btn secondary small" href="${sopMapsUrl(s)}" target="_blank" rel="noopener">Su Maps</a></div></div>`; }
   if(pt.kind==='portale'){ const r = pt.r, p = r.p;
     return `<div class="map-pop"><div class="fc-note">${pt.st==='seguito' ? 'Cantiere seguito' : 'Cantiere da valutare'} · NII Progetti</div><strong>${esc(p.titolo||'Cantiere')}</strong>
       <div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}
       <div class="fc-note">${esc([p.fase && 'Fase '+p.fase, p.unita ? p.unita+' unità' : '', r.vol!=null ? 'volume '+fmtEuro(r.vol).replace(',00','') : ''].filter(Boolean).join(' · '))}</div>
       ${r.noti.length ? `<div class="fc-note">Già in rubrica: ${r.noti.map(x=>esc(fullName(x.m.c))).join(', ')}</div>` : ''}
       ${pt.st==='seguito' && r.saved.nota ? `<div style="margin-top:4px;">${esc(r.saved.nota)}</div>` : ''}
-      <div class="map-pop-actions"><button class="btn small" data-portal-goto="${pt.st==='seguito' ? 'seguiti' : 'esamina'}|${esc(p.id)}">Apri scheda</button><a class="btn secondary small" href="${mapsUrl({ via: pt.addr })}" target="_blank" rel="noopener">Indicazioni</a></div></div>`; }
+      <div class="map-pop-actions"><button class="btn small" data-portal-goto="${pt.st==='seguito' ? 'seguiti' : 'esamina'}|${esc(p.id)}">Apri scheda</button><a class="btn secondary small" href="${mapsUrl({ via: pt.addr })}" target="_blank" rel="noopener">Su Maps</a></div></div>`; }
   if(pt.kind==='cantiere'){ const p = pt.p, ph = projectPhase(p);
     return `<div class="map-pop"><div class="proj-code">${esc(p.codice||'')}</div><strong>${esc(p.nome||'Progetto')}</strong>
       <div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}<div class="fc-note">${isLost(p) ? 'Persa' : ph ? esc(ph.label) : 'Da avviare'}${p.importoOfferta!=null ? ' · '+fmtEuro(projectAmount(p)) : ''}</div>
-      <div class="map-pop-actions"><button class="btn small" data-map-project="${p.id}">Apri progetto</button><a class="btn secondary small" href="${mapsUrl(p.via||p.citta ? p : { via: pt.addr })}" target="_blank" rel="noopener">Indicazioni</a></div></div>`; }
+      <div class="map-pop-actions"><button class="btn small" data-map-project="${p.id}">Apri progetto</button><a class="btn secondary small" href="${mapsUrl(p.via||p.citta ? p : { via: pt.addr })}" target="_blank" rel="noopener">Su Maps</a></div></div>`; }
   return `<div class="map-pop"><div>${esc(pt.addr)}</div>${pt.approx ? '<div class="fc-note">Posizione approssimativa (solo comune)</div>' : ''}
     ${pt.contacts.map(c=>{ const d = lastContactDays(c); return `<div class="map-pop-c"><span class="name-link" data-map-contact="${c.id}">${esc(fullName(c))}</span>${c.azienda ? ` · ${esc(c.azienda)}` : ''}<div class="fc-note">${d==null ? 'mai sentito' : `ultimo contatto ${d} giorni fa`}</div></div>`; }).join('')}
-    <div class="map-pop-actions"><a class="btn secondary small" href="${mapsUrl(pt.contacts[0])}" target="_blank" rel="noopener">Indicazioni</a></div></div>`;
+    <div class="map-pop-actions"><a class="btn secondary small" href="${mapsUrl(pt.contacts[0])}" target="_blank" rel="noopener">Su Maps</a></div></div>`;
 }
 function distKm(a, b){ const R = 6371, r = x=>x*Math.PI/180; const dLat = r(b.lat-a.lat), dLng = r(b.lng-a.lng);
   const h = Math.sin(dLat/2)**2 + Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
@@ -6604,7 +6604,7 @@ function portalCardHtml(r){
         ${r.nuovo ? '<span class="ai-prio alta">nuovo</span>' : ''}${(r.projs||[]).map(pr=>`<span class="ai-prio">progetto ${esc(pr.codice||'')}</span>`).join('')}${(r.projs||[]).length > 1 ? '<span class="ai-prio warn">collegata a più progetti</span>' : ''}</div>
       <div class="portal-vol">${r.vol!=null ? `<strong>${fmtEuro(r.vol).replace(',00','')}</strong><span>${p.unita} unità · ${p.unita*portalMl()} m</span>` : '<span>unità non indicate</span>'}</div>
     </div>
-    ${vc.via ? `<div class="portal-addr"><a href="${mapsUrl({ via:vc.via, citta:vc.citta })}" target="_blank" rel="noopener" class="addr-link">${esc(vc.via)}, ${esc(vc.citta)} · Indicazioni</a></div>` : ''}
+    ${vc.via ? `<div class="portal-addr"><a href="${mapsUrl({ via:vc.via, citta:vc.citta })}" target="_blank" rel="noopener" class="addr-link">${esc(vc.via)}, ${esc(vc.citta)} · Vedi su Maps</a></div>` : ''}
     <div class="todo-sub">${esc([p.pnrr && 'PNRR', p.fase && 'Fase '+p.fase, p.intervento, p.valore ? 'valore opera '+fmtEuro(p.valore).replace(',00','') : '', p.inizio && p.inizio!=='ND' ? 'inizio '+p.inizio : '', p.dataNotizia && 'notizia del '+p.dataNotizia].filter(Boolean).join(' · '))}</div>
     ${p.descrizione ? `<div class="portal-desc">${esc(p.descrizione)}</div>` : ''}
     <div class="portal-toggle"><span class="name-link portal-less" data-portal-toggle="${p.id}">Mostra tutto</span><span class="name-link portal-more" data-portal-toggle="${p.id}">Riduci</span></div>
@@ -6998,7 +6998,7 @@ function projectPortalCardHtml(pr){
 // Posizione corretta a mano (scheda cliente e scheda progetto, "Correggi posizione"): una piccola
 // mappa con il segnaposto da trascinare o da spostare con un clic. Salva geo = {lat, lng, a
 // (indirizzo attuale), manual:true}: vale per la Mappa, per la mappa della scheda e per
-// "Indicazioni"; se l'indirizzo cambia si torna alla ricerca automatica. Per i clienti la
+// "Su Maps"; se l'indirizzo cambia si torna alla ricerca automatica. Per i clienti la
 // posizione si applica anche ai colleghi con lo stesso indirizzo.
 // ---------------------------------------------------------------------------
 let geoEdit = null, geoEditMap = null;   // geoEdit = { col:'contacts'|'projects', id }
@@ -7928,7 +7928,7 @@ function projectDetailView(){
       <div class="proj-head-info">
       <div class="proj-code">ID ${esc(p.codice||'')}</div>
       <h2>${esc(p.nome || 'Progetto senza nome')}</h2>
-      ${p.via||p.citta ? `<div style="font-size:14px;margin-top:2px;"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc([p.via, p.citta].filter(Boolean).join(', '))} · Indicazioni</a></div>` : ''}
+      ${p.via||p.citta ? `<div style="font-size:14px;margin-top:2px;"><a href="${mapsUrl(p)}" target="_blank" rel="noopener" class="addr-link">${esc([p.via, p.citta].filter(Boolean).join(', '))} · Vedi su Maps</a></div>` : ''}
       ${projectGeoAddr(p).a && !geoEditing('projects', p.id) ? `<div style="margin-top:6px;">${geoEditBtn('projects', p)}</div>` : ''}
       <div style="margin-top:10px;">${phaseBadge(p)}</div>
       <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:12px;">
@@ -8830,7 +8830,7 @@ function apptDoneView(){
   if(!met.length && !toReg.length && !sl.length) return `<div class="empty">${apptSearch ? 'Nessun incontro svolto corrisponde alla ricerca.' : 'Nessun incontro ancora svolto.'}</div>`;
   const head = c=>`<div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
-        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}`;
+        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Vedi su Maps</a></div>`:''}`;
   const items = [
     ...met.map(k=>{ const c = byId[k.contactId] || {}; return { t: k.data+'T'+(k.ora||'00:00'), h: `<div class="card" data-appt-call-id="${k.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <div>${head(c)}${k.progetto ? `<div style="font-size:12.5px;color:var(--muted);">${esc(k.progetto)}</div>` : ''}
@@ -8862,7 +8862,7 @@ function apptListView(){
       <div>
         <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}${k.progetto?' · '+esc(k.progetto):''}</div>
-        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
+        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Vedi su Maps</a></div>`:''}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;"><div class="followup ok">${fmtDateTime(k.appuntamento)}</div>${inviteBtn(k)}</div>
     </div>`;
@@ -9364,7 +9364,7 @@ function agendaView(){
     const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
     return `<div class="day-appt-row" data-appt-call-id="${k.id}" style="flex-direction:column;align-items:stretch;margin-bottom:8px;">
       <span><span style="font-family:var(--mono);">${hh}:${mm}</span> — ${esc(fullName(c))}${k.progetto?' · '+esc(k.progetto):''}</span>
-      ${fullAddress(c)?`<a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(fullAddress(c))} · Indicazioni</a>`:''}
+      ${fullAddress(c)?`<a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(fullAddress(c))} · Vedi su Maps</a>`:''}
     </div>`;
   }).join('') : '<div class="empty">Nessun appuntamento oggi.</div>';
 
@@ -9659,7 +9659,7 @@ function tableDetailView(){
       <h2>${c.id?`<span class="name-link" id="callContactName">${esc(fullName(c))}</span>`:esc(fullName(c))}</h2>
       <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
       ${(c.cellulare||c.telefono)?`<div style="margin-top:4px;font-size:14px;">${phoneLinks(c)}</div>`:''}
-      ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Indicazioni</a></div>`:''}
+      ${fullAddress(c)?`<div style="margin-top:4px;font-size:14px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link">${esc(fullAddress(c))} · Vedi su Maps</a></div>`:''}
       ${!isPhone(k) ? actDetailBody(k) : `<div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;">
         <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}</div></div>
         ${k.esito?`<div><label>Esito</label><div style="font-size:14px;">${esc(k.esito)}</div></div>`:''}
@@ -10358,7 +10358,9 @@ function fullName(c){
 }
 function tagPills(tag){ if(!tag) return ''; return tag.split(',').map(t=>t.trim()).filter(Boolean).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join(''); }
 function fullAddress(c){ if(c.via || c.citta) return [c.via, c.citta].filter(Boolean).join(', '); return c.indirizzo || ''; }
-function mapsUrl(c){ const g = manualGeo(c); return `https://www.google.com/maps/dir/?api=1&destination=${g ? g.lat+','+g.lng : encodeURIComponent(fullAddress(c))}`; }
+// Posizione su Google Maps (non le indicazioni: richiesta dell'utente 2026-10-22, la mappa si esplora e le
+// indicazioni si chiedono da Maps). Solo il giro di "Cosa fare in zona" apre ancora il percorso.
+function mapsUrl(c){ const g = manualGeo(c); return `https://www.google.com/maps/search/?api=1&query=${g ? g.lat+','+g.lng : encodeURIComponent(fullAddress(c))}`; }
 // Mappa incorporata (Google Maps "output=embed": non richiede chiave API).
 function mapEmbedUrl(c){ const g = manualGeo(c); return g ? `https://www.google.com/maps?q=${g.lat},${g.lng}&z=17&output=embed` : `https://www.google.com/maps?q=${encodeURIComponent(fullAddress(c))}&z=16&output=embed`; }
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }

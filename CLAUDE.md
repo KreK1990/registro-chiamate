@@ -351,7 +351,7 @@ Campi principali:
   al giorno scelto/oggi (sul telefono si vedono circa 4 giorni, colonna delle ore fissa). Montata da
   `mountPlanners` (queueMicrotask all'inizio di `renderMain` e `renderCallFlow`). Ogni impegno mostra
   l'indirizzo sotto il nome; toccandolo si apre `.plan-info` in cima all'agenda (data, orario, studio,
-  indirizzo con Indicazioni, telefono, progetto e note) senza uscire dal modulo. Trascinamento (pointer
+  indirizzo con "Vedi su Maps", telefono, progetto e note) senza uscire dal modulo. Trascinamento (pointer
   events; sul telefono dopo una pressione di 350 ms, un trascinamento veloce resta scorrimento):
   "questo" cambia data/ora del modulo, un impegno fissato si sposta solo dopo "Sposta" nella
   `.plan-info` (aggiorna `calls.appuntamento` o `sopralluoghi.quando`, aggancio alla mezz'ora);
@@ -486,7 +486,7 @@ Campi principali:
   quello della scheda del portale collegata (`projectGeoAddr`). Riquadro "Non sulla mappa"
   (`mapMissingHtml`) con progetti/clienti mancanti e motivo. "Correggi posizione" nelle schede cliente e
   progetto (blocco "Posizione corretta a mano"): editor Leaflet con segnaposto trascinabile, salva
-  `geo.manual` (vale per Mappa, mappa incorporata e "Indicazioni" via `manualGeo` in `mapsUrl`/
+  `geo.manual` (vale per Mappa, mappa incorporata e "Vedi su Maps" via `manualGeo` in `mapsUrl`/
   `mapEmbedUrl`; per i clienti anche ai colleghi con lo stesso indirizzo; si azzera se l'indirizzo
   cambia o con "Torna alla posizione dell'indirizzo"). "Vicino a…" (località o
   posizione del telefono) elenca cosa c'è entro 20 km. `canAutoRender` esclude la mappa.
@@ -509,6 +509,9 @@ Campi principali:
   email o indirizzi (scelta concordata con l'utente, 2026-10-05). Candidati con le stesse
   esclusioni di "Da ricontattare" e non sentiti da almeno 14 giorni. Risultato salvato in
   `users/<uid>/suggerimenti/<YYYY-MM-DD>`. Costo stimato ~2 $/mese con un'analisi al giorno.
+- **Indirizzi su Maps** (2026-10-22): `mapsUrl` apre la POSIZIONE su Google Maps (`maps/search/?api=1&query=`), non le
+  indicazioni (scelta dell'utente: esplora la mappa e chiede il percorso da Maps); etichette "Vedi su Maps" / "Su Maps".
+  Solo il giro di "Cosa fare in zona" apre ancora il percorso (`maps/dir`).
 - **Cantieri dal portale** (Progetti -> "Cantieri dal portale", blocco omonimo): legge nel
   browser con pdf.js il PDF esportato dal portale NII Progetti (niiprogetti.it; ~1000 pagine,
   ~4 s), senza inviarlo a servizi esterni (il PDF e' coperto da copyright). `parsePortalPages`
