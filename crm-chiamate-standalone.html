@@ -145,6 +145,8 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .fatt-trow > :first-child{text-align:left;}
 .fatt-trow.fatt-th{font-size:11px;color:var(--muted);text-transform:uppercase;}
 .fatt-ttot{border-top:2px solid var(--accent);font-weight:600;}
+.fu-form{margin-top:8px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:2px;max-width:520px;}
+.fu-quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .rev-row{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
 .rev-main{flex:1 1 260px;min-width:0;font-size:13.5px;}
 .rev-edit{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;}
@@ -1302,6 +1304,7 @@ function renderMain(){
   }
   if(view==='followup'){
     main.innerHTML = followupView();
+    bindFuForm(main);
     main.querySelectorAll('[data-fu-id]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         selectedId=btn.dataset.fuId; clearFollowUpOnEntry=true; view='call'; callStep='entry';
@@ -1461,6 +1464,7 @@ function renderMain(){
         ${c.tag?`<div style="margin-top:8px;">${tagPills(c.tag)}</div>`:''}
         ${c.note?`<div style="margin-top:8px;font-size:14px;color:var(--muted);white-space:pre-wrap;">${esc(c.note)}</div>`:''}
         ${followUpBadge(c.followUp,true)}
+        ${fuButtonHtml(c)}
       </div>
       ${lastContactsHtml(c)}
       ${studioColleaguesHtml(c)}
@@ -1525,6 +1529,7 @@ function renderMain(){
     bindContactOff(c);
     document.getElementById('vcardBtn')?.addEventListener('click', ()=>downloadVCard(c));
     bindCollab(c);
+    bindFuForm(main);
     main.querySelectorAll('#collabCard [data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
     bindContactProjects(c);
     main.querySelectorAll('[data-contact-id]').forEach(el=>{
@@ -5986,6 +5991,64 @@ function bindForecastReview(main){
 }
 
 // ---------------------------------------------------------------------------
+// Follow-up come azione (richiesta dell'utente 2026-10-22): non piu' nel modulo "Modifica contatto" ma con
+// "+ Follow-up" nella scheda del contatto e "+ Aggiungi follow-up" (con scelta del contatto) nella pagina
+// Follow-up; "Sposta" sulle righe. Stesso modulo (`fuFormHtml`): data, ora, scorciatoie, "Togli".
+// ---------------------------------------------------------------------------
+let fuEdit = null;   // { where:'detail'|'list', contactId }
+const fuLabel = c=>fullName(c) + (c.azienda ? ' · '+c.azienda : '');
+function fuFormHtml(c){
+  const cur = c && c.followUp ? splitDT(c.followUp) : { date: '', time: '09:00' };
+  const pick = !c;
+  const opts = pick ? contacts.filter(x=>!isOff(x)).map(fuLabel).sort((a,b)=>a.localeCompare(b)) : [];
+  return `<div class="fu-form" id="fuForm">
+    ${pick ? `<label>Contatto</label><input id="fuWho" list="fuWhoList" placeholder="Cerca nome o studio" autocomplete="off"><datalist id="fuWhoList">${opts.map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist>` : ''}
+    <div class="field-row">
+      <div><label>Data</label><input type="date" id="fuDate" value="${esc(cur.date)}"></div>
+      <div><label>Ora</label><select id="fuTime">${timeOptions(cur.time || '09:00')}</select></div>
+    </div>
+    <div class="fu-quick">${[[1,'Domani'],[7,'Tra una settimana'],[14,'Tra due settimane'],[30,'Tra un mese']].map(([d,l])=>`<button type="button" class="btn secondary small" data-fu-plus="${d}">${l}</button>`).join('')}</div>
+    <div id="fuErr" style="color:var(--danger);font-size:13px;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <button class="btn small" id="fuSaveBtn">Salva follow-up</button>
+      <button class="btn secondary small" id="fuCancelBtn">Annulla</button>
+      ${c && c.followUp ? '<button class="btn secondary small" id="fuClearBtn">Togli il follow-up</button>' : ''}
+    </div>
+  </div>`;
+}
+function fuButtonHtml(c){
+  if(isOff(c)) return '';
+  return fuEdit && fuEdit.where==='detail' && fuEdit.contactId===c.id ? fuFormHtml(c)
+    : `<div style="margin-top:8px;"><button class="btn secondary small" id="fuOpenBtn">${c.followUp ? 'Modifica follow-up' : '+ Follow-up'}</button></div>`;
+}
+function bindFuForm(main, contactOf){
+  main.querySelector('#fuOpenBtn')?.addEventListener('click', ()=>{ fuEdit = { where: 'detail', contactId: selectedId }; renderMain(); document.getElementById('fuDate')?.focus(); });
+  main.querySelector('#fuAddBtn')?.addEventListener('click', ()=>{ fuEdit = { where: 'list', contactId: null }; renderMain(); document.getElementById('fuWho')?.focus(); });
+  main.querySelectorAll('[data-fu-edit]').forEach(b=>b.addEventListener('click', ()=>{ fuEdit = { where: 'list', contactId: b.dataset.fuEdit }; renderMain(); }));
+  const form = main.querySelector('#fuForm'); if(!form) return;
+  const err = t=>{ form.querySelector('#fuErr').textContent = t; };
+  form.querySelectorAll('[data-fu-plus]').forEach(b=>b.addEventListener('click', ()=>{ form.querySelector('#fuDate').value = addDaysISO(todayISO(), +b.dataset.fuPlus); }));
+  form.querySelector('#fuCancelBtn').addEventListener('click', ()=>{ fuEdit = null; renderMain(); });
+  const target = ()=>{
+    if(fuEdit.contactId) return contacts.find(x=>x.id===fuEdit.contactId);
+    const v = (form.querySelector('#fuWho') || {}).value || '';
+    return contacts.find(x=>fuLabel(x)===v.trim()) || null;
+  };
+  form.querySelector('#fuSaveBtn').addEventListener('click', async ()=>{
+    const c = target(); if(!c){ err('Scegli il contatto dall\'elenco dei suggerimenti.'); return; }
+    const d = form.querySelector('#fuDate').value, t = form.querySelector('#fuTime').value || '09:00';
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){ err('Indica la data del follow-up.'); return; }
+    try{ await db.collection('contacts').doc(c.id).update({ followUp: `${d}T${t}`, followUpSetAt: Date.now() }); fuEdit = null; renderMain(); }
+    catch(e){ err('Non salvato: '+(e.message || e.code || '')); }
+  });
+  form.querySelector('#fuClearBtn')?.addEventListener('click', async ()=>{
+    const c = target(); if(!c) return;
+    try{ await db.collection('contacts').doc(c.id).update({ followUp: '' }); fuEdit = null; renderMain(); }
+    catch(e){ err('Non salvato: '+(e.message || e.code || '')); }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
 // stesso studio stanno in un solo punto) e cantieri (quadrati: in corso / confermati /
 // persi). Leaflet + OpenStreetMap da cdnjs. Coordinate da Nominatim (OpenStreetMap),
@@ -9408,7 +9471,12 @@ function agendaView(){
 
 function followupView(){
   const withFU = contacts.filter(c=>!c.spento && c.followUp).sort((a,b)=>a.followUp.localeCompare(b.followUp));
-  if(withFU.length===0) return '<div class="empty">Nessun follow-up programmato al momento.</div>';
+  const head = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <h2 style="margin:0;">Follow-up da effettuare (${withFU.length})</h2>
+      ${fuEdit && fuEdit.where==='list' ? '' : '<button class="btn small" id="fuAddBtn">+ Aggiungi follow-up</button>'}
+    </div>
+    ${fuEdit && fuEdit.where==='list' ? `<div class="card"><h3>${fuEdit.contactId ? 'Sposta il follow-up di '+esc(fullName(contacts.find(x=>x.id===fuEdit.contactId) || {})) : 'Nuovo follow-up'}</h3>${fuFormHtml(fuEdit.contactId ? contacts.find(x=>x.id===fuEdit.contactId) : null)}</div>` : ''}`;
+  if(withFU.length===0) return head + '<div class="empty">Nessun follow-up programmato al momento.</div>';
   const groups = {};
   withFU.forEach(c=>{
     const day = c.followUp.split('T')[0];
@@ -9430,6 +9498,7 @@ function followupView(){
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
           <span class="followup ${due?'due':'ok'}">${time}</span>
+          <button class="btn secondary small" data-fu-edit="${c.id}">Sposta</button>
           <button class="btn small" data-fu-id="${c.id}">Follow-up effettuato</button>
         </div>
       </div>`;
@@ -9439,7 +9508,7 @@ function followupView(){
       ${rows}
     </div>`;
   }).join('');
-  return `<h2 style="margin-bottom:16px;">Follow-up da effettuare (${withFU.length})</h2>${dayGroupsHtml}`;
+  return head + dayGroupsHtml;
 }
 
 function renderCallFlow(){
@@ -9809,12 +9878,7 @@ function newContactForm(){
       <div style="margin-top:10px;"></div>
       <div class="field-row">
         <div><label>Email</label><input id="fEmail" value="${esc(c.email||'')}"></div>
-        <div><label>Prossimo follow-up</label>
-          <div style="display:flex;gap:6px;">
-            <input type="date" id="fFollowUpDate" value="${splitDT(c.followUp).date}" style="flex:1;">
-            <select id="fFollowUpTime" style="flex:1;">${timeOptions(splitDT(c.followUp).time)}</select>
-          </div>
-        </div>
+        <div></div>
       </div>
       <label>Tag</label>
       <input id="fTag" value="${esc(c.tag||'')}" placeholder="Es. cliente caldo, da richiamare a settembre">
@@ -9986,11 +10050,10 @@ async function saveContact(){
     telefono,
     cellulare,
     email: document.getElementById('fEmail').value.trim(),
-    followUp: combineDT(document.getElementById('fFollowUpDate').value, document.getElementById('fFollowUpTime').value),
+    followUp: (editing && editing.followUp) || '',   // il follow-up si fissa con "+ Follow-up", non qui
     tag: document.getElementById('fTag').value.trim(),
     note: document.getElementById('fNote').value.trim()
   };
-  if(data.followUp && data.followUp !== (editing && editing.followUp)) data.followUpSetAt = Date.now();   // vedi "Follow-up chiusi da un'attivita'"
   // Studio gia' presente: stesso nome degli altri contatti, dati mancanti presi dallo
   // studio; se indirizzo/telefono cambiano, si chiede se aggiornare anche gli altri.
   const studio = findStudio(data.azienda, editing && editing.id);

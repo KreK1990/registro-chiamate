@@ -1161,6 +1161,35 @@ await test('revisione del forecast in Oggi: commesse da aggiornare, correzioni, 
   }
 });
 
+await test('follow-up: dalla scheda del contatto e dalla pagina Follow-up, non dal modulo del contatto', async () => {
+  const c3fu = () => page.evaluate(() => (window.__fake.docs('contacts').find(c => c.id === 'c3') || {}).followUp);
+  await page.evaluate(() => db.collection('contacts').doc('c3').update({ followUp: '' }));
+  await page.waitForFunction(() => !contacts.find(c => c.id === 'c3').followUp);
+  // scheda del contatto
+  await show_(page, 'detail', "selectedId='c3'; fuEdit=null");
+  await page.click('#fuOpenBtn');
+  await page.click('[data-fu-plus="7"]');
+  await page.click('#fuSaveBtn');
+  await page.waitForFunction(d => (window.__fake.docs('contacts').find(c => c.id === 'c3') || {}).followUp === d + 'T09:00', daysAgo(-7));
+  expect(/Modifica follow-up/.test(await page.evaluate(() => document.getElementById('main').innerText)), 'il pulsante deve diventare "Modifica follow-up"');
+  // il modulo "Modifica contatto" non ha piu' il follow-up e salvando lo conserva
+  await show_(page, 'new', "window.__editing = { ...contacts.find(c => c.id === 'c3') }");
+  expect(!(await page.$('#fFollowUpDate')), 'il modulo del contatto non deve avere il follow-up');
+  // pagina Follow-up: aggiungi con scelta del contatto, poi togli
+  await show_(page, 'followup', 'fuEdit=null');
+  await page.click('#fuAddBtn');
+  await page.fill('#fuWho', 'Verdi Paolo');
+  await page.fill('#fuDate', daysAgo(-3));
+  await page.selectOption('#fuTime', '15:00');
+  await page.click('#fuSaveBtn');
+  await page.waitForFunction(d => (window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).followUp === d + 'T15:00', daysAgo(-3));
+  await page.evaluate(() => renderMain());
+  await page.click('[data-fu-edit="c3"]');
+  await page.click('#fuClearBtn');
+  await page.waitForFunction(() => !(window.__fake.docs('contacts').find(c => c.id === 'c3') || {}).followUp);
+  expect(!(await c3fu()), 'follow-up non tolto');
+});
+
 await test('rete di collaborazioni: commesse, portale, collegamento a mano, opportunità', async () => {
   await page.evaluate(() => window.__fake.put('portale', 'psnet', { pid: '9000077', stato: 'seguito', seguitoIl: 1, aggiornatoIl: 1, dati: {
     id: '9000077', titolo: 'Residenza Collina', comune: 'Pino Torinese', nuovaCostruzione: true, fase: 'Progettazione', unita: 12, soggetti: [

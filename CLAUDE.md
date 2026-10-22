@@ -70,6 +70,11 @@ Campi principali:
   citta, telefono (= telefono dello studio/attività; nei contatti salvati prima del campo
   cellulare può essere anche un cellulare, per questo da solo è etichettato "Tel"),
   email, followUp (datetime ISO "YYYY-MM-DDTHH:MM"), tag, note, spento ({motivo, il, nota} o null).
+  **Follow-up come azione** (blocco omonimo, 2026-10-22): non piu' nel modulo "Modifica contatto" (salvando si
+  conserva quello esistente) ma con "+ Follow-up" / "Modifica follow-up" nella scheda del contatto e "+ Aggiungi
+  follow-up" (contatto da datalist) e "Sposta" nella pagina Follow-up; modulo comune `fuFormHtml` (data, ora,
+  scorciatoie domani/+1 sett/+2 sett/+1 mese, "Togli il follow-up"), stato `fuEdit`, scrive followUp e followUpSetAt.
+  Restano i campi follow-up nella registrazione di un'attivita'.
   **Contatto spento** (blocco "Contatti spenti e nuovo tentativo con chi non ha risposto"):
   "Spegni contatto" nella scheda (motivi `SPENTO_MOTIVI`: attivita' cessata, pensione, deceduto,
   si occupa d'altro, altro) toglie anche il follow-up; resta in rubrica in grigio (`isOff`,
