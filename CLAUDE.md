@@ -310,6 +310,9 @@ Campi principali:
   Raggruppata per studio, prima le collaborazioni in corso; motivo, indirizzo ("Vedi su Maps"), telefono, nota del
   regalo, spunta "consegnato" (data). Togli / Rimetti, "+ Aggiungi un contatto". Collection `regali` (id anno, nei
   backup): {anno, esclusi, aggiunti, consegnati {id: data}, note {id: testo}, criteri}. "Scarica Excel".
+  Tipo di regalo (2026-10-23, `tier`, `regali.tipo {id: 'top'|'vino'}` per cambiarlo a mano): "Regalo importante" a chi ha una
+  fornitura (commessa acquisita) o un preventivo aperto (commessa aperta con offerta presentata, tipo 'off'); "Bottiglia di
+  vino" a chi ha solo accennato a lavori (trattativa senza offerta, incontri). Due sezioni con i conteggi; colonna in Excel.
 - **Rete di collaborazioni** (blocco omonimo, 2026-10-20, passo 1 di 2; il passo 2 sara' la mappa interattiva):
   punti = STUDI (`contactNodeKey`: 's:'+studio normalizzato, o 'c:'+id per chi non ha studio) e soggetti del portale
   non in rubrica ('x:'+nome, uniti per email); abbinamento alla rubrica con `portalMatch`. Legami (`buildNetwork`,
