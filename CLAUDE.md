@@ -22,7 +22,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
   download, "Fai una copia adesso"): backup JSON di
-  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report,collegamenti,fatture}` (version 2; restano fuori
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report,collegamenti,fatture,regali}` (version 2; restano fuori
   `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
   chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
   manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
@@ -304,6 +304,12 @@ Campi principali:
   **Barra del portale**: in "Cantieri dal portale" la riga in alto (`.page-bar`: "← Progetti", "Torna su")
   diventa fissa in cima (`.stuck`, sticky con top = -padding di #main) quando si risale oltre 150 px e
   sparisce scendendo (`bindPageBar`, un solo ascoltatore di scroll su #main).
+- **Regali di Natale** (Contatti -> "Regali di Natale", `view='regali'`, blocco omonimo, 2026-10-23): lista proposta
+  (`giftCandidates`) = partecipanti di commesse acquisite negli ultimi 2 anni (conferma o forniture), di commesse in
+  trattativa, incontrati negli ultimi 6 mesi (incontri o appuntamenti); criteri accendibili; contatti spenti esclusi.
+  Raggruppata per studio, prima le collaborazioni in corso; motivo, indirizzo ("Vedi su Maps"), telefono, nota del
+  regalo, spunta "consegnato" (data). Togli / Rimetti, "+ Aggiungi un contatto". Collection `regali` (id anno, nei
+  backup): {anno, esclusi, aggiunti, consegnati {id: data}, note {id: testo}, criteri}. "Scarica Excel".
 - **Rete di collaborazioni** (blocco omonimo, 2026-10-20, passo 1 di 2; il passo 2 sara' la mappa interattiva):
   punti = STUDI (`contactNodeKey`: 's:'+studio normalizzato, o 'c:'+id per chi non ha studio) e soggetti del portale
   non in rubrica ('x:'+nome, uniti per email); abbinamento alla rubrica con `portalMatch`. Legami (`buildNetwork`,

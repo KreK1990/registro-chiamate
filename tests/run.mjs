@@ -413,7 +413,7 @@ await ctx.close();
 await page.evaluate(() => new Promise(r => navigator.geolocation.getCurrentPosition(r, r, { timeout: 5000 })));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries', "delTab='fatt'"], ['deliveries', "delTab='consegne'"], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"], ['rete']];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries', "delTab='fatt'"], ['deliveries', "delTab='consegne'"], ['regali'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"], ['rete']];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
@@ -1188,6 +1188,38 @@ await test('follow-up: dalla scheda del contatto e dalla pagina Follow-up, non d
   await page.click('#fuClearBtn');
   await page.waitForFunction(() => !(window.__fake.docs('contacts').find(c => c.id === 'c3') || {}).followUp);
   expect(!(await c3fu()), 'follow-up non tolto');
+});
+
+await test('regali di Natale: lista da commesse e incontri, consegnato, nota, togli e aggiungi, Excel', async () => {
+  const y = await page.evaluate(() => todayISO().slice(0, 4));
+  let txt = await show_(page, 'regali', 'giftYear=null');
+  expect(/Regali di Natale/.test(txt) && /Studio Rossi\s*2 persone/.test(txt) && /Bianchi Laura[\s\S]*collaborazione in corso/i.test(txt) && /Rossi Mario[\s\S]*in trattativa/i.test(txt), 'lista proposta:\n' + txt.slice(0, 1500));
+  await page.check('[data-gift-done="c3"]');
+  await page.waitForFunction(y => ((window.__fake.docs('regali').find(d => d.id === y) || {}).consegnati || {}).c3 === todayISO(), y);
+  await page.evaluate(() => renderMain());
+  await page.fill('[data-gift-note="c3"]', 'panettone'); await page.press('[data-gift-note="c3"]', 'Tab');
+  await page.waitForFunction(y => ((window.__fake.docs('regali').find(d => d.id === y) || {}).note || {}).c3 === 'panettone', y);
+  await page.evaluate(() => { document.activeElement && document.activeElement.blur(); renderMain(); });
+  await page.click('[data-gift-ex="c1"]');
+  await page.waitForFunction(y => ((window.__fake.docs('regali').find(d => d.id === y) || {}).esclusi || []).includes('c1'), y);
+  await page.evaluate(() => renderMain());
+  txt = await page.evaluate(() => document.getElementById('main').innerText);
+  expect(/Tolti dalla lista \(1\)/.test(txt), 'contatto tolto non in fondo');
+  await page.evaluate(() => document.querySelector('[data-gift-back="c1"]').closest('details').open = true);
+  await page.click('[data-gift-back="c1"]');
+  await page.waitForFunction(y => !((window.__fake.docs('regali').find(d => d.id === y) || {}).esclusi || []).length, y);
+  // aggiunto a mano e spento il criterio delle trattative
+  await page.evaluate(() => renderMain());
+  await page.check('[data-gift-crit="tratt"]').catch(() => {});
+  await page.uncheck('[data-gift-crit="tratt"]');
+  await page.waitForFunction(y => ((window.__fake.docs('regali').find(d => d.id === y) || {}).criteri || {}).tratt === false, y);
+  const list = await page.evaluate(() => giftList().inList.map(x => ({ id: x.c.id, k: [...x.kinds] })));
+  expect(list.some(x => x.id === 'c3') && list.every(x => !(x.k.length === 1 && x.k[0] === 'tratt')), 'criterio trattative: ' + JSON.stringify(list));
+  // Excel
+  await page.evaluate(() => renderMain());
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#giftXlsBtn')]);
+  expect(dl.suggestedFilename() === `Regali di Natale ${y}.xlsx`, 'file: ' + dl.suggestedFilename());
+  await page.evaluate(y => db.collection('regali').doc(y).delete(), y);
 });
 
 await test('rete di collaborazioni: commesse, portale, collegamento a mano, opportunità', async () => {

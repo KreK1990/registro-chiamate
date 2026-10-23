@@ -145,6 +145,14 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .fatt-trow > :first-child{text-align:left;}
 .fatt-trow.fatt-th{font-size:11px;color:var(--muted);text-transform:uppercase;}
 .fatt-ttot{border-top:2px solid var(--accent);font-weight:600;}
+.gift-crit{display:flex;flex-wrap:wrap;gap:4px 16px;}
+.gift-group h3{margin-bottom:4px;}
+.gift-row{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:6px 12px;align-items:start;padding:8px 0;border-top:1px solid var(--border);font-size:13.5px;}
+.gift-row.done .gift-main > .name-link{text-decoration:line-through;color:var(--muted);}
+.gift-check{margin:0;font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;}
+.gift-check input{width:auto;margin:0;}
+.gift-row.done .gift-check{color:var(--accent);font-weight:600;}
+.gift-note{margin-top:6px;padding:4px 8px;font-size:13px;max-width:360px;}
 .fu-form{margin-top:8px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:2px;max-width:520px;}
 .fu-quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .rev-row{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
@@ -818,6 +826,8 @@ h2{color:var(--accent);font-weight:800;}
   .top-actions{margin-bottom:8px;}
   .page-bar.stuck{top:-12px;margin:-12px -12px 8px;padding:8px 12px;}
   .rete-graph{height:420px;}
+  .gift-row{grid-template-columns:minmax(0,1fr) auto;}
+  .gift-row .gift-check{grid-column:1 / -1;}
   .fatt-cells.fatt-th{display:none;}
   .fatt-trow{grid-template-columns:minmax(0,1fr) auto auto auto;font-size:12px;}
   .fatt-trow > :nth-child(2){display:none;}
@@ -1221,6 +1231,7 @@ function startApp(uid){
   unsubscribers.push(db.collection('report').onSnapshot(onReportSnapshot, showDataError));
   unsubscribers.push(db.collection('collegamenti').onSnapshot(onCollegamentiSnapshot, showDataError));
   unsubscribers.push(db.collection('fatture').onSnapshot(onFattureSnapshot, showDataError));
+  unsubscribers.push(db.collection('regali').onSnapshot(onRegaliSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -1245,6 +1256,7 @@ function contactsListView(){
       <button class="btn" id="newContactBtn">+ Nuovo contatto</button>
       <button class="btn secondary" id="exportXlsBtn">⬇ Esporta tutto (Excel)</button>
       <button class="btn secondary" id="reteBtn">Rete di collaborazioni</button>
+      <button class="btn secondary" id="giftBtn">Regali di Natale</button>
       <button class="btn secondary" id="dupsBtn">Possibili doppioni${(()=>{ const n = dupGroups().length; return n ? ` (${n})` : ''; })()}</button>
     </div>
   </div>`;
@@ -1412,6 +1424,7 @@ function renderMain(){
     document.getElementById('exportXlsBtn')?.addEventListener('click', exportAllExcel);
     document.getElementById('dupsBtn')?.addEventListener('click', ()=>{ view='dups'; renderMain(); });
     document.getElementById('reteBtn')?.addEventListener('click', ()=>{ reteFocus = null; view='rete'; renderMain(); });
+    document.getElementById('giftBtn')?.addEventListener('click', ()=>{ view='regali'; renderMain(); });
     const cSearch = document.getElementById('contactsSearch');
     if(cSearch){
       cSearch.addEventListener('input', e=>{ contactsSearchQuery=e.target.value; renderMain(); });
@@ -1428,6 +1441,7 @@ function renderMain(){
   if(view==='portal'){ main.innerHTML = portalView(); bindPortal(); bindPageBar(main); return; }
   if(view==='dups'){ main.innerHTML = dupsView(); bindDups(); return; }
   if(view==='rete'){ main.innerHTML = reteView(); bindRete(main); return; }
+  if(view==='regali'){ main.innerHTML = giftView(); bindGift(main); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -4432,6 +4446,7 @@ function navLabel(e){
   if(s.view==='portal') return 'Cantieri dal portale';
   if(s.view==='sop') return 'Sopralluogo';
   if(s.view==='dups') return 'Possibili doppioni';
+  if(s.view==='regali') return 'Regali di Natale';
   if(s.view==='rete'){ const n = s.reteFocus && netCache && netCache.nodes.get(s.reteFocus); return n ? n.label : 'Rete di collaborazioni'; }
   const t = document.getElementById(e.tab || 'navAgenda');
   return t ? t.firstChild.textContent.trim() : 'Indietro';
@@ -6045,6 +6060,122 @@ function bindFuForm(main, contactOf){
     const c = target(); if(!c) return;
     try{ await db.collection('contacts').doc(c.id).update({ followUp: '' }); fuEdit = null; renderMain(); }
     catch(e){ err('Non salvato: '+(e.message || e.code || '')); }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Regali di Natale (Contatti -> "Regali di Natale", richiesta dell'utente 2026-10-23)
+// Lista proposta dai dati: chi partecipa a commesse acquisite negli ultimi 2 anni (collaborazione in corso),
+// a commesse in trattativa o e' stato incontrato negli ultimi 6 mesi (collaborazione che si avvia); i contatti
+// spenti no. Si tolgono o aggiungono persone, si annota il regalo e si segna la consegna. Un documento per
+// anno nella collection `regali` (id 'YYYY'): {anno, esclusi:[id], aggiunti:[id], consegnati:{id: data},
+// note:{id: testo}, criteri:{acq, tratt, inc}}. Raggruppata per studio; "Scarica Excel".
+// ---------------------------------------------------------------------------
+let regali = new Map(), giftYear = null, giftAddQ = '';
+function onRegaliSnapshot(snap){
+  regali = new Map(snap.docs.map(d=>[d.id, { id:d.id, ...d.data() }]));
+  if(view==='regali' && canAutoRender()) renderMain();
+}
+function giftDoc(){ return regali.get(giftYear) || {}; }
+function giftCriteria(){ const c = giftDoc().criteri || {}; return { acq: c.acq!==false, tratt: c.tratt!==false, inc: c.inc!==false }; }
+function giftCandidates(){
+  const t = todayISO(), y2 = addDaysISO(t, -730), m6 = addDaysISO(t, -183), crit = giftCriteria(), why = new Map();
+  const add = (cid, kind, text)=>{ const w = why.get(cid) || { kinds: new Set(), parts: [] }; w.kinds.add(kind); w.parts.push(text); why.set(cid, w); };
+  projects.filter(p=>!isLost(p)).forEach(p=>{
+    const won = isWon(p);
+    if(won){
+      const recent = (p.fasi.confermaOrdine || '') >= y2 || (p.ordini || []).some(o=>(o.consegnatoIl || o.data || '') >= y2);
+      if(!crit.acq || !recent) return;
+      (p.partecipanti || []).forEach(x=>add(x.contactId, 'acq', `commessa acquisita: ${projectTitle(p)}`));
+    } else if(crit.tratt){
+      (p.partecipanti || []).forEach(x=>add(x.contactId, 'tratt', `in trattativa: ${projectTitle(p)}`));
+    }
+  });
+  if(crit.inc){
+    calls.forEach(k=>{
+      const d = isMeet(k) ? k.data : (k.appuntamento ? k.appuntamento.slice(0,10) : '');
+      if(d && d >= m6 && d <= t) add(k.contactId, 'inc', `incontrato il ${fmtDate(d)}`);
+    });
+  }
+  return why;
+}
+function giftList(){
+  const doc = giftDoc(), why = giftCandidates(), excluded = new Set(doc.esclusi || []), added = new Set(doc.aggiunti || []);
+  const byId = Object.fromEntries(contacts.map(c=>[c.id, c]));
+  const rank = k=>k.has('acq') ? 0 : k.has('tratt') ? 1 : 2;
+  const all = [...new Set([...why.keys(), ...added])].map(id=>byId[id]).filter(c=>c && !isOff(c)).map(c=>{
+    const w = why.get(c.id), parts = w ? [...new Set(w.parts)] : ['aggiunto a mano'];
+    return { c, kinds: w ? w.kinds : new Set(['mano']), rank: w ? rank(w.kinds) : 3, parts, excluded: excluded.has(c.id) };
+  });
+  return { inList: all.filter(x=>!x.excluded), out: all.filter(x=>x.excluded) };
+}
+function giftAddr(c){ return fullAddress(c) || (findStudio(c.azienda) || {}).via || ''; }
+function giftView(){
+  if(!giftYear) giftYear = todayISO().slice(0,4);
+  const doc = giftDoc(), crit = giftCriteria(), { inList, out } = giftList(), cons = doc.consegnati || {}, note = doc.note || {};
+  // per studio (chi non ha studio da solo), prima chi ha commesse acquisite
+  const groups = new Map();
+  inList.forEach(x=>{ const k = normStudio(x.c.azienda) || 'c:'+x.c.id; const g = groups.get(k) || { name: x.c.azienda || '', items: [], rank: 9 }; g.items.push(x); g.rank = Math.min(g.rank, x.rank); groups.set(k, g); });
+  const list = [...groups.values()].sort((a,b)=>a.rank - b.rank || (a.name || fullName(a.items[0].c)).localeCompare(b.name || fullName(b.items[0].c)));
+  const done = inList.filter(x=>cons[x.c.id]).length;
+  const tag = x=>x.kinds.has('acq') ? '<span class="net-tag net-acquisito">collaborazione in corso</span>' : x.kinds.has('tratt') ? '<span class="net-tag net-trattativa">in trattativa</span>' : x.kinds.has('inc') ? '<span class="net-tag">incontrato</span>' : '<span class="net-tag">aggiunto</span>';
+  const row = x=>{ const c = x.c, addr = giftAddr(c);
+    return `<div class="gift-row ${cons[c.id] ? 'done' : ''}">
+      <label class="gift-check" title="Regalo consegnato"><input type="checkbox" data-gift-done="${c.id}" ${cons[c.id] ? 'checked' : ''}> ${cons[c.id] ? 'consegnato il '+fmtDate(cons[c.id]) : 'da consegnare'}</label>
+      <div class="gift-main"><span class="name-link" data-contact-open="${c.id}">${esc(fullName(c))}</span> ${tag(x)} <span class="fc-note">${esc(c.professione || '')}</span>
+        <div class="fc-note">${esc(x.parts.slice(0, 3).join(' · '))}${x.parts.length > 3 ? ` e altre ${x.parts.length - 3}` : ''}</div>
+        ${addr ? `<div class="fc-note"><a href="${mapsUrl({ ...c, via: c.via || addr })}" target="_blank" rel="noopener" class="addr-link">${esc(addr)} · Vedi su Maps</a></div>` : ''}
+        ${phoneLinks(c, 'font-size:12.5px;')}
+        <input class="gift-note" data-gift-note="${c.id}" value="${esc(note[c.id] || '')}" placeholder="Regalo (es. panettone, vino…)">
+      </div>
+      <button type="button" class="net-focus-btn" data-gift-ex="${c.id}">togli</button>
+    </div>`; };
+  const opts = contacts.filter(c=>!isOff(c) && !inList.some(x=>x.c.id===c.id)).map(fuLabel).sort((a,b)=>a.localeCompare(b));
+  const years = [...new Set([...regali.keys(), todayISO().slice(0,4)])].sort().reverse();
+  return `<div class="top-actions" style="justify-content:space-between;"><button class="btn secondary small" id="giftBackBtn">← Contatti</button>
+      <div style="display:flex;gap:6px;"><select id="giftYear" style="width:auto;">${years.map(y=>`<option ${y===giftYear ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn secondary small" id="giftXlsBtn">⬇ Scarica Excel</button></div></div>
+    <h2 style="margin-bottom:4px;">Regali di Natale ${giftYear}</h2>
+    <div class="fc-note" style="margin-bottom:12px;">${inList.length} persone in ${list.length} ${list.length===1 ? 'studio' : 'studi o indirizzi'} · ${done} regali consegnati. Lista proposta dalle commesse e dagli incontri: togli chi non serve, aggiungi chi manca.</div>
+    <div class="card">
+      <div class="gift-crit">
+        <label class="map-filter"><input type="checkbox" data-gift-crit="acq" ${crit.acq ? 'checked' : ''}> Commesse acquisite (ultimi 2 anni)</label>
+        <label class="map-filter"><input type="checkbox" data-gift-crit="tratt" ${crit.tratt ? 'checked' : ''}> Commesse in trattativa</label>
+        <label class="map-filter"><input type="checkbox" data-gift-crit="inc" ${crit.inc ? 'checked' : ''}> Incontrati negli ultimi 6 mesi</label>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"><input id="giftAdd" list="giftAddList" placeholder="+ Aggiungi un contatto: cerca nome o studio" autocomplete="off" style="flex:1 1 260px;"><datalist id="giftAddList">${opts.map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist></div>
+    </div>
+    ${list.length ? list.map(g=>`<div class="card gift-group"><h3>${esc(g.name || fullName(g.items[0].c))}${g.items.length > 1 ? ` <span class="fc-note">${g.items.length} persone</span>` : ''}</h3>${g.items.sort((a,b)=>a.rank - b.rank || fullName(a.c).localeCompare(fullName(b.c))).map(row).join('')}</div>`).join('')
+      : '<div class="empty">Nessun contatto con questi criteri.</div>'}
+    ${out.length ? `<details class="card"><summary><strong>Tolti dalla lista (${out.length})</strong></summary>${out.map(x=>`<div class="fatt-order"><span>${esc(fullName(x.c))}${x.c.azienda ? ' · '+esc(x.c.azienda) : ''} <span class="fc-note">${esc(x.parts[0])}</span></span><button class="btn secondary small" data-gift-back="${x.c.id}">Rimetti</button></div>`).join('')}</details>` : ''}`;
+}
+async function giftSave(patch){ const { id, ...cur } = giftDoc(); await db.collection('regali').doc(giftYear).set({ anno: giftYear, esclusi: [], aggiunti: [], consegnati: {}, note: {}, ...cur, ...patch, aggiornatoIl: Date.now() }); }
+async function giftExportXlsx(){
+  await loadXLSX();
+  const { inList } = giftList(), doc = giftDoc(), cons = doc.consegnati || {}, note = doc.note || {};
+  const rows = inList.sort((a,b)=>(a.c.azienda || '').localeCompare(b.c.azienda || '') || fullName(a.c).localeCompare(fullName(b.c))).map(x=>({
+    'Cognome': x.c.cognome || '', 'Nome': x.c.nome || '', 'Professione': x.c.professione || '', 'Studio': x.c.azienda || '',
+    'Indirizzo': giftAddr(x.c), 'Cellulare': x.c.cellulare || '', 'Telefono': x.c.telefono || '', 'Email': x.c.email || '',
+    'Motivo': x.parts.join(' · '), 'Regalo': note[x.c.id] || '', 'Consegnato il': cons[x.c.id] ? fmtDate(cons[x.c.id]) : '' }));
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [14, 12, 14, 24, 32, 14, 14, 26, 50, 22, 12].map(w=>({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws, 'Regali '+giftYear);
+  XLSX.writeFile(wb, `Regali di Natale ${giftYear}.xlsx`);
+}
+function bindGift(main){
+  const fail = e=>alert('Non salvato: '+(e.message || e.code || ''));
+  const doc = ()=>giftDoc();
+  main.querySelector('#giftBackBtn')?.addEventListener('click', ()=>{ view = 'contactsList'; renderMain(); });
+  main.querySelector('#giftYear')?.addEventListener('change', e=>{ giftYear = e.target.value; renderMain(); });
+  main.querySelector('#giftXlsBtn')?.addEventListener('click', ()=>giftExportXlsx().catch(e=>alert('Impossibile creare il file: '+(e.message || e))));
+  main.querySelectorAll('[data-contact-open]').forEach(el=>el.addEventListener('click', ()=>{ selectedId = el.dataset.contactOpen; view = 'detail'; confirmDeleteId = null; tableDetailCallId = null; renderMain(); }));
+  main.querySelectorAll('[data-gift-crit]').forEach(cb=>cb.addEventListener('change', ()=>giftSave({ criteri: { ...giftCriteria(), [cb.dataset.giftCrit]: cb.checked } }).catch(fail)));
+  main.querySelectorAll('[data-gift-done]').forEach(cb=>cb.addEventListener('change', ()=>{ const m = { ...(doc().consegnati || {}) }; if(cb.checked) m[cb.dataset.giftDone] = todayISO(); else delete m[cb.dataset.giftDone]; giftSave({ consegnati: m }).catch(fail); }));
+  main.querySelectorAll('[data-gift-note]').forEach(inp=>inp.addEventListener('change', ()=>giftSave({ note: { ...(doc().note || {}), [inp.dataset.giftNote]: inp.value.trim() } }).catch(fail)));
+  main.querySelectorAll('[data-gift-ex]').forEach(b=>b.addEventListener('click', ()=>giftSave({ esclusi: [...new Set([...(doc().esclusi || []), b.dataset.giftEx])], aggiunti: (doc().aggiunti || []).filter(x=>x!==b.dataset.giftEx) }).catch(fail)));
+  main.querySelectorAll('[data-gift-back]').forEach(b=>b.addEventListener('click', ()=>giftSave({ esclusi: (doc().esclusi || []).filter(x=>x!==b.dataset.giftBack) }).catch(fail)));
+  main.querySelector('#giftAdd')?.addEventListener('change', e=>{
+    const c = contacts.find(x=>fuLabel(x)===e.target.value.trim()); if(!c) return;
+    giftSave({ aggiunti: [...new Set([...(doc().aggiunti || []), c.id])], esclusi: (doc().esclusi || []).filter(x=>x!==c.id) }).catch(fail);
   });
 }
 

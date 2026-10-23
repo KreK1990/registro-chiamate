@@ -9,7 +9,7 @@ import admin from 'firebase-admin';
 import { getStore } from '@netlify/blobs';
 
 // portaleImport (rileggibile dal PDF) e suggerimenti (ricalcolabili) restano fuori.
-export const COLLECTIONS = ['contacts', 'calls', 'projects', 'settings', 'portale', 'forecastStorico', 'sopralluoghi', 'report', 'collegamenti', 'fatture'];
+export const COLLECTIONS = ['contacts', 'calls', 'projects', 'settings', 'portale', 'forecastStorico', 'sopralluoghi', 'report', 'collegamenti', 'fatture', 'regali'];
 export const RETAIN_DAYS = 30;
 export const KEY_RE = /^\d{4}-\d{2}-\d{2}(_\d{6})?$/;
 
