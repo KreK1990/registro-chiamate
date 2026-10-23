@@ -153,7 +153,10 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .gift-check input{width:auto;margin:0;}
 .gift-row.done .gift-check{color:var(--accent);font-weight:600;}
 .gift-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
-.gift-side select{width:auto;padding:3px 6px;font-size:12.5px;}
+.gift-qty{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);}
+.gift-qty span{min-width:58px;text-align:right;}
+.gift-qty strong{min-width:18px;text-align:center;color:var(--text);font-size:14px;}
+.gift-qty .btn{padding:2px 9px;min-width:28px;}
 .gift-sect > h2{font-size:18px;margin:18px 0 6px;}
 .gift-top > h2{color:var(--accent);}
 .gift-note{margin-top:6px;padding:4px 8px;font-size:13px;max-width:360px;}
@@ -6114,7 +6117,10 @@ function giftList(){
     const kinds = w ? w.kinds : new Set(['mano']);
     // regalo importante: fornitura o preventivo aperto; bottiglia di vino: lavori solo accennati (scelta dell'utente 2026-10-23)
     const auto = kinds.has('acq') || kinds.has('off') ? 'top' : 'vino';
-    return { c, kinds, rank: w ? rank(w.kinds) : 4, parts, excluded: excluded.has(c.id), tier: tipi[c.id] || auto, autoTier: auto };
+    // quantita' (2026-10-23): ceste di alimenti e bottiglie combinabili; senza scelta, dal tipo proposto o scelto prima
+    const t0 = tipi[c.id] || auto, q0 = (doc.qta || {})[c.id];
+    const qta = q0 ? { cesta: Math.max(0, +q0.cesta || 0), vino: Math.max(0, +q0.vino || 0) } : t0==='top' ? { cesta: 1, vino: 0 } : { cesta: 0, vino: 1 };
+    return { c, kinds, rank: w ? rank(w.kinds) : 4, parts, excluded: excluded.has(c.id), qta, tier: qta.cesta > 0 ? 'top' : 'vino', autoTier: auto };
   });
   return { inList: all.filter(x=>!x.excluded), out: all.filter(x=>x.excluded) };
 }
@@ -6128,7 +6134,7 @@ function giftView(){
   const groups = new Map();
   items.forEach(x=>{ const k = normStudio(x.c.azienda) || 'c:'+x.c.id; const g = groups.get(k) || { name: x.c.azienda || '', items: [], rank: 9 }; g.items.push(x); g.rank = Math.min(g.rank, x.rank); groups.set(k, g); });
   const list = [...groups.values()].sort((a,b)=>a.rank - b.rank || (a.name || fullName(a.items[0].c)).localeCompare(b.name || fullName(b.items[0].c)));
-  return `<div class="gift-sect gift-${tier}"><h2>${title} <span class="fc-note">${items.length} ${items.length===1 ? 'persona' : 'persone'} · ${items.filter(x=>cons[x.c.id]).length} consegnati</span></h2><div class="fc-note" style="margin:-4px 0 8px;">${hint}</div>
+  return `<div class="gift-sect gift-${tier}"><h2>${title} <span class="fc-note">${items.length} ${items.length===1 ? 'persona' : 'persone'} · ${items.reduce((s,x)=>s+x.qta.cesta, 0)} ceste · ${items.reduce((s,x)=>s+x.qta.vino, 0)} bottiglie · ${items.filter(x=>cons[x.c.id]).length} consegnati</span></h2><div class="fc-note" style="margin:-4px 0 8px;">${hint}</div>
     ${list.length ? list.map(g=>`<div class="card gift-group"><h3>${esc(g.name || fullName(g.items[0].c))}${g.items.length > 1 ? ` <span class="fc-note">${g.items.length} persone</span>` : ''}</h3>${g.items.sort((a,b)=>a.rank - b.rank || fullName(a.c).localeCompare(fullName(b.c))).map(row).join('')}</div>`).join('') : '<div class="empty" style="padding:4px 0 12px;">Nessuno.</div>'}</div>`;
   };
   const done = inList.filter(x=>cons[x.c.id]).length;
@@ -6142,7 +6148,7 @@ function giftView(){
         ${phoneLinks(c, 'font-size:12.5px;')}
         <input class="gift-note" data-gift-note="${c.id}" value="${esc(note[c.id] || '')}" placeholder="Nota sul regalo (es. etichetta, consegnare in studio…)">
       </div>
-      <div class="gift-side"><select data-gift-tier="${c.id}" aria-label="Tipo di regalo"><option value="top" ${x.tier==='top' ? 'selected' : ''}>Regalo importante</option><option value="vino" ${x.tier==='vino' ? 'selected' : ''}>Bottiglia di vino</option></select>
+      <div class="gift-side">${[['cesta', 'Ceste'], ['vino', 'Bottiglie']].map(([k, l])=>`<div class="gift-qty"><span>${l}</span><button type="button" class="btn secondary small" data-gift-q="${c.id}|${k}|-1" ${x.qta[k] ? '' : 'disabled'} aria-label="Meno ${l.toLowerCase()}">−</button><strong>${x.qta[k]}</strong><button type="button" class="btn secondary small" data-gift-q="${c.id}|${k}|1" aria-label="Più ${l.toLowerCase()}">+</button></div>`).join('')}
         <button type="button" class="net-focus-btn" data-gift-ex="${c.id}">togli</button></div>
     </div>`; };
   const opts = contacts.filter(c=>!isOff(c) && !inList.some(x=>x.c.id===c.id)).map(fuLabel).sort((a,b)=>a.localeCompare(b));
@@ -6150,7 +6156,7 @@ function giftView(){
   return `<div class="top-actions" style="justify-content:space-between;"><button class="btn secondary small" id="giftBackBtn">← Contatti</button>
       <div style="display:flex;gap:6px;"><select id="giftYear" style="width:auto;">${years.map(y=>`<option ${y===giftYear ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn secondary small" id="giftXlsBtn">⬇ Scarica Excel</button></div></div>
     <h2 style="margin-bottom:4px;">Regali di Natale ${giftYear}</h2>
-    <div class="fc-note" style="margin-bottom:12px;">${inList.length} persone: <strong>${inList.filter(x=>x.tier==='top').length} regali importanti</strong> e <strong>${inList.filter(x=>x.tier==='vino').length} bottiglie di vino</strong> · ${done} consegnati. Lista proposta dalle commesse e dagli incontri: togli chi non serve, aggiungi chi manca.</div>
+    <div class="fc-note" style="margin-bottom:12px;">${inList.length} persone · da comprare <strong>${inList.reduce((s,x)=>s+x.qta.cesta, 0)} ceste di alimenti</strong> e <strong>${inList.reduce((s,x)=>s+x.qta.vino, 0)} bottiglie</strong> · ${done} consegnati. Lista proposta dalle commesse e dagli incontri: togli chi non serve, aggiungi chi manca.</div>
     <div class="card">
       <div class="gift-crit">
         <label class="map-filter"><input type="checkbox" data-gift-crit="acq" ${crit.acq ? 'checked' : ''}> Commesse acquisite (ultimi 2 anni)</label>
@@ -6159,7 +6165,7 @@ function giftView(){
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"><input id="giftAdd" list="giftAddList" placeholder="+ Aggiungi un contatto: cerca nome o studio" autocomplete="off" style="flex:1 1 260px;"><datalist id="giftAddList">${opts.map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist></div>
     </div>
-    ${inList.length ? tierSection('top', 'Regalo importante', 'Clienti con una fornitura o un preventivo aperto da chiudere.') + tierSection('vino', 'Bottiglia di vino', 'Clienti che hanno accennato a lavori da fare: trattative senza offerta, incontri recenti.') : '<div class="empty">Nessun contatto con questi criteri.</div>'}
+    ${inList.length ? tierSection('top', 'Con cesta di alimenti', 'Proposta a chi ha una fornitura o un preventivo aperto da chiudere; si possono aggiungere bottiglie.') + tierSection('vino', 'Solo bottiglie', 'Proposta a chi ha accennato a lavori da fare: trattative senza offerta, incontri recenti.') : '<div class="empty">Nessun contatto con questi criteri.</div>'}
     ${out.length ? `<details class="card"><summary><strong>Tolti dalla lista (${out.length})</strong></summary>${out.map(x=>`<div class="fatt-order"><span>${esc(fullName(x.c))}${x.c.azienda ? ' · '+esc(x.c.azienda) : ''} <span class="fc-note">${esc(x.parts[0])}</span></span><button class="btn secondary small" data-gift-back="${x.c.id}">Rimetti</button></div>`).join('')}</details>` : ''}`;
 }
 async function giftSave(patch){ const { id, ...cur } = giftDoc(); await db.collection('regali').doc(giftYear).set({ anno: giftYear, esclusi: [], aggiunti: [], consegnati: {}, note: {}, ...cur, ...patch, aggiornatoIl: Date.now() }); }
@@ -6169,9 +6175,9 @@ async function giftExportXlsx(){
   const rows = inList.sort((a,b)=>(a.tier===b.tier ? 0 : a.tier==='top' ? -1 : 1) || (a.c.azienda || '').localeCompare(b.c.azienda || '') || fullName(a.c).localeCompare(fullName(b.c))).map(x=>({
     'Cognome': x.c.cognome || '', 'Nome': x.c.nome || '', 'Professione': x.c.professione || '', 'Studio': x.c.azienda || '',
     'Indirizzo': giftAddr(x.c), 'Cellulare': x.c.cellulare || '', 'Telefono': x.c.telefono || '', 'Email': x.c.email || '',
-    'Tipo di regalo': x.tier==='top' ? 'Regalo importante' : 'Bottiglia di vino', 'Motivo': x.parts.join(' · '), 'Nota': note[x.c.id] || '', 'Consegnato il': cons[x.c.id] ? fmtDate(cons[x.c.id]) : '' }));
+    'Ceste': x.qta.cesta, 'Bottiglie': x.qta.vino, 'Motivo': x.parts.join(' · '), 'Nota': note[x.c.id] || '', 'Consegnato il': cons[x.c.id] ? fmtDate(cons[x.c.id]) : '' }));
   const wb = XLSX.utils.book_new(), ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [14, 12, 14, 24, 32, 14, 14, 26, 18, 50, 22, 12].map(w=>({ wch: w }));
+  ws['!cols'] = [14, 12, 14, 24, 32, 14, 14, 26, 7, 9, 50, 22, 12].map(w=>({ wch: w }));
   XLSX.utils.book_append_sheet(wb, ws, 'Regali '+giftYear);
   XLSX.writeFile(wb, `Regali di Natale ${giftYear}.xlsx`);
 }
@@ -6185,7 +6191,12 @@ function bindGift(main){
   main.querySelectorAll('[data-gift-crit]').forEach(cb=>cb.addEventListener('change', ()=>giftSave({ criteri: { ...giftCriteria(), [cb.dataset.giftCrit]: cb.checked } }).catch(fail)));
   main.querySelectorAll('[data-gift-done]').forEach(cb=>cb.addEventListener('change', ()=>{ const m = { ...(doc().consegnati || {}) }; if(cb.checked) m[cb.dataset.giftDone] = todayISO(); else delete m[cb.dataset.giftDone]; giftSave({ consegnati: m }).catch(fail); }));
   main.querySelectorAll('[data-gift-note]').forEach(inp=>inp.addEventListener('change', ()=>giftSave({ note: { ...(doc().note || {}), [inp.dataset.giftNote]: inp.value.trim() } }).catch(fail)));
-  main.querySelectorAll('[data-gift-tier]').forEach(sel=>sel.addEventListener('change', ()=>giftSave({ tipo: { ...(doc().tipo || {}), [sel.dataset.giftTier]: sel.value } }).catch(fail)));
+  main.querySelectorAll('[data-gift-q]').forEach(b=>b.addEventListener('click', ()=>{
+    const [id, k, d] = b.dataset.giftQ.split('|'), x = giftList().inList.find(y=>y.c.id===id); if(!x) return;
+    const q = { ...x.qta, [k]: Math.max(0, x.qta[k] + Number(d)) };
+    b.disabled = true;
+    giftSave({ qta: { ...(doc().qta || {}), [id]: q } }).catch(fail);
+  }));
   main.querySelectorAll('[data-gift-ex]').forEach(b=>b.addEventListener('click', ()=>giftSave({ esclusi: [...new Set([...(doc().esclusi || []), b.dataset.giftEx])], aggiunti: (doc().aggiunti || []).filter(x=>x!==b.dataset.giftEx) }).catch(fail)));
   main.querySelectorAll('[data-gift-back]').forEach(b=>b.addEventListener('click', ()=>giftSave({ esclusi: (doc().esclusi || []).filter(x=>x!==b.dataset.giftBack) }).catch(fail)));
   main.querySelector('#giftAdd')?.addEventListener('change', e=>{

@@ -1193,13 +1193,19 @@ await test('follow-up: dalla scheda del contatto e dalla pagina Follow-up, non d
 await test('regali di Natale: lista da commesse e incontri, consegnato, nota, togli e aggiungi, Excel', async () => {
   const y = await page.evaluate(() => todayISO().slice(0, 4));
   let txt = await show_(page, 'regali', 'giftYear=null');
-  expect(/Regali di Natale/.test(txt) && /Studio Rossi\s*2 persone/.test(txt) && /Bianchi Laura[\s\S]*collaborazione in corso/i.test(txt) && /Rossi Mario[\s\S]*preventivo aperto/i.test(txt) && /Regalo importante[\s\S]*Bianchi Laura/.test(txt), 'lista proposta:\n' + txt.slice(0, 1500));
+  expect(/Regali di Natale/.test(txt) && /Studio Rossi\s*2 persone/.test(txt) && /Bianchi Laura[\s\S]*collaborazione in corso/i.test(txt) && /Rossi Mario[\s\S]*preventivo aperto/i.test(txt) && /Con cesta di alimenti[\s\S]*Bianchi Laura/.test(txt) && /da comprare \d+ ceste di alimenti e \d+ bottiglie/.test(txt), 'lista proposta:\n' + txt.slice(0, 1500));
   // tipo di regalo: proposto, poi cambiato a mano
-  expect(await page.evaluate(() => giftList().inList.find(x => x.c.id === 'c3').tier) === 'top', 'fornitura = regalo importante');
-  await page.selectOption('[data-gift-tier="c3"]', 'vino');
-  await page.waitForFunction(y => ((window.__fake.docs('regali').find(d => d.id === y) || {}).tipo || {}).c3 === 'vino', y);
+  expect(JSON.stringify(await page.evaluate(() => giftList().inList.find(x => x.c.id === 'c3').qta)) === '{"cesta":1,"vino":0}', 'fornitura = una cesta');
+  await page.click('[data-gift-q="c3|vino|1"]');
+  await page.waitForFunction(y => JSON.stringify(((window.__fake.docs('regali').find(d => d.id === y) || {}).qta || {}).c3) === '{"cesta":1,"vino":1}', y);
   await page.evaluate(() => renderMain());
-  expect(/Bottiglia di vino[\s\S]*Bianchi Laura/.test(await page.evaluate(() => document.querySelector('.gift-vino').innerText)), 'Bianchi Laura non è passata alla bottiglia di vino');
+  await page.click('[data-gift-q="c3|vino|1"]');
+  await page.waitForFunction(y => (((window.__fake.docs('regali').find(d => d.id === y) || {}).qta || {}).c3 || {}).vino === 2, y);
+  await page.evaluate(() => renderMain());
+  await page.click('[data-gift-q="c3|cesta|-1"]');
+  await page.waitForFunction(y => (((window.__fake.docs('regali').find(d => d.id === y) || {}).qta || {}).c3 || {}).cesta === 0, y);
+  await page.evaluate(() => renderMain());
+  expect(/Solo bottiglie[\s\S]*Bianchi Laura/.test(await page.evaluate(() => document.querySelector('.gift-vino').innerText)), 'Bianchi Laura (0 ceste, 2 bottiglie) non è tra le sole bottiglie');
   await page.check('[data-gift-done="c3"]');
   await page.waitForFunction(y => ((window.__fake.docs('regali').find(d => d.id === y) || {}).consegnati || {}).c3 === todayISO(), y);
   await page.evaluate(() => renderMain());
