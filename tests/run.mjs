@@ -173,7 +173,7 @@ console.log('Registro Chiamate - controlli automatici');
 let { ctx, page } = await openApp();
 
 await test('tutte le pagine si aprono senza errori', async () => {
-  const views = ['agenda', 'contactsList', 'call', 'followup', 'appt', 'projects', 'map', 'forecast', 'table', 'dashboard', 'settings', 'portal', 'dups', 'new', 'import', 'projectForm'];
+  const views = ['agenda', 'contactsList', 'call', 'followup', 'appt', 'projects', 'map', 'forecast', 'table', 'dashboard', 'settings', 'portal', 'dups', 'new', 'import', 'projectForm', 'segnalati'];
   for (const v of views) {
     const txt = await show_(page, v);
     await settle(page);
@@ -413,7 +413,7 @@ await ctx.close();
 await page.evaluate(() => new Promise(r => navigator.geolocation.getCurrentPosition(r, r, { timeout: 5000 })));
 await test('telefono: nessuna pagina piu\' larga dello schermo', async () => {
   const bad = [];
-  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries', "delTab='fatt'"], ['deliveries', "delTab='consegne'"], ['regali'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"], ['rete']];
+  const pages = [['agenda'], ['contactsList'], ['call'], ['detail', "selectedId='c1'"], ['projects'], ['projectDetail', "selectedProjectId='p1'"], ['forecast'], ['dashboard'], ['settings'], ['portal'], ['table'], ['appt'], ['followup'], ['dashboard', "dashboardDrilldown=null; dashboardSubView='report'"], ['map'], ['deliveries', "delTab='fatt'"], ['deliveries', "delTab='consegne'"], ['regali'], ['segnalati'], ['sop', "sopEdit={ id:'new', prefill:{}, back:{ view:'appt', tab:'navAppt' } }"], ['rete']];
   for (const [v, extra] of pages) {
     await show_(page, v, extra || '');
     await settle(page);
@@ -1232,6 +1232,52 @@ await test('regali di Natale: lista da commesse e incontri, consegnato, nota, to
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#giftXlsBtn')]);
   expect(dl.suggestedFilename() === `Regali di Natale ${y}.xlsx`, 'file: ' + dl.suggestedFilename());
   await page.evaluate(y => db.collection('regali').doc(y).delete(), y);
+});
+
+await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, diventato progetto', async () => {
+  const seg = id => page.evaluate(id => window.__fake.docs('segnalazioni').find(d => d.id === id), id);
+  // nuovo: il ricontatto si propone dall'inizio del mese del progetto pronto
+  await show_(page, 'segnalati', 'segEdit=null; segAct=null');
+  await page.click('#segNewBtn');
+  await page.fill('#segWho', 'Verdi Paolo');
+  await page.fill('#segTitolo', 'Palazzina 8 alloggi');
+  await page.fill('#segCitta', 'Chieri');
+  const pronto = await page.evaluate(() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 3); return isoDay(d).slice(0, 7); });
+  await page.fill('#segPronto', pronto); await page.dispatchEvent('#segPronto', 'change');
+  expect(await page.inputValue('#segNext') === pronto + '-01', 'ricontatto proposto: ' + await page.inputValue('#segNext'));
+  await page.fill('#segNote', 'parte in primavera');
+  await page.click('#segSaveBtn');
+  await page.waitForFunction(() => window.__fake.docs('segnalazioni').some(d => d.contactId === 'c4'));
+  const nid = await page.evaluate(() => window.__fake.docs('segnalazioni').find(d => d.contactId === 'c4').id);
+  expect((await seg(nid)).ricontattaIl === pronto + '-01' && (await seg(nid)).stato === 'aperta', 'salvato male: ' + JSON.stringify(await seg(nid)));
+  // nella scheda del contatto
+  await show_(page, 'detail', "selectedId='c4'");
+  expect(/Palazzina 8 alloggi/.test(await page.textContent('#segCard')), 'manca nella scheda del contatto');
+  // in Oggi quando arriva la data: "Sentito" sposta il ricontatto
+  await page.evaluate(d => window.__fake.put('segnalazioni', 'sdue', { contactId: 'c3', il: d, titolo: 'Villetta con balconi', citta: 'Torino', stato: 'aperta', storia: [], ricontattaIl: d, createdAt: 1 }), daysAgo(1));
+  await page.waitForFunction(() => segnalazioni.some(s => s.id === 'sdue'));
+  let txt = await show_(page, 'agenda', 'segAct=null');
+  expect(/Cantieri segnalati da risentire \(1\)[\s\S]*Villetta con balconi/.test(txt), 'non compare in Oggi:\n' + txt.slice(0, 1500));
+  await page.click('[data-seg-act="sdue|sentito"]');
+  await page.fill('[data-seg-form="sdue"] .seg-nota', 'progetto a febbraio');
+  await page.click('[data-seg-form="sdue"] [data-seg-plus="2"]');
+  await page.click('[data-seg-save-act="sdue"]');
+  await page.waitForFunction(() => ((window.__fake.docs('segnalazioni').find(d => d.id === 'sdue') || {}).storia || []).length === 1);
+  expect((await seg('sdue')).ricontattaIl > daysAgo(-50), 'ricontatto non spostato di due mesi: ' + (await seg('sdue')).ricontattaIl);
+  await page.evaluate(() => renderMain());
+  expect(!/Cantieri segnalati da risentire/.test(await page.evaluate(() => document.getElementById('main').innerText)), 'dopo "Sentito" deve uscire da Oggi');
+  // diventato progetto: il modulo del progetto si apre precompilato e chiude la segnalazione
+  await show_(page, 'segnalati', 'segAct=null; segFilter="aperta"');
+  await page.click(`[data-seg-act="${nid}|progetto"]`);
+  await page.click(`[data-seg-newproj="${nid}"]`);
+  expect(await page.inputValue('#fPCitta') === 'Chieri' && await page.inputValue('#fPNome') === 'Palazzina 8 alloggi', 'modulo del progetto non precompilato');
+  await page.fill('#fPCodice', '4999001');
+  await page.selectOption('#fPParts .part-role', 'Impresa esecutrice');
+  await page.click('#saveProjectBtn');
+  await page.waitForFunction(id => (window.__fake.docs('segnalazioni').find(d => d.id === id) || {}).stato === 'progetto', nid);
+  const pid = (await seg(nid)).projectId;
+  expect(await page.evaluate(pid => !!window.__fake.docs('projects').find(p => p.id === pid && p.codice === '4999001'), pid), 'progetto non creato o non collegato');
+  await page.evaluate(([nid, pid]) => Promise.all([db.collection('segnalazioni').doc(nid).delete(), db.collection('segnalazioni').doc('sdue').delete(), db.collection('projects').doc(pid).delete()]), [nid, pid]);
 });
 
 await test('rete di collaborazioni: commesse, portale, collegamento a mano, opportunità', async () => {

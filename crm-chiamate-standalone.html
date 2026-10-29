@@ -145,6 +145,15 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .fatt-trow > :first-child{text-align:left;}
 .fatt-trow.fatt-th{font-size:11px;color:var(--muted);text-transform:uppercase;}
 .fatt-ttot{border-top:2px solid var(--accent);font-weight:600;}
+.seg-form textarea{min-height:70px;}
+.seg-note{font-size:13px;white-space:pre-wrap;margin-top:4px;}
+.seg-late{color:var(--danger);font-weight:600;}
+.seg-row.focus{background:var(--accent-soft, rgba(0,72,126,.08));}
+.seg-act{margin-top:8px;padding:10px;border:1px solid var(--border-strong);border-radius:2px;background:var(--bg);}
+.seg-act textarea{min-height:56px;}
+.seg-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.seg-del-q{color:var(--danger);font-size:13px;font-weight:600;align-self:center;}
+.seg-mini{font-size:14px;padding:3px 0;}
 .gift-crit{display:flex;flex-wrap:wrap;gap:4px 16px;}
 .gift-group h3{margin-bottom:4px;}
 .gift-row{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:6px 12px;align-items:start;padding:8px 0;border-top:1px solid var(--border);font-size:13.5px;}
@@ -1239,6 +1248,7 @@ function startApp(uid){
   unsubscribers.push(db.collection('collegamenti').onSnapshot(onCollegamentiSnapshot, showDataError));
   unsubscribers.push(db.collection('fatture').onSnapshot(onFattureSnapshot, showDataError));
   unsubscribers.push(db.collection('regali').onSnapshot(onRegaliSnapshot, showDataError));
+  unsubscribers.push(db.collection('segnalazioni').onSnapshot(onSegSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -1316,6 +1326,7 @@ function renderMain(){
       btn.addEventListener('click', ()=>{ btn.disabled = true; markMailSent(btn.dataset.mailDone); });
     });
     bindTodo(main);
+    bindSeg(main);
     bindForecastReview(main);
     document.getElementById('repGoBtn')?.addEventListener('click', ()=>{ repSetPeriod('week'); dashboardDrilldown = null; dashboardSubView = 'report'; view = 'dashboard'; setActiveTab('navDashboard'); renderMain(); });
     foldTodayCards(main);
@@ -1449,6 +1460,7 @@ function renderMain(){
   if(view==='dups'){ main.innerHTML = dupsView(); bindDups(); return; }
   if(view==='rete'){ main.innerHTML = reteView(); bindRete(main); return; }
   if(view==='regali'){ main.innerHTML = giftView(); bindGift(main); return; }
+  if(view==='segnalati'){ main.innerHTML = segView(); bindSeg(main); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -1489,6 +1501,7 @@ function renderMain(){
       </div>
       ${lastContactsHtml(c)}
       ${studioColleaguesHtml(c)}
+      ${segContactHtml(c)}
       ${collabCardHtml(c)}
       ${contactProjectsHtml(c)}
       ${contactPortalHtml(c)}
@@ -1551,6 +1564,7 @@ function renderMain(){
     document.getElementById('vcardBtn')?.addEventListener('click', ()=>downloadVCard(c));
     bindCollab(c);
     bindFuForm(main);
+    bindSeg(main);
     main.querySelectorAll('#collabCard [data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
     bindContactProjects(c);
     main.querySelectorAll('[data-contact-id]').forEach(el=>{
@@ -2150,8 +2164,9 @@ function waitingCardHtml(){
 }
 function todoCardHtml(){
   const waitingIds = new Set(waitingProjects().map(x=>x.p.id));   // hanno il loro riquadro: non si ripetono tra le ferme
-  const chase = offersToChase(), stalled = stalledProjects().filter(x=>!waitingIds.has(x.p.id)), recall = contactsToRecall();
-  const total = chase.length + stalled.length + recall.length;
+  const segIds = new Set(segDue().map(s=>s.contactId));   // chi ha un cantiere segnalato da risentire sta li'
+  const chase = offersToChase(), stalled = stalledProjects().filter(x=>!waitingIds.has(x.p.id)), recall = contactsToRecall().filter(x=>!segIds.has(x.c.id)), segN = segDue().length;
+  const total = chase.length + stalled.length + recall.length + segN;
   const section = (title, hint, rows)=>rows ? `<div class="todo-section"><div class="todo-title">${title}</div><div class="fc-note" style="margin:-2px 0 6px;">${hint}</div>${rows}</div>` : '';
   const chaseRows = chase.map(({p, since, label, days})=>`<div class="todo-row">
       <div class="todo-main">${todoProjLine(p)}
@@ -2176,6 +2191,7 @@ function todoCardHtml(){
   return `<div class="card">
     <h3>Da fare${total ? ` (${total})` : ''}</h3>
     ${total ? '' : '<div class="empty">Niente in sospeso: offerte, commesse e clienti sono tutti seguiti.</div>'}
+    ${section(`Cantieri segnalati da risentire (${segN})`, 'lavori accennati dai clienti, arrivata la data di ricontatto', segTodoRows())}
     ${section(`Offerte da sollecitare (${chase.length})`, `presentate da almeno ${todoDays('sollecito')} giorni senza conferma`, chaseRows)}
     ${section(`Commesse ferme (${stalled.length})`, `prima dell'offerta, nessun passo avanti da ${todoDays('ferma')} giorni`, stalledRows)}
     ${section(`Da ricontattare (${recall.length})`, `clienti senza progetti in corso, non sentiti da ${todoDays('ricontatto')} giorni (${todoDays('nonRaggiunto')} se non raggiunti, ${todoDays('dopoMail')} dopo una mail)`, recallRows)}
@@ -4454,6 +4470,7 @@ function navLabel(e){
   if(s.view==='sop') return 'Sopralluogo';
   if(s.view==='dups') return 'Possibili doppioni';
   if(s.view==='regali') return 'Regali di Natale';
+  if(s.view==='segnalati') return 'Cantieri segnalati';
   if(s.view==='rete'){ const n = s.reteFocus && netCache && netCache.nodes.get(s.reteFocus); return n ? n.label : 'Rete di collaborazioni'; }
   const t = document.getElementById(e.tab || 'navAgenda');
   return t ? t.firstChild.textContent.trim() : 'Indietro';
@@ -6204,6 +6221,224 @@ function bindGift(main){
     giftSave({ aggiunti: [...new Set([...(doc().aggiunti || []), c.id])], esclusi: (doc().esclusi || []).filter(x=>x!==c.id) }).catch(fail);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Cantieri segnalati (richiesta dell'utente 2026-10-29): lavori accennati dai clienti negli incontri ("tra
+// qualche mese parto con un cantiere, quasi quasi mettiamo l'Isokorb") da non perdere prima che diventino
+// progetti. Collection `segnalazioni` {contactId, il, titolo, via, citta, avvio 'YYYY-MM', pronto 'YYYY-MM'
+// (progetto da mandare per il preventivo), note, ricontattaIl, storia [{il, nota}], stato 'aperta' | 'progetto'
+// | 'chiusa', projectId, chiusaIl, motivo, createdAt, updatedAt}. Data di ricontatto proposta da `segNextDate`
+// (inizio del mese del progetto pronto, o due mesi prima dell'avvio, o tra un mese); in Oggi -> Da fare quando
+// arriva. Progetti -> "Cantieri segnalati" (`view='segnalati'`) e riquadro nella scheda del contatto.
+// ---------------------------------------------------------------------------
+let segnalazioni = [], segEdit = null, segAct = null, segDel = null, segFilter = 'aperta', segQ = '', segFocus = null;
+function onSegSnapshot(snap){
+  segnalazioni = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  if(['segnalati', 'detail', 'agenda'].includes(view) && !segEdit && !segAct && canAutoRender()) renderMain();
+}
+const segOpen = s=>(s.stato || 'aperta')==='aperta';
+function segAddMonths(ym, n){ const d = new Date(ym+'-01T12:00:00'); d.setMonth(d.getMonth()+n); return isoDay(d); }
+function segNextDate(pronto, avvio, minDays){
+  const t = todayISO(), min = addDaysISO(t, minDays || 7);
+  const d = pronto ? pronto+'-01' : avvio ? segAddMonths(avvio, -2) : addDaysISO(t, 30);
+  return d < min ? min : d;
+}
+function segSorted(list){ return [...list].sort((a,b)=>(a.ricontattaIl || '9').localeCompare(b.ricontattaIl || '9')); }
+function segDue(){ const t = todayISO(); return segSorted(segnalazioni.filter(s=>segOpen(s) && s.ricontattaIl && s.ricontattaIl <= t)); }
+function segTitle(s){ return s.titolo || (s.citta ? 'Cantiere a '+s.citta : 'Cantiere segnalato'); }
+function segWho(s){ const c = contacts.find(x=>x.id===s.contactId); return c ? fullName(c) + (c.azienda ? ' · '+c.azienda : '') : 'contatto non piu\' in rubrica'; }
+function segWhen(s){ return [s.avvio ? 'avvio cantiere '+monthLabel(s.avvio) : '', s.pronto ? 'progetto pronto '+monthLabel(s.pronto) : ''].filter(Boolean).join(' · '); }
+function segAddrHtml(s){
+  const a = [s.via, s.citta].filter(Boolean).join(', ');
+  return a ? `<a href="${mapsUrl({ via: s.via, citta: s.citta })}" target="_blank" rel="noopener" class="addr-link">${esc(a)} · Su Maps</a>` : '';
+}
+function segFormHtml(){
+  const s = segEdit.id==='new' ? { il: todayISO(), contactId: segEdit.contactId || '' } : segnalazioni.find(x=>x.id===segEdit.id) || {};
+  const c = contacts.find(x=>x.id===s.contactId);
+  const opts = contacts.filter(x=>!isOff(x)).map(fuLabel).sort((a,b)=>a.localeCompare(b));
+  const next = s.ricontattaIl || segNextDate(s.pronto, s.avvio);
+  return `<div class="card seg-form" id="segForm">
+    <h3>${segEdit.id==='new' ? 'Nuovo cantiere segnalato' : 'Modifica cantiere segnalato'}</h3>
+    <div class="field-row">
+      <div><label>Segnalato da *</label><input id="segWho" list="segWhoList" value="${c ? esc(fuLabel(c)) : ''}" placeholder="Cerca nome o studio" autocomplete="off"><datalist id="segWhoList">${opts.map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist></div>
+      <div><label>Il</label><input type="date" id="segIl" value="${esc(s.il || todayISO())}"></div>
+    </div>
+    <label>Di cosa si tratta</label><input id="segTitolo" value="${esc(s.titolo || '')}" placeholder="es. Palazzina 8 alloggi, villetta con balconi">
+    <div class="field-row">
+      <div><label>Indirizzo</label><input id="segVia" value="${esc(s.via || '')}" placeholder="se lo conosci"></div>
+      <div><label>Città</label><input id="segCitta" value="${esc(s.citta || '')}"></div>
+    </div>
+    <div class="field-row">
+      <div><label>Avvio del cantiere previsto</label><input type="month" id="segAvvio" value="${esc(s.avvio || '')}"></div>
+      <div><label>Progetto pronto (da mandarti) previsto</label><input type="month" id="segPronto" value="${esc(s.pronto || '')}"></div>
+    </div>
+    <label>Note</label><textarea id="segNote" placeholder="cosa ti ha detto, chi segue il progetto, quando sentirlo...">${esc(s.note || '')}</textarea>
+    ${segNextHtml(next, s.ricontattaIl ? '' : 'auto')}
+    <div id="segErr" style="color:var(--danger);font-size:13px;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"><button class="btn small" id="segSaveBtn">Salva</button><button class="btn secondary small" id="segCancelBtn">Annulla</button></div>
+  </div>`;
+}
+function segNextHtml(date, auto){
+  return `<div class="field-row"><div><label>Ricontattare il</label><input type="date" id="segNext" value="${esc(date)}" ${auto ? 'data-auto="1"' : ''}></div><div></div></div>
+    <div class="fu-quick">${[[1,'Tra un mese'],[2,'Tra due mesi'],[3,'Tra tre mesi'],[6,'Tra sei mesi']].map(([m,l])=>`<button type="button" class="btn secondary small" data-seg-plus="${m}">${l}</button>`).join('')}</div>`;
+}
+// Moduli brevi su una riga: "Sentito" (nota, nuove previsioni, prossimo ricontatto), "Non si fa" (motivo),
+// "Diventato progetto" (crea il progetto o collega uno esistente).
+function segActHtml(s){
+  if(!segAct || segAct.id!==s.id) return '';
+  const err = '<div class="seg-err" style="color:var(--danger);font-size:13px;"></div>';
+  if(segAct.mode==='sentito') return `<div class="seg-act" data-seg-form="${s.id}">
+    <label>Cosa ti ha detto</label><textarea class="seg-nota" placeholder="es. il progetto slitta, richiamare a febbraio"></textarea>
+    <div class="field-row">
+      <div><label>Avvio del cantiere</label><input type="month" class="seg-avvio" value="${esc(s.avvio || '')}"></div>
+      <div><label>Progetto pronto</label><input type="month" class="seg-pronto" value="${esc(s.pronto || '')}"></div>
+    </div>
+    ${segNextHtml(segNextDate(s.pronto, s.avvio, 30), 'auto')}${err}
+    <div class="seg-btns"><button class="btn small" data-seg-save-act="${s.id}">Salva</button><button class="btn secondary small" data-seg-close>Annulla</button></div></div>`;
+  if(segAct.mode==='chiudi') return `<div class="seg-act" data-seg-form="${s.id}">
+    <label>Perche' non si fa (facoltativo)</label><input class="seg-nota" placeholder="es. cantiere annullato, scelta un'altra soluzione">${err}
+    <div class="seg-btns"><button class="btn small" data-seg-save-act="${s.id}">Segna come chiuso</button><button class="btn secondary small" data-seg-close>Annulla</button></div></div>`;
+  const opts = projects.filter(p=>!isLost(p)).map(p=>`${p.codice || ''} · ${p.nome || 'Progetto'}${p.citta ? ' · '+p.citta : ''}`);
+  return `<div class="seg-act" data-seg-form="${s.id}">
+    <div class="seg-btns"><button class="btn small" data-seg-newproj="${s.id}">Crea il progetto</button></div>
+    <label>oppure collega un progetto gia' inserito</label><input class="seg-proj" list="segProjList" placeholder="ID, nome o città" autocomplete="off"><datalist id="segProjList">${opts.map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist>${err}
+    <div class="seg-btns"><button class="btn secondary small" data-seg-save-act="${s.id}">Collega</button><button class="btn secondary small" data-seg-close>Annulla</button></div></div>`;
+}
+function segRowHtml(s, opts){
+  const t = todayISO(), p = s.projectId && projects.find(x=>x.id===s.projectId), open = segOpen(s);
+  const late = open && s.ricontattaIl && s.ricontattaIl <= t, last = (s.storia || []).slice(-2).reverse();
+  const actions = open ? `${opts && opts.call ? `<button class="btn small" data-todo-call="${s.contactId}">Richiama</button>` : ''}
+      <button class="btn ${opts && opts.call ? 'secondary ' : ''}small" data-seg-act="${s.id}|sentito">Sentito</button>
+      ${opts && opts.snooze ? `<button class="btn secondary small" data-seg-snooze="${s.id}">Rimanda 30 gg</button>` : ''}
+      <button class="btn secondary small" data-seg-act="${s.id}|progetto">Diventato progetto</button>
+      ${opts && opts.compact ? '' : `<button class="btn secondary small" data-seg-act="${s.id}|chiudi">Non si fa</button><button class="btn secondary small" data-seg-edit="${s.id}">Modifica</button>`}`
+    : `${p ? `<button class="btn secondary small" data-open-project="${p.id}">Apri il progetto</button>` : ''}<button class="btn secondary small" data-seg-reopen="${s.id}">Riapri</button>`;
+  return `<div class="todo-row seg-row ${segFocus===s.id ? 'focus' : ''}" data-seg-id="${s.id}">
+    <div class="todo-main"><strong>${esc(segTitle(s))}</strong>${s.citta && s.titolo ? `<span class="fc-addr"> · ${esc(s.citta)}</span>` : ''}
+      <div class="todo-sub">segnalato da <span class="name-link" data-seg-contact="${esc(s.contactId || '')}">${esc(segWho(s))}</span> il ${fmtDate(s.il)}${segWhen(s) ? ' · '+esc(segWhen(s)) : ''}</div>
+      ${segAddrHtml(s) ? `<div class="todo-sub">${segAddrHtml(s)}</div>` : ''}
+      ${s.note ? `<div class="seg-note">${esc(s.note)}</div>` : ''}
+      ${last.map(h=>`<div class="todo-sub">sentito il ${fmtDate(h.il)}${h.nota ? ': '+esc(h.nota) : ''}</div>`).join('')}
+      ${open ? `<div class="todo-sub ${late ? 'seg-late' : ''}">${s.ricontattaIl ? `ricontattare ${s.ricontattaIl===t ? 'oggi' : s.ricontattaIl < t ? `dal ${fmtDate(s.ricontattaIl)}` : `il ${fmtDate(s.ricontattaIl)}`}` : 'nessuna data di ricontatto'}</div>`
+        : `<div class="todo-sub">${s.stato==='progetto' ? `diventato progetto${p ? ': '+esc((p.codice ? p.codice+' ' : '')+(p.nome || '')) : ''}` : `chiuso${s.motivo ? ': '+esc(s.motivo) : ''}`}${s.chiusaIl ? ' il '+fmtDate(s.chiusaIl) : ''}</div>`}
+      ${opts && opts.call ? `<div class="todo-sub">${phoneLinks(contacts.find(x=>x.id===s.contactId) || {}, 'font-size:12.5px;')}</div>` : ''}
+      ${segActHtml(s)}
+    </div>
+    <div class="todo-actions">${actions}
+      ${opts && opts.compact ? '' : segDel===s.id ? `<span class="seg-del-q">Eliminare?</span><button class="btn small" style="background:var(--danger);color:#fff;" data-seg-del-ok="${s.id}">Sì, elimina</button><button class="btn secondary small" data-seg-del-no>No</button>` : `<button class="btn secondary small" data-seg-del="${s.id}">Elimina</button>`}</div>
+  </div>`;
+}
+function segView(){
+  const q = normName(segQ), counts = { aperta: 0, progetto: 0, chiusa: 0 };
+  segnalazioni.forEach(s=>{ counts[s.stato || 'aperta']++; });
+  const list = segSorted(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter)
+    && (!q || normName([s.titolo, s.via, s.citta, s.note, segWho(s)].join(' ')).includes(q))));
+  const pill = (k, l)=>`<button class="btn ${segFilter===k ? '' : 'secondary '}small" data-seg-filter="${k}">${l}</button>`;
+  return `<div class="top-actions"><button class="btn secondary small" id="segBackBtn">← Progetti</button></div>
+    <h2 style="margin-bottom:6px;">Cantieri segnalati (${counts.aperta})</h2>
+    <div class="fc-note" style="margin-bottom:12px;">I lavori che i clienti ti accennano e che non sono ancora progetti. Alla data di ricontatto compaiono in Oggi, in "Da fare".</div>
+    ${segEdit ? segFormHtml() : `<div style="margin-bottom:12px;"><button class="btn" id="segNewBtn">+ Nuovo cantiere segnalato</button></div>`}
+    <div class="card">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${pill('aperta', `Da seguire (${counts.aperta})`)}${pill('progetto', `Diventati progetti (${counts.progetto})`)}${pill('chiusa', `Non si fanno (${counts.chiusa})`)}${pill('tutti', 'Tutti')}</div>
+      <input id="segSearch" value="${esc(segQ)}" placeholder="Cerca per cliente, città, note...">
+      <div id="segList">${list.map(s=>segRowHtml(s)).join('') || `<div class="empty">${segnalazioni.length ? 'Nessun cantiere in questo elenco.' : 'Nessun cantiere segnalato: aggiungi il primo quando un cliente ti accenna un lavoro.'}</div>`}</div>
+    </div>`;
+}
+function segContactHtml(c){
+  const mine = segSorted(segnalazioni.filter(s=>s.contactId===c.id && segOpen(s)));
+  return `<div class="card" id="segCard"><h3>Cantieri segnalati${mine.length ? ` (${mine.length})` : ''}</h3>
+    ${mine.map(s=>`<div class="seg-mini"><span class="name-link" data-seg-goto="${s.id}">${esc(segTitle(s))}</span><span class="fc-note"> · segnalato il ${fmtDate(s.il)}${s.ricontattaIl ? ' · ricontattare il '+fmtDate(s.ricontattaIl) : ''}</span></div>`).join('')}
+    ${mine.length ? '' : '<div class="fc-note">Un lavoro che ti ha accennato e che non e\' ancora un progetto.</div>'}
+    <div style="margin-top:8px;"><button class="btn secondary small" data-seg-new-for="${c.id}">+ Cantiere segnalato</button></div></div>`;
+}
+function segTodoRows(){ return segDue().map(s=>segRowHtml(s, { call: true, snooze: true, compact: true })).join(''); }
+function segToProject(s){
+  const c = contacts.find(x=>x.id===s.contactId);
+  window.__editingProject = { nome: s.titolo || '', via: s.via || '', citta: s.citta || '', segnalazioneId: s.id, back: view, backContact: selectedId,
+    partecipanti: c ? [{ contactId: c.id, ruolo: '' }] : [],
+    note: [`Cantiere segnalato da ${c ? fullName(c) : 'un cliente'} il ${fmtDate(s.il)}.`, segWhen(s), s.note].filter(Boolean).join('\n') };
+  segAct = null; view = 'projectForm'; setActiveTab('navProjects'); renderMain();
+}
+function bindSeg(main){
+  const fail = e=>alert('Non salvato: '+(e.message || e.code || ''));
+  const upd = (id, data)=>db.collection('segnalazioni').doc(id).update({ ...data, updatedAt: Date.now() });
+  const done = ()=>{ segAct = null; segEdit = null; segDel = null; renderMain(); };
+  const plus = (box)=>box.querySelectorAll('[data-seg-plus]').forEach(b=>b.addEventListener('click', ()=>{
+    const inp = box.querySelector('#segNext'), d = new Date(todayISO()+'T12:00:00'); d.setMonth(d.getMonth() + +b.dataset.segPlus);
+    inp.value = isoDay(d); inp.removeAttribute('data-auto'); }));
+  // ricontatto proposto dalle date finche' non lo si sceglie a mano
+  const autoNext = (box, minDays)=>{ const inp = box.querySelector('#segNext'); if(!inp) return;
+    inp.addEventListener('change', ()=>inp.removeAttribute('data-auto'));
+    box.querySelectorAll('#segAvvio, #segPronto, .seg-avvio, .seg-pronto').forEach(m=>m.addEventListener('change', ()=>{
+      if(!inp.dataset.auto) return;
+      const v = sel=>(box.querySelector(sel) || {}).value || '';
+      inp.value = segNextDate(v('#segPronto') || v('.seg-pronto'), v('#segAvvio') || v('.seg-avvio'), minDays);
+    })); };
+  main.querySelectorAll('[data-seg-contact]').forEach(el=>el.addEventListener('click', ()=>{ if(!contacts.some(x=>x.id===el.dataset.segContact)) return; selectedId = el.dataset.segContact; view = 'detail'; confirmDeleteId = null; setActiveTab('navContacts'); renderMain(); }));
+  main.querySelectorAll('[data-seg-goto]').forEach(el=>el.addEventListener('click', ()=>{ segFocus = el.dataset.segGoto; segFilter = 'aperta'; segQ = ''; view = 'segnalati'; setActiveTab('navProjects'); renderMain(); }));
+  main.querySelectorAll('[data-seg-new-for]').forEach(b=>b.addEventListener('click', ()=>{ segEdit = { id: 'new', contactId: b.dataset.segNewFor, back: 'detail' }; view = 'segnalati'; renderMain(); document.getElementById('segTitolo')?.focus(); }));
+  main.querySelectorAll('[data-seg-act]').forEach(b=>b.addEventListener('click', ()=>{ const [id, mode] = b.dataset.segAct.split('|'); segAct = { id, mode }; segDel = null; segEdit = null; renderMain(); main.querySelector(`[data-seg-form="${id}"] textarea, [data-seg-form="${id}"] input`)?.focus(); }));
+  main.querySelectorAll('[data-seg-close]').forEach(b=>b.addEventListener('click', done));
+  main.querySelectorAll('[data-seg-snooze]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd(b.dataset.segSnooze, { ricontattaIl: addDaysISO(todayISO(), 30) }).catch(fail); }));
+  main.querySelectorAll('[data-seg-reopen]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd(b.dataset.segReopen, { stato: 'aperta', chiusaIl: '', motivo: '', projectId: '', ricontattaIl: addDaysISO(todayISO(), 7) }).catch(fail); }));
+  main.querySelectorAll('[data-seg-edit]').forEach(b=>b.addEventListener('click', ()=>{ segEdit = { id: b.dataset.segEdit }; segAct = null; renderMain(); document.getElementById('main').scrollTop = 0; }));
+  main.querySelectorAll('[data-seg-del]').forEach(b=>b.addEventListener('click', ()=>{ segDel = b.dataset.segDel; renderMain(); }));
+  main.querySelectorAll('[data-seg-del-no]').forEach(b=>b.addEventListener('click', done));
+  main.querySelectorAll('[data-seg-del-ok]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; db.collection('segnalazioni').doc(b.dataset.segDelOk).delete().then(done, fail); }));
+  main.querySelectorAll('[data-seg-newproj]').forEach(b=>b.addEventListener('click', ()=>{ const s = segnalazioni.find(x=>x.id===b.dataset.segNewproj); if(s) segToProject(s); }));
+  main.querySelectorAll('[data-seg-form]').forEach(box=>{
+    const s = segnalazioni.find(x=>x.id===box.dataset.segForm); if(!s) return;
+    plus(box); autoNext(box, 30);
+    const err = t=>{ box.querySelector('.seg-err').textContent = t; };
+    box.querySelector('[data-seg-save-act]').addEventListener('click', async ()=>{
+      const nota = (box.querySelector('.seg-nota') || {}).value?.trim() || '', t = todayISO();
+      let data;
+      if(segAct.mode==='sentito'){
+        const next = box.querySelector('#segNext').value;
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(next)) return err('Indica quando ricontattarlo.');
+        data = { storia: [...(s.storia || []), { il: t, nota }], avvio: box.querySelector('.seg-avvio').value || '', pronto: box.querySelector('.seg-pronto').value || '', ricontattaIl: next };
+      } else if(segAct.mode==='chiudi') data = { stato: 'chiusa', chiusaIl: t, motivo: nota };
+      else {
+        const v = normName(box.querySelector('.seg-proj').value);
+        const p = v && projects.find(p=>normName(`${p.codice || ''} · ${p.nome || 'Progetto'}${p.citta ? ' · '+p.citta : ''}`)===v || p.codice===v);
+        if(!p) return err('Scegli il progetto dall\'elenco dei suggerimenti.');
+        data = { stato: 'progetto', projectId: p.id, chiusaIl: t };
+      }
+      try{ await upd(s.id, data); done(); }catch(e){ err('Non salvato: '+(e.message || e.code || '')); }
+    });
+  });
+  const form = main.querySelector('#segForm');
+  if(form){
+    plus(form); autoNext(form, 7);
+    const back = ()=>{ const b = segEdit && segEdit.back; segEdit = null; if(b==='detail'){ view = 'detail'; setActiveTab('navContacts'); } renderMain(); };
+    form.querySelector('#segCancelBtn').addEventListener('click', back);
+    form.querySelector('#segSaveBtn').addEventListener('click', async ()=>{
+      const err = t=>{ form.querySelector('#segErr').textContent = t; };
+      const who = form.querySelector('#segWho').value.trim(), c = contacts.find(x=>fuLabel(x)===who);
+      if(!c) return err('Scegli chi ti ha segnalato il cantiere dall\'elenco dei suggerimenti (se non c\'e\', crealo prima in Contatti).');
+      const v = id=>form.querySelector(id).value.trim();
+      const next = v('#segNext');
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(next)) return err('Indica quando ricontattarlo.');
+      const data = { contactId: c.id, il: v('#segIl') || todayISO(), titolo: v('#segTitolo'), via: v('#segVia'), citta: v('#segCitta'), avvio: v('#segAvvio'), pronto: v('#segPronto'), note: v('#segNote'), ricontattaIl: next, updatedAt: Date.now() };
+      try{
+        if(segEdit.id==='new') await db.collection('segnalazioni').add({ ...data, stato: 'aperta', storia: [], createdAt: Date.now() });
+        else await db.collection('segnalazioni').doc(segEdit.id).update(data);
+        back();
+      }catch(e){ err('Non salvato: '+(e.message || e.code || '')); }
+    });
+  }
+  if(view!=='segnalati') return;
+  main.querySelector('#segBackBtn')?.addEventListener('click', ()=>{ view = 'projects'; renderMain(); });
+  main.querySelector('#segNewBtn')?.addEventListener('click', ()=>{ segEdit = { id: 'new' }; segAct = null; renderMain(); document.getElementById('segWho')?.focus(); });
+  main.querySelectorAll('[data-seg-filter]').forEach(b=>b.addEventListener('click', ()=>{ segFilter = b.dataset.segFilter; renderMain(); }));
+  main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
+  main.querySelector('#segSearch')?.addEventListener('input', e=>{ segQ = e.target.value; const box = document.getElementById('segList');
+    const q = normName(segQ), list = segSorted(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter) && (!q || normName([s.titolo, s.via, s.citta, s.note, segWho(s)].join(' ')).includes(q))));
+    box.innerHTML = list.map(s=>segRowHtml(s)).join('') || '<div class="empty">Nessun cantiere trovato.</div>'; bindSegRows(box); });
+  if(segFocus){ const row = main.querySelector(`.seg-row[data-seg-id="${segFocus}"]`); if(row) row.scrollIntoView({ block: 'center' }); segFocus = null; }
+}
+// dopo la ricerca si ricollegano i pulsanti delle righe
+function bindSegRows(box){ bindSeg(box); }
 
 // ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
@@ -7967,6 +8202,7 @@ function projectsListView(){
         <button class="btn" id="newProjectBtn">+ Nuovo progetto</button>
         <button class="btn secondary" id="orderPdfBtn" title="Legge la conferma d'ordine e apre il progetto con l'ordine già compilato">Ordine da PDF</button>
         <button class="btn secondary" id="portalBtn" title="Analizza il PDF dei cantieri scaricato dal portale">Cantieri dal portale</button>
+        <button class="btn secondary" id="segBtn" title="Lavori accennati dai clienti, non ancora progetti">Cantieri segnalati (${segnalazioni.filter(segOpen).length})</button>
       </div>
     </div>
     <div id="projList">${projectsListHtml()}</div>`;
@@ -7983,6 +8219,7 @@ function bindProjectsList(){
   document.getElementById('newProjectBtn').addEventListener('click', ()=>{ window.__editingProject = { partecipanti:[] }; view = 'projectForm'; renderMain(); });
   document.getElementById('orderPdfBtn').addEventListener('click', ()=>pickOrderPdf(null));
   document.getElementById('portalBtn').addEventListener('click', ()=>{ view='portal'; renderMain(); });
+  document.getElementById('segBtn').addEventListener('click', ()=>{ segEdit = null; segAct = null; view='segnalati'; renderMain(); });
 }
 
 // ---- modulo nuovo / modifica progetto ----
@@ -8030,7 +8267,7 @@ function projectFormView(){
 }
 function bindProjectForm(){
   const p = window.__editingProject || {};
-  const cancel = ()=>{ window.__editingProject = null; view = p.id ? 'projectDetail' : (p.portaleId ? 'portal' : p.fromContactId ? 'detail' : 'projects'); if(p.fromContactId){ selectedId = p.fromContactId; setActiveTab('navContacts'); } renderMain(); };
+  const cancel = ()=>{ window.__editingProject = null; view = p.id ? 'projectDetail' : (p.segnalazioneId ? p.back || 'segnalati' : p.portaleId ? 'portal' : p.fromContactId ? 'detail' : 'projects'); if(p.fromContactId){ selectedId = p.fromContactId; setActiveTab('navContacts'); } if(p.segnalazioneId && p.back==='detail'){ selectedId = p.backContact; setActiveTab('navContacts'); } if(p.segnalazioneId && p.back==='agenda') setActiveTab('navAgenda'); renderMain(); };
   document.getElementById('projFormCancel').addEventListener('click', cancel);
   document.getElementById('projFormCancelTop').addEventListener('click', cancel);
   const box = document.getElementById('fPParts');
@@ -8072,6 +8309,7 @@ async function saveProject(){
       const rich = document.getElementById('fPRichiesta').value;
       const ref = await db.collection('projects').add({ ...data, fasi: rich ? { richiesta: rich } : {}, importoDeliberato: null, createdAt: Date.now(), ...(p.portaleId ? { portaleId: p.portaleId } : {}) });
       selectedProjectId = ref.id;
+      if(p.segnalazioneId) await db.collection('segnalazioni').doc(p.segnalazioneId).update({ stato: 'progetto', projectId: ref.id, chiusaIl: todayISO(), updatedAt: Date.now() });
     }
     window.__editingProject = null; view = 'projectDetail'; setActiveTab('navProjects'); renderMain();
   }catch(e){ err('Errore nel salvataggio: '+(e.message||e.code||'')); }

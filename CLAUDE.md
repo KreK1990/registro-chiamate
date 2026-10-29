@@ -22,7 +22,7 @@ la cartella pubblicata su Netlify (deploy automatico a ogni push).
 - `netlify/functions/backup-daily.mjs` (pianificata, ogni notte alle 02:30 UTC) e
   `netlify/functions/backups.mjs` (dall'app, con l'ID token Firebase dell'utente: elenco,
   download, "Fai una copia adesso"): backup JSON di
-  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report,collegamenti,fatture,regali}` (version 2; restano fuori
+  `users/<uid>/{contacts,calls,projects,settings,portale,forecastStorico,sopralluoghi,report,collegamenti,fatture,regali,segnalazioni}` (version 2; restano fuori
   `portaleImport`, rileggibile dal PDF, e `suggerimenti`) su **Netlify Blobs** (store `backups`,
   chiave `<uid>/<YYYY-MM-DD>.json` per la notturna, `<uid>/<YYYY-MM-DD>_<HHMMSS>.json` per le
   manuali, che non sovrascrivono mai; `KEY_RE`). Si tengono gli ultimi 30 giorni e per sempre la
@@ -314,6 +314,18 @@ Campi principali:
   − / +). Proposta: 1 cesta a chi ha una fornitura (commessa acquisita) o un preventivo aperto (commessa aperta con offerta
   presentata, tipo 'off'), 1 bottiglia a chi ha solo accennato a lavori (trattativa senza offerta, incontri); il vecchio
   `regali.tipo` vale come proposta. Sezioni "Con cesta di alimenti" / "Solo bottiglie", totali da comprare, colonne in Excel.
+- **Cantieri segnalati** (Progetti -> "Cantieri segnalati (N)", `view='segnalati'`, blocco omonimo, 2026-10-29): lavori
+  accennati dai clienti negli incontri, non ancora progetti, da non perdere. Collection `segnalazioni` (nei backup):
+  {contactId (chi l'ha segnalato), il, titolo, via, citta, avvio e pronto 'YYYY-MM' (avvio del cantiere, progetto da
+  mandare per il preventivo), note, ricontattaIl, storia [{il, nota}], stato aperta|progetto|chiusa, projectId, chiusaIl,
+  motivo}. Ricontatto proposto da `segNextDate` (1° del mese "pronto", o 2 mesi prima dell'avvio, o +30 giorni; minimo
+  +7, +30 dopo "Sentito") finche' non si sceglie a mano (`data-auto`); scorciatoie +1/2/3/6 mesi. Alla data compare in
+  Oggi -> Da fare, "Cantieri segnalati da risentire" (`segDue`; quei clienti escono da "Da ricontattare"): Richiama,
+  Sentito (nota, nuove previsioni, prossima data), Rimanda 30 gg, Diventato progetto. "Diventato progetto" crea il
+  progetto (`segToProject`: modulo precompilato, il cliente tra le figure con il ruolo da scegliere; al salvataggio la
+  segnalazione passa a 'progetto') o collega uno esistente; "Non si fa" la chiude con motivo; Riapri, Elimina con
+  conferma inline. Scheda del contatto: riquadro "Cantieri segnalati" (`segContactHtml`, "+ Cantiere segnalato").
+  Stato dei moduli `segEdit` / `segAct` (bloccano i ridisegni dello snapshot).
 - **Rete di collaborazioni** (blocco omonimo, 2026-10-20, passo 1 di 2; il passo 2 sara' la mappa interattiva):
   punti = STUDI (`contactNodeKey`: 's:'+studio normalizzato, o 'c:'+id per chi non ha studio) e soggetti del portale
   non in rubrica ('x:'+nome, uniti per email); abbinamento alla rubrica con `portalMatch`. Legami (`buildNetwork`,
