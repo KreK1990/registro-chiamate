@@ -154,6 +154,10 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .seg-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
 .seg-del-q{color:var(--danger);font-size:13px;font-weight:600;align-self:center;}
 .seg-mini{font-size:14px;padding:3px 0;}
+.seg-meet{margin:2px 0 8px;padding:8px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);}
+.seg-in-meet{margin-top:12px;}
+.seg-meet-row{margin:8px 0;padding:10px;border:1px solid var(--border-strong);border-radius:2px;}
+.seg-meet-row textarea{min-height:50px;}
 .gift-crit{display:flex;flex-wrap:wrap;gap:4px 16px;}
 .gift-group h3{margin-bottom:4px;}
 .gift-row{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:6px 12px;align-items:start;padding:8px 0;border-top:1px solid var(--border);font-size:13.5px;}
@@ -4071,6 +4075,7 @@ function actMeetHtml(prefix, c){
     ${from ? `<div class="fc-note" style="margin:2px 0 6px;">Incontro dell'appuntamento fissato con la telefonata del ${fmtDate(from.data)}.</div>` : ''}
     <label>Ora dell'incontro</label><select id="${prefix}MeetTime">${timeOptions(pf.ora || '')}</select>
     <label>Note dell'incontro</label><textarea id="${prefix}MeetNote" placeholder="Com'è andato, cosa avete deciso, prossimi passi…"></textarea>
+    ${segMeetFormHtml(prefix)}
   </div>`;
 }
 function actMailHtml(prefix){
@@ -4141,6 +4146,7 @@ async function saveActivity(cfg){
       if(pf.daAppuntamento) rec.daAppuntamento = pf.daAppuntamento;
       const ref = await db.collection('calls').add(rec);
       if(rec.daAppuntamento) await db.collection('calls').doc(rec.daAppuntamento).update({ incontroId: ref.id });
+      await segSaveFromMeet(segMeetRead(cfg.prefix), contactId, data, ref.id);
       await markOfferPresented(sel, `${data}T${ora || '09:00'}`);
     } else {
       const paste = document.getElementById(cfg.prefix+'MailPaste');
@@ -6252,8 +6258,21 @@ function segAddrHtml(s){
   const a = [s.via, s.citta].filter(Boolean).join(', ');
   return a ? `<a href="${mapsUrl({ via: s.via, citta: s.citta })}" target="_blank" rel="noopener" class="addr-link">${esc(a)} · Su Maps</a>` : '';
 }
+// Ultimo incontro del cliente (attivita' Incontro o appuntamento passato) con le sue note: nel modulo nuovo la data
+// "Il" si propone da li' e le note si vedono sotto (richiesta dell'utente 2026-10-29: le info stanno di solito li').
+function segMeetInfo(cid){
+  const m = cid && lastActivities(cid).meet;
+  return m ? { id: m.id, date: meetDate(m), note: (isMeet(m) ? m.note : m.noteIncontro || m.note) || '' } : null;
+}
+function segMeetBoxHtml(cid){
+  const m = segMeetInfo(cid);
+  if(!cid) return '';
+  return m ? `<div class="seg-meet"><div class="fc-note">Ultimo incontro: <strong>${fmtDate(m.date)}</strong></div>${m.note ? `<div class="seg-note">${esc(m.note)}</div>` : '<div class="fc-note">senza note</div>'}</div>`
+    : '<div class="seg-meet fc-note">Nessun incontro registrato con questo cliente.</div>';
+}
 function segFormHtml(){
-  const s = segEdit.id==='new' ? { il: todayISO(), contactId: segEdit.contactId || '' } : segnalazioni.find(x=>x.id===segEdit.id) || {};
+  const meet = segEdit.id==='new' ? segMeetInfo(segEdit.contactId) : null;
+  const s = segEdit.id==='new' ? { il: segEdit.il || (meet ? meet.date : todayISO()), contactId: segEdit.contactId || '' } : segnalazioni.find(x=>x.id===segEdit.id) || {};
   const c = contacts.find(x=>x.id===s.contactId);
   const opts = contacts.filter(x=>!isOff(x)).map(fuLabel).sort((a,b)=>a.localeCompare(b));
   const next = s.ricontattaIl || segNextDate(s.pronto, s.avvio);
@@ -6261,8 +6280,9 @@ function segFormHtml(){
     <h3>${segEdit.id==='new' ? 'Nuovo cantiere segnalato' : 'Modifica cantiere segnalato'}</h3>
     <div class="field-row">
       <div><label>Segnalato da *</label><input id="segWho" list="segWhoList" value="${c ? esc(fuLabel(c)) : ''}" placeholder="Cerca nome o studio" autocomplete="off"><datalist id="segWhoList">${opts.map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist></div>
-      <div><label>Il</label><input type="date" id="segIl" value="${esc(s.il || todayISO())}"></div>
+      <div><label>Il</label><input type="date" id="segIl" value="${esc(s.il || todayISO())}" ${segEdit.id==='new' && !segEdit.il ? 'data-auto="1"' : ''}></div>
     </div>
+    <div id="segMeetBox">${segEdit.id==='new' ? segMeetBoxHtml(s.contactId) : ''}</div>
     <label>Di cosa si tratta</label><input id="segTitolo" value="${esc(s.titolo || '')}" placeholder="es. Palazzina 8 alloggi, villetta con balconi">
     <div class="field-row">
       <div><label>Indirizzo</label><input id="segVia" value="${esc(s.via || '')}" placeholder="se lo conosci"></div>
@@ -6315,7 +6335,7 @@ function segRowHtml(s, opts){
     : `${p ? `<button class="btn secondary small" data-open-project="${p.id}">Apri il progetto</button>` : ''}<button class="btn secondary small" data-seg-reopen="${s.id}">Riapri</button>`;
   return `<div class="todo-row seg-row ${segFocus===s.id ? 'focus' : ''}" data-seg-id="${s.id}">
     <div class="todo-main"><strong>${esc(segTitle(s))}</strong>${s.citta && s.titolo ? `<span class="fc-addr"> · ${esc(s.citta)}</span>` : ''}
-      <div class="todo-sub">segnalato da <span class="name-link" data-seg-contact="${esc(s.contactId || '')}">${esc(segWho(s))}</span> il ${fmtDate(s.il)}${segWhen(s) ? ' · '+esc(segWhen(s)) : ''}</div>
+      <div class="todo-sub">segnalato da <span class="name-link" data-seg-contact="${esc(s.contactId || '')}">${esc(segWho(s))}</span> ${s.incontroId && calls.some(k=>k.id===s.incontroId) ? `all'<span class="name-link" data-seg-meet-open="${s.incontroId}">incontro del ${fmtDate(s.il)}</span>` : 'il '+fmtDate(s.il)}${segWhen(s) ? ' · '+esc(segWhen(s)) : ''}</div>
       ${segAddrHtml(s) ? `<div class="todo-sub">${segAddrHtml(s)}</div>` : ''}
       ${s.note ? `<div class="seg-note">${esc(s.note)}</div>` : ''}
       ${last.map(h=>`<div class="todo-sub">sentito il ${fmtDate(h.il)}${h.nota ? ': '+esc(h.nota) : ''}</div>`).join('')}
@@ -6375,8 +6395,13 @@ function bindSeg(main){
       inp.value = segNextDate(v('#segPronto') || v('.seg-pronto'), v('#segAvvio') || v('.seg-avvio'), minDays);
     })); };
   main.querySelectorAll('[data-seg-contact]').forEach(el=>el.addEventListener('click', ()=>{ if(!contacts.some(x=>x.id===el.dataset.segContact)) return; selectedId = el.dataset.segContact; view = 'detail'; confirmDeleteId = null; setActiveTab('navContacts'); renderMain(); }));
-  main.querySelectorAll('[data-seg-goto]').forEach(el=>el.addEventListener('click', ()=>{ segFocus = el.dataset.segGoto; segFilter = 'aperta'; segQ = ''; view = 'segnalati'; setActiveTab('navProjects'); renderMain(); }));
+  main.querySelectorAll('[data-seg-goto]').forEach(el=>el.addEventListener('click', ()=>{ segFocus = el.dataset.segGoto; segFilter = 'tutti'; segQ = ''; segEdit = null; tableDetailCallId = null; view = 'segnalati'; setActiveTab('navProjects'); renderMain(); }));
   main.querySelectorAll('[data-seg-new-for]').forEach(b=>b.addEventListener('click', ()=>{ segEdit = { id: 'new', contactId: b.dataset.segNewFor, back: 'detail' }; view = 'segnalati'; renderMain(); document.getElementById('segTitolo')?.focus(); }));
+  main.querySelectorAll('[data-seg-new-meet]').forEach(b=>b.addEventListener('click', ()=>{
+    const k = calls.find(x=>x.id===b.dataset.segNewMeet); if(!k) return;
+    segEdit = { id: 'new', contactId: k.contactId, il: meetDate(k), incontroId: k.id, back: 'meet' }; segAct = null;
+    tableDetailCallId = null; editingCallId = null; view = 'segnalati'; setActiveTab('navProjects'); renderMain(); document.getElementById('segTitolo')?.focus(); }));
+  main.querySelectorAll('[data-seg-meet-open]').forEach(el=>el.addEventListener('click', ()=>{ if(!calls.some(x=>x.id===el.dataset.segMeetOpen)) return; tableDetailCallId = el.dataset.segMeetOpen; editingCallId = null; renderMain(); }));
   main.querySelectorAll('[data-seg-act]').forEach(b=>b.addEventListener('click', ()=>{ const [id, mode] = b.dataset.segAct.split('|'); segAct = { id, mode }; segDel = null; segEdit = null; renderMain(); main.querySelector(`[data-seg-form="${id}"] textarea, [data-seg-form="${id}"] input`)?.focus(); }));
   main.querySelectorAll('[data-seg-close]').forEach(b=>b.addEventListener('click', done));
   main.querySelectorAll('[data-seg-snooze]').forEach(b=>b.addEventListener('click', ()=>{ b.disabled = true; upd(b.dataset.segSnooze, { ricontattaIl: addDaysISO(todayISO(), 30) }).catch(fail); }));
@@ -6410,7 +6435,17 @@ function bindSeg(main){
   const form = main.querySelector('#segForm');
   if(form){
     plus(form); autoNext(form, 7);
-    const back = ()=>{ const b = segEdit && segEdit.back; segEdit = null; if(b==='detail'){ view = 'detail'; setActiveTab('navContacts'); } renderMain(); };
+    const il = form.querySelector('#segIl');
+    il.addEventListener('change', ()=>il.removeAttribute('data-auto'));
+    if(segEdit.id==='new') form.querySelector('#segWho').addEventListener('input', e=>{
+      const c = contacts.find(x=>fuLabel(x)===e.target.value.trim()), m = c && segMeetInfo(c.id);
+      form.querySelector('#segMeetBox').innerHTML = c ? segMeetBoxHtml(c.id) : '';
+      if(il.dataset.auto) il.value = m ? m.date : todayISO();
+    });
+    const back = ()=>{ const b = segEdit && segEdit.back, k = segEdit && segEdit.incontroId; segEdit = null;
+      if(b==='detail'){ view = 'detail'; setActiveTab('navContacts'); }
+      if(b==='meet' && calls.some(x=>x.id===k)){ tableDetailCallId = k; }
+      renderMain(); };
     form.querySelector('#segCancelBtn').addEventListener('click', back);
     form.querySelector('#segSaveBtn').addEventListener('click', async ()=>{
       const err = t=>{ form.querySelector('#segErr').textContent = t; };
@@ -6420,8 +6455,10 @@ function bindSeg(main){
       const next = v('#segNext');
       if(!/^\d{4}-\d{2}-\d{2}$/.test(next)) return err('Indica quando ricontattarlo.');
       const data = { contactId: c.id, il: v('#segIl') || todayISO(), titolo: v('#segTitolo'), via: v('#segVia'), citta: v('#segCitta'), avvio: v('#segAvvio'), pronto: v('#segPronto'), note: v('#segNote'), ricontattaIl: next, updatedAt: Date.now() };
+      // l'incontro da cui nasce: quello indicato o un incontro del cliente in quella data
+      const meet = segEdit.incontroId || (calls.find(k=>k.contactId===c.id && (isMeet(k) || (isPhone(k) && k.appuntamento)) && meetDate(k)===data.il) || {}).id;
       try{
-        if(segEdit.id==='new') await db.collection('segnalazioni').add({ ...data, stato: 'aperta', storia: [], createdAt: Date.now() });
+        if(segEdit.id==='new') await db.collection('segnalazioni').add({ ...data, ...(meet ? { incontroId: meet } : {}), stato: 'aperta', storia: [], createdAt: Date.now() });
         else await db.collection('segnalazioni').doc(segEdit.id).update(data);
         back();
       }catch(e){ err('Non salvato: '+(e.message || e.code || '')); }
@@ -6439,6 +6476,46 @@ function bindSeg(main){
 }
 // dopo la ricerca si ricollegano i pulsanti delle righe
 function bindSegRows(box){ bindSeg(box); }
+// Nella registrazione dell'incontro (richiesta dell'utente 2026-10-29): "+ Cantiere segnalato" aggiunge righe
+// (cosa, indirizzo, citta', avvio, progetto pronto, note) che al salvataggio dell'incontro diventano segnalazioni
+// con il cliente, la data e l'incontro (incontroId); ricontatto proposto da `segNextDate`.
+function segMeetFormHtml(prefix){
+  return `<div class="seg-in-meet"><label>Cantieri segnalati in questo incontro</label>
+    <div class="fc-note">Lavori che il cliente ti ha accennato e non sono ancora progetti: finiscono in Progetti → Cantieri segnalati.</div>
+    <div id="${prefix}SegRows"></div>
+    <button type="button" class="btn secondary small" data-seg-meet-add="${prefix}">+ Cantiere segnalato</button></div>`;
+}
+function segMeetRowHtml(){
+  return `<div class="seg-meet-row">
+    <input class="sm-titolo" placeholder="Di cosa si tratta (es. palazzina 8 alloggi)">
+    <div class="field-row"><div><input class="sm-via" placeholder="Indirizzo (se lo sai)"></div><div><input class="sm-citta" placeholder="Città"></div></div>
+    <div class="field-row"><div><label>Avvio cantiere</label><input type="month" class="sm-avvio"></div><div><label>Progetto pronto</label><input type="month" class="sm-pronto"></div></div>
+    <textarea class="sm-note" placeholder="Note sul cantiere"></textarea>
+    <button type="button" class="btn secondary small sm-del">Togli</button></div>`;
+}
+document.addEventListener('click', e=>{
+  const add = e.target.closest && e.target.closest('[data-seg-meet-add]');
+  if(add){ const box = document.getElementById(add.dataset.segMeetAdd+'SegRows'); box.insertAdjacentHTML('beforeend', segMeetRowHtml()); box.lastElementChild.querySelector('.sm-titolo').focus(); return; }
+  const del = e.target.closest && e.target.closest('.seg-meet-row .sm-del');
+  if(del) del.closest('.seg-meet-row').remove();
+});
+function segMeetRead(prefix){
+  return [...document.querySelectorAll(`#${prefix}SegRows .seg-meet-row`)].map(r=>{ const v = c=>r.querySelector(c).value.trim();
+    return { titolo: v('.sm-titolo'), via: v('.sm-via'), citta: v('.sm-citta'), avvio: v('.sm-avvio'), pronto: v('.sm-pronto'), note: v('.sm-note') }; })
+    .filter(x=>x.titolo || x.via || x.citta || x.note);
+}
+async function segSaveFromMeet(list, contactId, il, incontroId){
+  for(const x of list) await db.collection('segnalazioni').add({ ...x, contactId, il, incontroId, ricontattaIl: segNextDate(x.pronto, x.avvio), stato: 'aperta', storia: [], createdAt: Date.now(), updatedAt: Date.now() });
+}
+// Riquadro nella scheda dell'incontro (o dell'appuntamento): i cantieri segnalati li' e "+ Cantiere segnalato".
+function segMeetCardHtml(k){
+  if(!(isMeet(k) || (isPhone(k) && k.appuntamento))) return '';
+  const mine = segnalazioni.filter(s=>s.incontroId===k.id);
+  return `<div class="card" id="segMeetCard"><h3>Cantieri segnalati${mine.length ? ` (${mine.length})` : ''}</h3>
+    ${mine.map(s=>`<div class="seg-mini"><span class="name-link" data-seg-goto="${s.id}">${esc(segTitle(s))}</span><span class="fc-note">${segOpen(s) ? s.ricontattaIl ? ' · ricontattare il '+fmtDate(s.ricontattaIl) : '' : s.stato==='progetto' ? ' · diventato progetto' : ' · non si fa'}</span></div>`).join('')}
+    ${mine.length ? '' : '<div class="fc-note">Nessun cantiere segnalato in questo incontro.</div>'}
+    <div style="margin-top:8px;"><button class="btn secondary small" data-seg-new-meet="${k.id}">+ Cantiere segnalato</button></div></div>`;
+}
 
 // ---------------------------------------------------------------------------
 // Mappa (voce di menu): clienti (cerchi, raggruppati per indirizzo: i colleghi dello
@@ -10141,7 +10218,8 @@ function tableDetailView(){
         <div style="font-size:14px;">${(()=>{ const m = meetingOf(k); return m ? `<a href="#" class="addr-link" data-appt-call-id="${m.id}">svolto il ${fmtDate(m.data)}${m.ora ? ' ore '+esc(m.ora) : ''}</a>${m.note ? `<div style="white-space:pre-wrap;margin-top:4px;">${esc(m.note)}</div>` : ''}` : apptToRegister(k) ? `non ancora registrato ${meetRegisterBtn(k)}` : 'in programma'; })()}</div>
         ${k.noteIncontro ? `<div style="font-size:14px;white-space:pre-wrap;margin-top:6px;">${esc(k.noteIncontro)}</div>` : ''}
       </div>`:''}`}
-    </div>`;
+    </div>
+    ${segMeetCardHtml(k)}`;
 }
 
 function callEditView(k,c){
@@ -10191,6 +10269,7 @@ function bindTableDetail(){
     return;
   }
   document.getElementById('backToTableBtn').addEventListener('click', ()=>{ tableDetailCallId=null; confirmDeleteCallId=null; renderMain(); });
+  bindSeg(document.getElementById('main'));
   // Dalla chiamata alla scheda del contatto (nome cliccabile o pulsante dedicato).
   const openContact = ()=>{
     const k = calls.find(x=>x.id===tableDetailCallId);

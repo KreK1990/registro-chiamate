@@ -1237,9 +1237,14 @@ await test('regali di Natale: lista da commesse e incontri, consegnato, nota, to
 await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, diventato progetto', async () => {
   const seg = id => page.evaluate(id => window.__fake.docs('segnalazioni').find(d => d.id === id), id);
   // nuovo: il ricontatto si propone dall'inizio del mese del progetto pronto
+  await page.evaluate(d => window.__fake.put('calls', 'mseg', { tipo: 'incontro', contactId: 'c4', data: d, ora: '10:00', note: 'Accenna una palazzina a Chieri', createdAt: 1 }), daysAgo(5));
+  await page.waitForFunction(() => calls.some(k => k.id === 'mseg'));
   await show_(page, 'segnalati', 'segEdit=null; segAct=null');
   await page.click('#segNewBtn');
   await page.fill('#segWho', 'Verdi Paolo');
+  // data e note dell'ultimo incontro proposte
+  const lastM = await page.evaluate(() => segMeetInfo('c4'));
+  expect(lastM && await page.inputValue('#segIl') === lastM.date && (await page.textContent('#segMeetBox')).includes(lastM.note.slice(0, 20)), 'ultimo incontro non proposto: ' + await page.inputValue('#segIl') + ' ' + await page.textContent('#segMeetBox'));
   await page.fill('#segTitolo', 'Palazzina 8 alloggi');
   await page.fill('#segCitta', 'Chieri');
   const pronto = await page.evaluate(() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 3); return isoDay(d).slice(0, 7); });
@@ -1249,7 +1254,20 @@ await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, 
   await page.click('#segSaveBtn');
   await page.waitForFunction(() => window.__fake.docs('segnalazioni').some(d => d.contactId === 'c4'));
   const nid = await page.evaluate(() => window.__fake.docs('segnalazioni').find(d => d.contactId === 'c4').id);
-  expect((await seg(nid)).ricontattaIl === pronto + '-01' && (await seg(nid)).stato === 'aperta', 'salvato male: ' + JSON.stringify(await seg(nid)));
+  expect((await seg(nid)).ricontattaIl === pronto + '-01' && (await seg(nid)).stato === 'aperta' && !!(await seg(nid)).incontroId, 'salvato male: ' + JSON.stringify(await seg(nid)));
+  // dalla registrazione dell'incontro
+  await show_(page, 'detail', "selectedId='c3'; actPrefill=null; actFormFor='c3'; actFormType='incontro'");
+  await page.click('[data-seg-meet-add="call"]');
+  await page.fill('#callSegRows .sm-titolo', 'Capannone con uffici');
+  await page.fill('#callSegRows .sm-citta', 'Rivoli');
+  await page.fill('#callMeetNote', 'incontro in studio');
+  await page.click('#saveCallBtn');
+  await page.waitForFunction(() => window.__fake.docs('segnalazioni').some(d => d.titolo === 'Capannone con uffici' && d.contactId === 'c3' && d.incontroId));
+  const fromMeet = await page.evaluate(() => window.__fake.docs('segnalazioni').find(d => d.titolo === 'Capannone con uffici'));
+  expect(fromMeet.il === daysAgo(0) && fromMeet.ricontattaIl > daysAgo(-20) && (await page.evaluate(id => (window.__fake.docs('calls').find(k => k.id === id) || {}).tipo, fromMeet.incontroId)) === 'incontro', 'segnalazione dall\'incontro: ' + JSON.stringify(fromMeet));
+  await show_(page, 'detail', `tableDetailCallId='${fromMeet.incontroId}'`);
+  expect(/Capannone con uffici/.test(await page.textContent('#segMeetCard')), 'manca nella scheda dell\'incontro');
+  await page.evaluate(([id, mid]) => { tableDetailCallId = null; return Promise.all([db.collection('segnalazioni').doc(id).delete(), db.collection('calls').doc(mid).delete(), db.collection('calls').doc('mseg').delete()]); }, [fromMeet.id, fromMeet.incontroId]);
   // nella scheda del contatto
   await show_(page, 'detail', "selectedId='c4'");
   expect(/Palazzina 8 alloggi/.test(await page.textContent('#segCard')), 'manca nella scheda del contatto');

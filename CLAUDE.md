@@ -326,6 +326,12 @@ Campi principali:
   segnalazione passa a 'progetto') o collega uno esistente; "Non si fa" la chiude con motivo; Riapri, Elimina con
   conferma inline. Scheda del contatto: riquadro "Cantieri segnalati" (`segContactHtml`, "+ Cantiere segnalato").
   Stato dei moduli `segEdit` / `segAct` (bloccano i ridisegni dello snapshot).
+  **Dagli incontri** (2026-10-29): nella registrazione dell'incontro (`actMeetHtml`) "+ Cantiere segnalato" aggiunge righe
+  (`segMeetFormHtml`/`segMeetRowHtml`, ascoltatore su document) salvate con l'incontro (`segSaveFromMeet`: cliente, data,
+  `incontroId`, ricontatto da `segNextDate`); la scheda dell'incontro/appuntamento ha il riquadro "Cantieri segnalati"
+  (`segMeetCardHtml`, "+ Cantiere segnalato" apre il modulo con cliente, data e incontro, poi torna li'). Nel modulo nuovo
+  la data "Il" si propone dall'ultimo incontro del cliente (`segMeetInfo`, finche' non la si cambia) e sotto compaiono le
+  sue note (`segMeetBoxHtml`); salvando si collega l'incontro di quella data. Nelle righe "all'incontro del ..." lo apre.
 - **Rete di collaborazioni** (blocco omonimo, 2026-10-20, passo 1 di 2; il passo 2 sara' la mappa interattiva):
   punti = STUDI (`contactNodeKey`: 's:'+studio normalizzato, o 'c:'+id per chi non ha studio) e soggetti del portale
   non in rubrica ('x:'+nome, uniti per email); abbinamento alla rubrica con `portalMatch`. Legami (`buildNetwork`,
