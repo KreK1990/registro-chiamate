@@ -6261,6 +6261,8 @@ function segNextDate(pronto, avvio, minDays){
   return d < min ? min : d;
 }
 function segSorted(list){ return [...list].sort((a,b)=>(a.ricontattaIl || '9').localeCompare(b.ricontattaIl || '9')); }
+// nell'elenco: per data dell'incontro (segnalazione), dalla piu' recente (richiesta dell'utente 2026-10-30)
+function segByMeet(list){ return [...list].sort((a,b)=>(b.il || '').localeCompare(a.il || '') || (b.createdAt || 0) - (a.createdAt || 0)); }
 function segDue(){ const t = todayISO(); return segSorted(segnalazioni.filter(s=>segOpen(s) && s.ricontattaIl && s.ricontattaIl <= t)); }
 function segTitle(s){ return s.titolo || (s.citta ? 'Cantiere a '+s.citta : 'Cantiere segnalato'); }
 function segWho(s){ const c = contacts.find(x=>x.id===s.contactId); return c ? fullName(c) + (c.azienda ? ' · '+c.azienda : '') : 'contatto non piu\' in rubrica'; }
@@ -6362,7 +6364,7 @@ function segRowHtml(s, opts){
 function segView(){
   const q = normName(segQ), counts = { aperta: 0, progetto: 0, chiusa: 0 };
   segnalazioni.forEach(s=>{ counts[s.stato || 'aperta']++; });
-  const list = segSorted(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter)
+  const list = segByMeet(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter)
     && (!q || normName([s.titolo, s.via, s.citta, s.note, segWho(s)].join(' ')).includes(q))));
   const pill = (k, l)=>`<button class="btn ${segFilter===k ? '' : 'secondary '}small" data-seg-filter="${k}">${l}</button>`;
   return `<div class="top-actions"><button class="btn secondary small" id="segBackBtn">← Progetti</button></div>
@@ -6481,7 +6483,7 @@ function bindSeg(main){
   main.querySelectorAll('[data-seg-filter]').forEach(b=>b.addEventListener('click', ()=>{ segFilter = b.dataset.segFilter; renderMain(); }));
   main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   main.querySelector('#segSearch')?.addEventListener('input', e=>{ segQ = e.target.value; const box = document.getElementById('segList');
-    const q = normName(segQ), list = segSorted(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter) && (!q || normName([s.titolo, s.via, s.citta, s.note, segWho(s)].join(' ')).includes(q))));
+    const q = normName(segQ), list = segByMeet(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter) && (!q || normName([s.titolo, s.via, s.citta, s.note, segWho(s)].join(' ')).includes(q))));
     box.innerHTML = list.map(s=>segRowHtml(s)).join('') || '<div class="empty">Nessun cantiere trovato.</div>'; bindSegRows(box); });
   if(segFocus){ const row = main.querySelector(`.seg-row[data-seg-id="${segFocus}"]`); if(row) row.scrollIntoView({ block: 'center' }); segFocus = null; }
 }
