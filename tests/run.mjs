@@ -1240,26 +1240,37 @@ await test('regali di Natale: lista da commesse e incontri, consegnato, nota, to
   await page.evaluate(y => db.collection('regali').doc(y).delete(), y);
 });
 
-await test('rotellina o Ctrl+clic: cliente e progetto in una nuova scheda', async () => {
-  // la scheda nuova parte dai dati iniziali del Firebase finto: si usano cliente e progetto di partenza
-  const fake = fs.readFileSync(path.join(here, 'fake-firebase.js'), 'utf8');
-  await ctx.route('https://www.gstatic.com/firebasejs/**', r => r.fulfill({ contentType: 'text/javascript', body: r.request().url().includes('firebase-app-compat') ? fake : '' }));
-  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ contentType: 'text/css', body: '' }));
-  await show_(page, 'projects');
-  const before = await page.evaluate(() => view);
-  const row = page.locator(seedData().projects.map(p => `#main [data-project-id="${p.id}"], #main [data-open-project="${p.id}"]`).join(', ')).first();
+await test('rotellina o Ctrl+clic: cliente e progetto in una scheda dentro l\'app', async () => {
+  const st = () => page.evaluate(() => ({ view, selectedId, selectedProjectId, n: document.querySelectorAll('#appTabBar .app-tab').length, on: document.querySelector('#appTabBar .app-tab.on')?.textContent || '', hidden: document.getElementById('appTabBar').classList.contains('hidden') }));
+  await page.evaluate(() => { setActiveTab('navProjects'); }); await show_(page, 'projects');
+  const row = page.locator('#main [data-project-id], #main [data-open-project]').first();
   const pid = await row.evaluate(el => el.dataset.projectId || el.dataset.openProject);
-  const [tabP] = await Promise.all([ctx.waitForEvent('page'), row.click({ button: 'middle' })]);
-  await tabP.waitForFunction(id => typeof view !== 'undefined' && view === 'projectDetail' && selectedProjectId === id && !location.hash, pid);
-  expect(await page.evaluate(() => view) === before, 'la scheda di partenza ha cambiato schermata');
-  await tabP.close();
-  await show_(page, 'contactsList');
-  const card = page.locator(seedData().contacts.map(c => `#main [data-contact-id="${c.id}"]`).join(', ')).first();
-  const cid = await card.getAttribute('data-contact-id');
-  const [tabC] = await Promise.all([ctx.waitForEvent('page'), card.click({ modifiers: ['Control'], position: { x: 5, y: 5 } })]);
-  await tabC.waitForFunction(id => typeof view !== 'undefined' && view === 'detail' && selectedId === id && document.getElementById('main').innerText.includes(fullName(contacts.find(c => c.id === id))), cid);
-  expect(await page.evaluate(() => view) === 'contactsList', 'Ctrl+clic ha aperto il cliente anche qui');
-  await tabC.close();
+  const pname = await page.evaluate(id => projects.find(p => p.id === id).nome || 'Progetto', pid);
+  await page.evaluate(() => { document.getElementById('main').scrollTop = 0; });
+  await row.click({ button: 'middle' });
+  let s = await st();
+  expect(s.view === 'projectDetail' && s.selectedProjectId === pid && s.n === 2 && !s.hidden && s.on.includes(pname), 'scheda del progetto: ' + JSON.stringify(s));
+  // Ctrl+clic su un cliente dalla scheda del progetto: terza scheda
+  const who = page.locator('#main [data-contact-id], #main [data-contact-open], #main [data-open-contact]').first();
+  if (await who.count()) {
+    await who.click({ modifiers: ['Control'] });
+    s = await st();
+    expect(s.view === 'detail' && s.n === 3, 'scheda del cliente: ' + JSON.stringify(s));
+    if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'schede.png') });
+    await page.click('#appTabBar .app-tab.on .app-tab-x');
+    s = await st();
+    expect(s.n === 2 && s.view === 'projectDetail', 'chiusa la scheda del cliente: ' + JSON.stringify(s));
+  }
+  // torna alla prima scheda: elenco progetti com'era
+  await page.click('#appTabBar .app-tab >> nth=0');
+  s = await st();
+  expect(s.view === 'projects' && s.on.includes('Progetti'), 'prima scheda: ' + JSON.stringify(s));
+  await page.click('#appTabBar .app-tab >> nth=1');
+  expect((await st()).view === 'projectDetail', 'di nuovo il progetto');
+  // rotellina sulla scheda la chiude: resta una schermata sola, senza barra
+  await page.click('#appTabBar .app-tab >> nth=1', { button: 'middle' });
+  s = await st();
+  expect(s.n === 0 && s.hidden && s.view === 'projects', 'una sola scheda: ' + JSON.stringify(s));
 });
 
 await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, diventato progetto', async () => {
