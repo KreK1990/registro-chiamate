@@ -471,6 +471,8 @@ Campi principali:
   `users/<uid>/report/<id>.pdf` + collection `report` {titolo, dal, al, creatoIl, path, size, commento} (nei backup).
   Nelle liste "Offerte fuori" e "In chiusura entro" (a video e nel PDF) ogni commessa ha la riga `repProjInfo`: indirizzo,
   figure (studio o nome, con il ruolo, max 3) e fase attuale (2026-10-30: codice e nome non bastavano a riconoscerla).
+  Sopra "In chiusura entro" i totali (`repClosingTot`: commesse, offerte, ponderato) e, se i mesi sono piu' di uno, il
+  totale per mese di chiusura prevista (le superate a parte).
   Condividi: Web Share con il file appena creato, altrimenti link (getDownloadURL) via share o appunti. In Oggi
   venerdi'-domenica il promemoria `reportReminderHtml` se la settimana non ha un report salvato.
 - **Cestino di foto e documenti** (blocco omonimo, 2026-10-14): eliminare sposta la voce in `projects.cestino`

@@ -992,6 +992,8 @@ await test('report del periodo: attività, note modificabili, obiettivo, PDF sal
   const info = await page.evaluate(() => { const p = projects.find(x => (x.partecipanti || []).length && x.citta); return p ? [repProjInfo(p), p.citta] : null; });
   expect(info && info[0].includes(info[1]) && /\(.+\)/.test(info[0]), 'riga della commessa nel report: ' + JSON.stringify(info));
   expect(await page.$$eval('.rep-info', els => els.length) > 0, 'nessuna riga di dettaglio delle commesse nel report');
+  const tot = await page.evaluate(() => { const d = repData(); const t = repClosingTot(d.closing); return { t, sum: d.closing.reduce((s, p) => s + (Number(p.importoOfferta) || 0), 0) }; });
+  expect(tot.t.n > 0 && Math.abs(tot.t.off - tot.sum) < 0.01 && tot.t.months.reduce((s, m) => s + m.n, 0) === tot.t.n, 'totale delle commesse in chiusura: ' + JSON.stringify(tot));
   const id = await page.evaluate(() => calls.find(k => k.note === 'Nota da togliere').id);
   expect(await page.inputValue(`[data-rep-note="${id}"]`) === 'Nota da togliere', 'le note del periodo non compaiono');
   await page.click(`[data-rep-inc="${id}"]`);

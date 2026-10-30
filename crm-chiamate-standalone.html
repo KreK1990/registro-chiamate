@@ -221,6 +221,8 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .rep-sales-row small{display:block;font-size:11.5px;color:var(--muted);}
 .rep-sales-h{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;padding-top:0;}
 .rep-li .rep-info{grid-column:1/-1;font-size:12.5px;color:var(--text);}
+.rep-months{margin:6px 0 12px;}
+.rep-months .rep-li{font-weight:600;}
 .rep-li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;}
 .rep-li .fc-note{grid-column:1/-1;}
 .rep-list{margin-top:10px;}
@@ -4873,6 +4875,8 @@ function reportView(){
       ${d.offers.length ? `<div class="rep-list">${d.offers.map(p=>`<div class="rep-li"><span data-open-project="${p.id}" class="name-link">${esc(projectTitle(p))}</span><span>${fmtEuro(p.importoOfferta)}</span>${repProjInfo(p) ? `<span class="rep-info">${esc(repProjInfo(p))}</span>` : ''}<span class="fc-note">presentata il ${fmtDate(p.fasi.offertaPresentata)} · ${forecastProb(p).value}%</span></div>`).join('')}</div>` : ''}
     </div>
     <div class="card"><h3>In chiusura entro ${esc(monthLabel(d.limYM))}</h3>
+      ${d.closing.length ? (t=>`<div class="fc-tiles">${tile('Commesse', t.n)}${tile('Offerte', fmtEuro(t.off))}${tile('Ponderato', fmtEuro(t.pond), 'importo × probabilità')}</div>
+        ${t.months.length > 1 ? `<div class="rep-months">${t.months.map(m=>`<div class="rep-li"><span>${esc(m.label)} · ${m.n} ${m.n===1 ? 'commessa' : 'commesse'}</span><span>${fmtEuro(m.off)}</span><span class="fc-note">ponderato ${fmtEuro(m.pond)}</span></div>`).join('')}</div>` : ''}`)(repClosingTot(d.closing)) : ''}
       ${d.closing.length ? `<div class="rep-list">${d.closing.map(p=>`<div class="rep-li"><span data-open-project="${p.id}" class="name-link">${esc(projectTitle(p))}</span><span>${fmtEuro(p.importoOfferta)}</span>${repProjInfo(p) ? `<span class="rep-info">${esc(repProjInfo(p))}</span>` : ''}<span class="fc-note">${p.chiusuraPrevista < todayISO().slice(0,7) ? '<strong style="color:var(--danger);">chiusura prevista superata</strong>: ' : ''}${esc(monthLabel(p.chiusuraPrevista))} · ${forecastProb(p).value}% · ponderato ${fmtEuro(forecastWeighted(p))}</span></div>`).join('')}</div>`
         : '<div class="empty">Nessuna commessa aperta con chiusura prevista in questi mesi (si imposta nel Forecast).</div>'}
     </div>
@@ -4908,6 +4912,14 @@ function repProjInfo(p){
   const ph = projectPhase(p);
   return [projectAddress(p), people.slice(0, 3).join(', ') + (people.length > 3 ? ` e altri ${people.length - 3}` : ''), ph ? 'fase: '+ph.label.toLowerCase() : ''].filter(Boolean).join(' · ');
 }
+// Totale delle commesse in chiusura (richiesta dell'utente 2026-10-30): numero, importo delle offerte, ponderato e
+// divisione per mese di chiusura prevista.
+function repClosingTot(list){
+  const sum = (l, f)=>l.reduce((s,p)=>s+(Number(f(p))||0), 0), months = new Map();
+  list.forEach(p=>{ const m = p.chiusuraPrevista < todayISO().slice(0,7) ? 'superata' : p.chiusuraPrevista; months.set(m, [...(months.get(m) || []), p]); });
+  return { n: list.length, off: sum(list, p=>p.importoOfferta), pond: sum(list, forecastWeighted),
+    months: [...months.entries()].map(([m, l])=>({ label: m==='superata' ? 'chiusura superata' : monthLabel(m), n: l.length, off: sum(l, p=>p.importoOfferta), pond: sum(l, forecastWeighted) })) };
+}
 // Versione da stampare (A4 verticale, sempre chiara).
 function reportPdfHtml(){
   const d = repData();
@@ -4932,6 +4944,8 @@ function reportPdfHtml(){
     <div class="wr-grid">${kv('Commesse aperte', d.open.length)}${kv('Offerte fuori', d.offers.length, fmtEuro(d.offers.reduce((s,p)=>s+(Number(p.importoOfferta)||0), 0)))}${kv('Ponderato offerte', fmtEuro(d.offers.reduce((s,p)=>s+forecastWeighted(p), 0)))}</div></div>
     ${d.offers.length ? `<div class="wr-table">${d.offers.map(p=>`<div class="wr-tr wr-tr3"><span>${esc(projectTitle(p))}${repProjInfo(p) ? `<div class="wr-n">${esc(repProjInfo(p))}</div>` : ''}</span><span>${fmtEuro(p.importoOfferta)}</span><span>dal ${fmtDate(p.fasi.offertaPresentata)} · ${forecastProb(p).value}%</span></div>`).join('')}</div>` : ''}
     <div class="wr-keep"><h3>In chiusura entro ${esc(monthLabel(d.limYM))}</h3>
+    ${d.closing.length ? (t=>`<div class="wr-grid">${kv('Commesse', t.n)}${kv('Offerte', fmtEuro(t.off))}${kv('Ponderato', fmtEuro(t.pond))}</div>
+    ${t.months.length > 1 ? `<div class="wr-table">${t.months.map(m=>`<div class="wr-tr wr-tr3"><span>${esc(m.label)} · ${m.n}</span><span>${fmtEuro(m.off)}</span><span>ponderato ${fmtEuro(m.pond)}</span></div>`).join('')}</div>` : ''}`)(repClosingTot(d.closing)) : ''}
     ${d.closing.length ? `<div class="wr-table">${d.closing.map(p=>`<div class="wr-tr wr-tr3"><span>${esc(projectTitle(p))}${repProjInfo(p) ? `<div class="wr-n">${esc(repProjInfo(p))}</div>` : ''}</span><span>${fmtEuro(p.importoOfferta)}</span><span>${esc(monthLabel(p.chiusuraPrevista))} · ${forecastProb(p).value}% · ${fmtEuro(forecastWeighted(p))}</span></div>`).join('')}</div>` : '<div class="wr-n">Nessuna commessa in chiusura.</div>'}</div>
     ${notesHtml ? `<h3>Note salienti</h3>${notesHtml}` : ''}
     ${rep.commento.trim() ? `<div class="wr-keep"><h3>Commento</h3><div>${esc(rep.commento).replace(/\n/g, '<br>')}</div></div>` : ''}
