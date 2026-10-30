@@ -296,6 +296,14 @@ Campi principali:
   (max 40). `navBack` la ripristina. Pulsante `[data-nav-back]`: su PC barra `#navBackBar` sopra #main ("← Oggi",
   `navLabel`: nome del cliente, del progetto...), sul telefono freccia nella barra in alto. Un modulo Attivita'
   appena salvato (entry -> pick) non entra nella pila. #main ora sta dentro `.main-col` (min-height:0 serve al telefono).
+- **Apri in una nuova scheda** (blocco omonimo dopo "Torna indietro", 2026-10-30): clic con la rotellina (`auxclick`)
+  o Ctrl/Cmd+clic, ascoltati in cattura su document, su un elemento con un id di cliente (`TAB_CONTACT_ATTRS`:
+  data-contact-id, -contact-open, -open-contact, -mail-contact-id, -map-contact, -seg-contact) o di progetto
+  (`TAB_PROJECT_ATTRS`: data-open-project, -project-id, -map-project) apre `…#c=<id>` / `…#p=<id>` con
+  `window.open`, e ferma il clic normale (la scheda di partenza non cambia). Link e pulsanti dentro la riga
+  (telefono, mail...) restano loro. La scheda nuova legge l'hash in `tabPending`; `tabOpenPending()` (dopo gli
+  snapshot di contacts e projects) apre la schermata quando l'id e' arrivato e toglie l'hash (`replaceState`).
+  Un nuovo attributo che apre un cliente/progetto va aggiunto a quelle liste.
 - **Riquadri di Oggi richiudibili** (blocco "Riquadri di Oggi richiudibili e barra del portale che ricompare
   risalendo", 2026-10-14): `foldTodayCards` dopo il disegno di Oggi rende ogni `.card` figlia di #main con un h3
   apribile/chiudibile toccando il titolo (freccia `.fold-head`, `.folded` nasconde tutto tranne il primo figlio);

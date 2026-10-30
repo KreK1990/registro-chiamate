@@ -1240,6 +1240,28 @@ await test('regali di Natale: lista da commesse e incontri, consegnato, nota, to
   await page.evaluate(y => db.collection('regali').doc(y).delete(), y);
 });
 
+await test('rotellina o Ctrl+clic: cliente e progetto in una nuova scheda', async () => {
+  // la scheda nuova parte dai dati iniziali del Firebase finto: si usano cliente e progetto di partenza
+  const fake = fs.readFileSync(path.join(here, 'fake-firebase.js'), 'utf8');
+  await ctx.route('https://www.gstatic.com/firebasejs/**', r => r.fulfill({ contentType: 'text/javascript', body: r.request().url().includes('firebase-app-compat') ? fake : '' }));
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ contentType: 'text/css', body: '' }));
+  await show_(page, 'projects');
+  const before = await page.evaluate(() => view);
+  const row = page.locator(seedData().projects.map(p => `#main [data-project-id="${p.id}"], #main [data-open-project="${p.id}"]`).join(', ')).first();
+  const pid = await row.evaluate(el => el.dataset.projectId || el.dataset.openProject);
+  const [tabP] = await Promise.all([ctx.waitForEvent('page'), row.click({ button: 'middle' })]);
+  await tabP.waitForFunction(id => typeof view !== 'undefined' && view === 'projectDetail' && selectedProjectId === id && !location.hash, pid);
+  expect(await page.evaluate(() => view) === before, 'la scheda di partenza ha cambiato schermata');
+  await tabP.close();
+  await show_(page, 'contactsList');
+  const card = page.locator(seedData().contacts.map(c => `#main [data-contact-id="${c.id}"]`).join(', ')).first();
+  const cid = await card.getAttribute('data-contact-id');
+  const [tabC] = await Promise.all([ctx.waitForEvent('page'), card.click({ modifiers: ['Control'], position: { x: 5, y: 5 } })]);
+  await tabC.waitForFunction(id => typeof view !== 'undefined' && view === 'detail' && selectedId === id && document.getElementById('main').innerText.includes(fullName(contacts.find(c => c.id === id))), cid);
+  expect(await page.evaluate(() => view) === 'contactsList', 'Ctrl+clic ha aperto il cliente anche qui');
+  await tabC.close();
+});
+
 await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, diventato progetto', async () => {
   const seg = id => page.evaluate(id => window.__fake.docs('segnalazioni').find(d => d.id === id), id);
   // nuovo: il ricontatto si propone dall'inizio del mese del progetto pronto

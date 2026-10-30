@@ -1233,6 +1233,7 @@ function startApp(uid){
   unsubscribers.push(db.collection('contacts').onSnapshot(snap=>{
     contacts = snap.docs.map(d=>({id:d.id, ...d.data()}));
     if(canAutoRender()) renderMain();
+    tabOpenPending();
     renderFooter();
     renderSidebarToday();
     updateNavBadges();
@@ -4511,6 +4512,46 @@ function navBack(){
   updateNavBack();
 }
 document.addEventListener('click', e=>{ if(e.target.closest('[data-nav-back]')){ e.preventDefault(); navBack(); } });
+
+// ---------------------------------------------------------------------------
+// Apri in una nuova scheda
+// Clic con la rotellina (o Ctrl/Cmd+clic) su un cliente o un progetto: si apre una nuova scheda del browser
+// con l'indirizzo ...#c=<id> o ...#p=<id>; la scheda nuova, appena caricati i dati, mostra quella schermata
+// e toglie il segno dall'indirizzo. La schermata di partenza resta com'era.
+const TAB_CONTACT_ATTRS = ['contactId', 'contactOpen', 'openContact', 'mailContactId', 'mapContact', 'segContact'];
+const TAB_PROJECT_ATTRS = ['openProject', 'projectId', 'mapProject'];
+function tabTargetOf(el){
+  const sel = [...TAB_CONTACT_ATTRS, ...TAB_PROJECT_ATTRS].map(a=>'[data-'+a.replace(/[A-Z]/g, m=>'-'+m.toLowerCase())+']').join(',');
+  const t = el && el.closest && el.closest(sel); if(!t) return null;
+  // un pulsante o un link dentro la riga (telefono, mail, mappa...) fa la sua cosa
+  const inner = el.closest('a[href], button, input, select, textarea, label');
+  if(inner && inner !== t && t.contains(inner)) return null;
+  for(const a of TAB_CONTACT_ATTRS) if(t.dataset[a] && contacts.some(c=>c.id===t.dataset[a])) return 'c='+encodeURIComponent(t.dataset[a]);
+  for(const a of TAB_PROJECT_ATTRS) if(t.dataset[a] && projects.some(p=>p.id===t.dataset[a])) return 'p='+encodeURIComponent(t.dataset[a]);
+  return null;
+}
+function tabOpen(e){
+  const h = tabTargetOf(e.target); if(!h) return;
+  e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  window.open(location.pathname + location.search + '#' + h, '_blank');
+}
+document.addEventListener('mousedown', e=>{ if(e.button===1 && tabTargetOf(e.target)) e.preventDefault(); }, true);   // niente scorrimento automatico
+document.addEventListener('auxclick', e=>{ if(e.button===1) tabOpen(e); }, true);
+document.addEventListener('click', e=>{ if(e.button===0 && (e.ctrlKey || e.metaKey)) tabOpen(e); }, true);
+let tabPending = (()=>{ const m = /^#([cp])=(.+)$/.exec(location.hash || ''); return m ? { kind: m[1], id: decodeURIComponent(m[2]) } : null; })();
+function tabOpenPending(){
+  if(!tabPending) return;
+  const t = tabPending;
+  if(t.kind==='c'){
+    if(!contacts.some(c=>c.id===t.id)) return;
+    selectedId = t.id; view = 'detail'; confirmDeleteId = null; tableDetailCallId = null; setActiveTab('navContacts'); renderMain();
+  } else {
+    if(!projects.some(p=>p.id===t.id)) return;
+    openProject(t.id);
+  }
+  tabPending = null;
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(_){}
+}
 
 // ---------------------------------------------------------------------------
 // Follow-up chiusi da un'attivita' gia' registrata
@@ -8169,6 +8210,7 @@ function onProjectsSnapshot(snap){
   projectsSeen = true; scheduleForecastSnapshot(); if(fatture.size) scheduleFattReconcile();
   setTimeout(purgeTrash, 5000);
   if(canAutoRender()) renderMain();
+  tabOpenPending();
   updateNavBadges();
 }
 // Una fase conta come raggiunta solo se la sua data e' oggi o passata (le date future sono "previste").
