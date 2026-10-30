@@ -468,6 +468,8 @@ Campi principali:
   chiusura prevista entro 2 mesi dopo la fine del periodo (anche superate); commento. Bozza in localStorage
   `reportBozza`. "Salva PDF": html2pdf A4 verticale (`reportPdfHtml`, classi `.wr-*` sempre chiare) -> Storage
   `users/<uid>/report/<id>.pdf` + collection `report` {titolo, dal, al, creatoIl, path, size, commento} (nei backup).
+  Nelle liste "Offerte fuori" e "In chiusura entro" (a video e nel PDF) ogni commessa ha la riga `repProjInfo`: indirizzo,
+  figure (studio o nome, con il ruolo, max 3) e fase attuale (2026-10-30: codice e nome non bastavano a riconoscerla).
   Condividi: Web Share con il file appena creato, altrimenti link (getDownloadURL) via share o appunti. In Oggi
   venerdi'-domenica il promemoria `reportReminderHtml` se la settimana non ha un report salvato.
 - **Cestino di foto e documenti** (blocco omonimo, 2026-10-14): eliminare sposta la voce in `projects.cestino`

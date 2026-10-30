@@ -988,6 +988,10 @@ await test('report del periodo: attività, note modificabili, obiettivo, PDF sal
   await page.evaluate(() => { try { localStorage.removeItem('reportBozza'); } catch (e) {} rep = null; });
   let txt = await show_(page, 'dashboard', "dashboardDrilldown=null; dashboardSubView='report'");
   expect(/Report dal/.test(txt) && /Telefonate/.test(txt) && /Appuntamenti fissati/.test(txt) && /Sui 12 mesi/.test(txt) && /Cicli aperti/.test(txt), 'sezioni del report mancanti');
+  // commesse riconoscibili: indirizzo, figure con il ruolo, fase
+  const info = await page.evaluate(() => { const p = projects.find(x => (x.partecipanti || []).length && x.citta); return p ? [repProjInfo(p), p.citta] : null; });
+  expect(info && info[0].includes(info[1]) && /\(.+\)/.test(info[0]), 'riga della commessa nel report: ' + JSON.stringify(info));
+  expect(await page.$$eval('.rep-info', els => els.length) > 0, 'nessuna riga di dettaglio delle commesse nel report');
   const id = await page.evaluate(() => calls.find(k => k.note === 'Nota da togliere').id);
   expect(await page.inputValue(`[data-rep-note="${id}"]`) === 'Nota da togliere', 'le note del periodo non compaiono');
   await page.click(`[data-rep-inc="${id}"]`);
