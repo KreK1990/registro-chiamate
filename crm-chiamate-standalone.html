@@ -6375,16 +6375,37 @@ function segRowHtml(s, opts){
       ${opts && opts.compact ? '' : segDel===s.id ? `<span class="seg-del-q">Eliminare?</span><button class="btn small" style="background:var(--danger);color:#fff;" data-seg-del-ok="${s.id}">Sì, elimina</button><button class="btn secondary small" data-seg-del-no>No</button>` : `<button class="btn secondary small" data-seg-del="${s.id}">Elimina</button>`}</div>
   </div>`;
 }
-function segView(){
-  const q = normName(segQ), counts = { aperta: 0, progetto: 0, chiusa: 0 };
-  segnalazioni.forEach(s=>{ counts[s.stato || 'aperta']++; });
-  const list = segByMeet(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter)
+// elenco della pagina (scheda scelta e ricerca), uguale a video e nell'Excel
+function segFiltered(){
+  const q = normName(segQ);
+  return segByMeet(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter)
     && (!q || normName([s.titolo, s.via, s.citta, s.note, segWho(s)].join(' ')).includes(q))));
+}
+// "Scarica Excel" (richiesta dell'utente 2026-10-30): l'elenco mostrato, con recapiti del cliente e storia dei contatti.
+async function segExportXlsx(){
+  await loadXLSX();
+  const stato = { aperta: 'Da seguire', progetto: 'Diventato progetto', chiusa: 'Non si fa' };
+  const rows = segFiltered().map(s=>{ const c = contacts.find(x=>x.id===s.contactId) || {}, p = s.projectId && projects.find(x=>x.id===s.projectId);
+    return { 'Segnalato il': fmtDate(s.il), 'Cliente': fullName(c), 'Studio': c.azienda || '', 'Professione': c.professione || '',
+      'Cellulare': c.cellulare || '', 'Telefono': c.telefono || '', 'Email': c.email || '', 'Cantiere': s.titolo || '', 'Indirizzo': s.via || '', 'Città': s.citta || '',
+      'Avvio cantiere': monthLabel(s.avvio), 'Progetto pronto': monthLabel(s.pronto), 'Note': s.note || '',
+      'Sentito': (s.storia || []).map(h=>fmtDate(h.il)+(h.nota ? ': '+h.nota : '')).join('\n'),
+      'Ricontattare il': segOpen(s) ? fmtDate(s.ricontattaIl) : '', 'Stato': stato[s.stato || 'aperta'] + (s.motivo ? ': '+s.motivo : ''),
+      'Progetto': p ? projectTitle(p) : '' }; });
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [11, 20, 24, 14, 14, 14, 26, 30, 26, 16, 14, 14, 60, 40, 13, 18, 26].map(w=>({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws, 'Cantieri segnalati');
+  XLSX.writeFile(wb, `Cantieri segnalati ${todayISO()}.xlsx`);
+}
+function segView(){
+  const counts = { aperta: 0, progetto: 0, chiusa: 0 };
+  segnalazioni.forEach(s=>{ counts[s.stato || 'aperta']++; });
+  const list = segFiltered();
   const pill = (k, l)=>`<button class="btn ${segFilter===k ? '' : 'secondary '}small" data-seg-filter="${k}">${l}</button>`;
   return `<div class="top-actions"><button class="btn secondary small" id="segBackBtn">← Progetti</button></div>
     <h2 style="margin-bottom:6px;">Cantieri segnalati (${counts.aperta})</h2>
     <div class="fc-note" style="margin-bottom:12px;">I lavori che i clienti ti accennano e che non sono ancora progetti. Alla data di ricontatto compaiono in Oggi, in "Da fare".</div>
-    ${segEdit ? segFormHtml() : `<div style="margin-bottom:12px;"><button class="btn" id="segNewBtn">+ Nuovo cantiere segnalato</button></div>`}
+    ${segEdit ? segFormHtml() : `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn" id="segNewBtn">+ Nuovo cantiere segnalato</button><button class="btn secondary" id="segXlsBtn">Scarica Excel</button></div>`}
     <div class="card">
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${pill('aperta', `Da seguire (${counts.aperta})`)}${pill('progetto', `Diventati progetti (${counts.progetto})`)}${pill('chiusa', `Non si fanno (${counts.chiusa})`)}${pill('tutti', 'Tutti')}</div>
       <input id="segSearch" value="${esc(segQ)}" placeholder="Cerca per cliente, città, note...">
@@ -6493,11 +6514,12 @@ function bindSeg(main){
   }
   if(view!=='segnalati') return;
   main.querySelector('#segBackBtn')?.addEventListener('click', ()=>{ view = 'projects'; renderMain(); });
+  main.querySelector('#segXlsBtn')?.addEventListener('click', ()=>segExportXlsx().catch(e=>alert('Impossibile creare il file: '+(e.message || e))));
   main.querySelector('#segNewBtn')?.addEventListener('click', ()=>{ segEdit = { id: 'new' }; segAct = null; renderMain(); document.getElementById('segWho')?.focus(); });
   main.querySelectorAll('[data-seg-filter]').forEach(b=>b.addEventListener('click', ()=>{ segFilter = b.dataset.segFilter; renderMain(); }));
   main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   main.querySelector('#segSearch')?.addEventListener('input', e=>{ segQ = e.target.value; const box = document.getElementById('segList');
-    const q = normName(segQ), list = segByMeet(segnalazioni.filter(s=>(segFilter==='tutti' || (s.stato || 'aperta')===segFilter) && (!q || normName([s.titolo, s.via, s.citta, s.note, segWho(s)].join(' ')).includes(q))));
+    const list = segFiltered();
     box.innerHTML = list.map(s=>segRowHtml(s)).join('') || '<div class="empty">Nessun cantiere trovato.</div>'; bindSegRows(box); });
   if(segFocus){ const row = main.querySelector(`.seg-row[data-seg-id="${segFocus}"]`); if(row) row.scrollIntoView({ block: 'center' }); segFocus = null; }
 }

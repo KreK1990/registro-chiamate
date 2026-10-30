@@ -1301,6 +1301,10 @@ await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, 
   await page.waitForFunction(id => (window.__fake.docs('segnalazioni').find(d => d.id === id) || {}).stato === 'progetto', nid);
   const pid = (await seg(nid)).projectId;
   expect(await page.evaluate(pid => !!window.__fake.docs('projects').find(p => p.id === pid && p.codice === '4999001'), pid), 'progetto non creato o non collegato');
+  // Excel dell'elenco mostrato
+  await show_(page, 'segnalati', "segAct=null; segEdit=null; segFilter='tutti'; segQ=''");
+  const [sdl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#segXlsBtn')]);
+  expect(/^Cantieri segnalati \d{4}-\d{2}-\d{2}\.xlsx$/.test(sdl.suggestedFilename()), 'file: ' + sdl.suggestedFilename());
   await page.evaluate(([nid, pid]) => Promise.all([db.collection('segnalazioni').doc(nid).delete(), db.collection('segnalazioni').doc('sdue').delete(), db.collection('projects').doc(pid).delete()]), [nid, pid]);
 });
 

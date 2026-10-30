@@ -326,7 +326,8 @@ Campi principali:
   segnalazione passa a 'progetto') o collega uno esistente; "Non si fa" la chiude con motivo; Riapri, Elimina con
   conferma inline. Scheda del contatto: riquadro "Cantieri segnalati" (`segContactHtml`, "+ Cantiere segnalato").
   Stato dei moduli `segEdit` / `segAct` (bloccano i ridisegni dello snapshot). Elenco ordinato per data dell'incontro, dalla piu' recente
-  (`segByMeet`, 2026-10-30); Oggi e la scheda del contatto restano per data di ricontatto.
+  (`segByMeet`, 2026-10-30); Oggi e la scheda del contatto restano per data di ricontatto. "Scarica Excel" (`segExportXlsx`):
+  l'elenco mostrato (`segFiltered`: scheda e ricerca) con recapiti del cliente, previsioni, note, storia dei "Sentito", stato.
   **Dagli incontri** (2026-10-29): nella registrazione dell'incontro (`actMeetHtml`) "+ Cantiere segnalato" aggiunge righe
   (`segMeetFormHtml`/`segMeetRowHtml`, ascoltatore su document) salvate con l'incontro (`segSaveFromMeet`: cliente, data,
   `incontroId`, ricontatto da `segNextDate`); la scheda dell'incontro/appuntamento ha il riquadro "Cantieri segnalati"
