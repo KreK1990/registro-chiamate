@@ -1562,6 +1562,7 @@ function renderMain(){
             <div><label>Data</label><input type="date" id="callApptDate"></div>
             <div><label>Ora</label><select id="callApptTime">${timeOptions('')}</select></div>
           </div>
+          ${apptPlaceFieldHtml('callApptPlace', c)}
           ${tripBoxHtml('callApptDate|callApptTime||c:'+c.id)}
           <div class="planner" data-planner="callApptDate|callApptTime"></div>
         </div>
@@ -1721,7 +1722,7 @@ function renderFooter(){
           ${footerSelectedDay ? sopOnDay(footerSelectedDay).map(sopDayRow).join('') : ''}${dayList.length? dayList.map(k=>{ const c=byId[k.contactId]||{}; const t=new Date(k.appuntamento); const hh=String(t.getHours()).padStart(2,'0'),mm=String(t.getMinutes()).padStart(2,'0');
             return `<div class="day-appt-row" data-appt-call-id="${k.id}" style="flex-direction:column;align-items:stretch;">
           <span>${hh}:${mm} — ${esc(fullName(c))}${k.progetto?' · '+esc(k.progetto):''}</span>
-          ${fullAddress(c)?`<a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(fullAddress(c))} · Vedi su Maps</a>`:''}
+          ${apptPlace(k, c)?`<a href="${apptMapsUrl(k, c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${k.luogoAppt ? 'presso ' : ''}${esc(apptPlace(k, c))} · Vedi su Maps</a>`:''}
         </div>`;
           }).join('') : (sopOnDay(footerSelectedDay).length ? '' : `<div class="empty" style="padding:0;">Nessun appuntamento in questo giorno.</div>`)}
         </div>
@@ -2504,8 +2505,8 @@ function outlookInviteUrl(k){
   // Testo del promemoria che l'utente manda di solito (es. "mercoledì 09 alle ore 15").
   const when = `${start.toLocaleDateString('it-IT', { weekday:'long' })} ${pad(start.getDate())}`;
   const time = start.getMinutes() ? `${start.getHours()}:${pad(start.getMinutes())}` : String(start.getHours());
-  const place = fullAddress(c);
-  const body = [inviteSalutation(c), '', `Come da intese telefoniche, le mando questo promemoria per l'appuntamento di ${when} alle ore ${time} presso i vostri uffici.`, '', 'Cordiali Saluti'].join('\n');
+  const place = apptPlace(k, c);
+  const body = [inviteSalutation(c), '', `Come da intese telefoniche, le mando questo promemoria per l'appuntamento di ${when} alle ore ${time} ${k.luogoAppt ? 'presso '+k.luogoAppt : 'presso i vostri uffici'}.`, '', 'Cordiali Saluti'].join('\n');
   const q = new URLSearchParams({ path:'/calendar/action/compose', rru:'addevent', subject: INVITE_SUBJECT,
     startdt: isoWithOffset(k.appuntamento), enddt: isoWithOffset(endLocal), location: place, body });
   if(c.email) q.set('to', c.email);
@@ -3219,7 +3220,7 @@ function plannerEvents(exclude){
   calls.forEach(k=>{
     if(!k.appuntamento || 'call:'+k.id===exclude) return;
     const c = byId[k.contactId] || {};
-    out.push({ ref:'call:'+k.id, t:k.appuntamento, min:60, label:fullName(c), kind:'appt', addr:fullAddress(c), maps: fullAddress(c) ? mapsUrl(c) : '',
+    out.push({ ref:'call:'+k.id, t:k.appuntamento, min:60, label:fullName(c), kind:'appt', addr:apptPlace(k, c), maps: apptPlace(k, c) ? apptMapsUrl(k, c) : '',
       sub:[c.professione, c.azienda].filter(Boolean).join(' · '), tel:c.cellulare || c.telefono || '', note:[k.progetto, k.note].filter(Boolean).join(' · ') });
   });
   sops.forEach(s=>{
@@ -3457,7 +3458,7 @@ async function suggestTimes(target, dur, exclude){
   for(const d of days){
     const evs = [];
     for(const k of calls) if(k.appuntamento && k.appuntamento.slice(0,10)===d && 'call:'+k.id!==exclude){
-      const c = byId[k.contactId] || {}; const p = await contactPoint(c); if(!p) missing.add(fullName(c));
+      const c = byId[k.contactId] || {}; const p = await apptPoint(k, c); if(!p) missing.add(fullName(c));
       evs.push({ start: tripMin(k.appuntamento.slice(11,16)), dur:60, label: fullName(c), p });
     }
     for(const s of sops) if(s.quando.slice(0,10)===d && 'sop:'+s.id!==exclude){
@@ -3523,8 +3524,9 @@ async function runTripSuggest(box){
       }
     } else {
       const c = contacts.find(x=>x.id===src.slice(2));
-      if(!c || !fullAddress(c)) throw new Error('il cliente non ha l\'indirizzo: aggiungilo nella scheda');
-      target = await contactPoint(c);
+      const luogo = apptPlaceRead(dateId.replace('ApptDate', 'ApptPlace'), c);   // luogo dell'incontro, se non e' la sede
+      if(!luogo && (!c || !fullAddress(c))) throw new Error('il cliente non ha l\'indirizzo: aggiungilo nella scheda o scrivi il luogo dell\'incontro');
+      target = await apptPoint({ luogoAppt: luogo }, c);
     }
     if(!target) throw new Error('indirizzo non trovato sulla mappa');
     const r = await suggestTimes(target, dur, exclude);
@@ -9537,7 +9539,7 @@ function apptListView(){
       <div>
         <div style="font-weight:600;font-size:15px;">${esc(fullName(c))}</div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}${k.progetto?' · '+esc(k.progetto):''}</div>
-        ${fullAddress(c)?`<div style="font-size:12.5px;margin-top:4px;"><a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(fullAddress(c))} · Vedi su Maps</a></div>`:''}
+        ${apptAddrHtml(k, c)}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;"><div class="followup ok">${fmtDateTime(k.appuntamento)}</div>${inviteBtn(k)}</div>
     </div>`;
@@ -10039,7 +10041,7 @@ function agendaView(){
     const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
     return `<div class="day-appt-row" data-appt-call-id="${k.id}" style="flex-direction:column;align-items:stretch;margin-bottom:8px;">
       <span><span style="font-family:var(--mono);">${hh}:${mm}</span> — ${esc(fullName(c))}${k.progetto?' · '+esc(k.progetto):''}</span>
-      ${fullAddress(c)?`<a href="${mapsUrl(c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(fullAddress(c))} · Vedi su Maps</a>`:''}
+      ${apptPlace(k, c)?`<a href="${apptMapsUrl(k, c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${k.luogoAppt ? 'presso ' : ''}${esc(apptPlace(k, c))} · Vedi su Maps</a>`:''}
     </div>`;
   }).join('') : '<div class="empty">Nessun appuntamento oggi.</div>';
 
@@ -10194,6 +10196,7 @@ function renderCallFlow(){
           <div><label>Data</label><input type="date" id="qcApptDate"></div>
           <div><label>Ora</label><select id="qcApptTime">${timeOptions('')}</select></div>
         </div>
+        ${apptPlaceFieldHtml('qcApptPlace', c)}
         ${tripBoxHtml('qcApptDate|qcApptTime||c:'+c.id)}
         <div class="planner" data-planner="qcApptDate|qcApptTime"></div>
       </div>
@@ -10236,13 +10239,14 @@ async function saveQuickCall(){
   const progetto = document.getElementById('qcProgetto').value.trim();
   const note = document.getElementById('qcNote').value.trim();
   const appuntamento = document.getElementById('qcApptCheck').checked ? combineDT(document.getElementById('qcApptDate').value, document.getElementById('qcApptTime').value) : '';
+  const luogoAppt = apptPlaceRead('qcApptPlace', contacts.find(x=>x.id===selectedId));
   const followUp = combineDT(document.getElementById('qcFollowUpDate').value, document.getElementById('qcFollowUpTime').value);
   if(!data){ alert('Inserisci la data.'); return; }
   const mail = readCallMailFields('qcEmail', 'qcMailCheck');
   if(!mail) return;
   try{
     const apptProj = readApptProjects(appuntamento);
-    const newCall = { contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() };
+    const newCall = { contactId: selectedId, data, esito, note, progetto, appuntamento, luogoAppt: appuntamento ? luogoAppt : '', mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() };
     const newRef = await db.collection('calls').add(newCall);
     await markOfferPresented(apptProj, appuntamento);
     await db.collection('contacts').doc(selectedId).update(contactUpdateAfterCall(selectedId, followUp, mail.email));
@@ -10345,7 +10349,7 @@ function tableDetailView(){
         <div><label>Data</label><div style="font-size:14px;">${fmtDate(k.data)}</div></div>
         ${k.esito?`<div><label>Esito</label><div style="font-size:14px;">${esc(k.esito)}</div></div>`:''}
         ${k.progetto?`<div><label>Progetto</label><div style="font-size:14px;">${esc(k.progetto)}</div></div>`:''}
-        ${k.appuntamento?`<div><label>Appuntamento</label><div style="font-size:14px;">${fmtDateTime(k.appuntamento)}</div>${inviteBtn(k) ? `<div style="margin-top:6px;">${inviteBtn(k)}</div>` : ''}</div>`:''}
+        ${k.appuntamento?`<div><label>Appuntamento</label><div style="font-size:14px;">${fmtDateTime(k.appuntamento)}</div>${k.luogoAppt ? apptAddrHtml(k, c) : ''}${inviteBtn(k) ? `<div style="margin-top:6px;">${inviteBtn(k)}</div>` : ''}</div>`:''}
         ${(k.progetti||[]).length ? `<div><label>Progetti</label><div style="font-size:14px;">${k.progetti.map(id=>{ const pr = projects.find(x=>x.id===id); return pr ? `<a href="#" class="addr-link" data-open-project="${pr.id}">${esc(projectTitle(pr))}${projectAddress(pr) ? ` · ${esc(projectAddress(pr))}` : ""}</a>` : ''; }).filter(Boolean).join('<br>')}${k.consegnaOfferta ? ' <span class="esito-tag appt">Consegna offerta</span>' : ''}</div></div>` : ''}
         ${k.mailDaInviare?`<div><label>Mail informativa</label><div style="font-size:14px;">${k.mailInviataIl ? `inviata il ${fmtDate(k.mailInviataIl)}` : `<span style="color:var(--danger);font-weight:600;">da inviare</span> <button class="btn secondary small" id="markMailSentBtn" style="margin-left:6px;">Segna come inviata</button>`}</div></div>`:''}
       </div>
@@ -10384,6 +10388,7 @@ function callEditView(k,c){
           <div><label>Data</label><input type="date" id="ecApptDate" value="${splitDT(k.appuntamento).date}"></div>
           <div><label>Ora</label><select id="ecApptTime">${timeOptions(splitDT(k.appuntamento).time)}</select></div>
         </div>
+        ${apptPlaceFieldHtml('ecApptPlace', c, k)}
         ${tripBoxHtml('ecApptDate|ecApptTime|call:'+k.id+'|c:'+c.id)}
         <div class="planner" data-planner="ecApptDate|ecApptTime|call:${k.id}"></div>
         <label style="margin-top:10px;">Note dell'incontro</label>
@@ -10443,13 +10448,14 @@ async function saveCallEdit(){
   const progetto = document.getElementById('ecProgetto').value.trim();
   const note = document.getElementById('ecNote').value.trim();
   const appuntamento = document.getElementById('ecApptCheck').checked ? combineDT(document.getElementById('ecApptDate').value, document.getElementById('ecApptTime').value) : '';
+  const luogoAppt = appuntamento ? apptPlaceRead('ecApptPlace', contacts.find(x=>x.id===(calls.find(y=>y.id===tableDetailCallId) || {}).contactId)) : '';
   const noteIncontro = document.getElementById('ecNoteIncontro').value.trim();
   const followUp = combineDT(document.getElementById('ecFollowUpDate').value, document.getElementById('ecFollowUpTime').value);
   if(!data){ alert('Inserisci la data.'); return; }
   try{
     const k = calls.find(x=>x.id===tableDetailCallId);
     const apptProj = readApptProjects(appuntamento);
-    await db.collection('calls').doc(tableDetailCallId).update({ data, esito, progetto, note, appuntamento, noteIncontro, progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta });
+    await db.collection('calls').doc(tableDetailCallId).update({ data, esito, progetto, note, appuntamento, luogoAppt, noteIncontro, progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta });
     await markOfferPresented(apptProj, appuntamento);
     if(k) await db.collection('contacts').doc(k.contactId).update({ followUp, followUpSetAt: Date.now() });
     editingCallId=null; renderMain();
@@ -10714,13 +10720,14 @@ async function saveCall(){
   const note = document.getElementById('callNote').value.trim();
   const progetto = document.getElementById('callProgetto').value.trim();
   const appuntamento = document.getElementById('callApptCheck').checked ? combineDT(document.getElementById('callApptDate').value, document.getElementById('callApptTime').value) : '';
+  const luogoAppt = apptPlaceRead('callApptPlace', contacts.find(x=>x.id===selectedId));
   const followUp = combineDT(document.getElementById('callFollowUpDate').value, document.getElementById('callFollowUpTime').value);
   if(!data){ alert('Inserisci la data.'); return; }
   const mail = readCallMailFields('callEmail', 'callMailCheck');
   if(!mail) return;
   try{
     const apptProj = readApptProjects(appuntamento);
-    const newCall = { contactId: selectedId, data, esito, note, progetto, appuntamento, mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() };
+    const newCall = { contactId: selectedId, data, esito, note, progetto, appuntamento, luogoAppt: appuntamento ? luogoAppt : '', mailDaInviare: mail.todo, mailInviataIl: '', progetti: apptProj.progetti, consegnaOfferta: apptProj.consegnaOfferta, createdAt: Date.now() };
     const newRef = await db.collection('calls').add(newCall);
     await markOfferPresented(apptProj, appuntamento);
     await db.collection('contacts').doc(selectedId).update(contactUpdateAfterCall(selectedId, followUp, mail.email));
@@ -10990,7 +10997,7 @@ function exportICS(){
     const end = new Date(start.getTime()+60*60*1000);
     const summary = icsEsc(fullName(c) + (k.progetto?' - '+k.progetto:''));
     const desc = icsEsc([k.progetto, k.note].filter(Boolean).join('\n'));
-    const loc = icsEsc(fullAddress(c));
+    const loc = icsEsc(apptPlace(k, c));
     ics += 'BEGIN:VEVENT\r\n';
     ics += foldLine(`UID:${k.id}@registro-chiamate`) + '\r\n';
     ics += foldLine(`DTSTAMP:${dtstamp}`) + '\r\n';
@@ -11034,6 +11041,19 @@ function fullName(c){
   return c.azienda || c.cellulare || c.telefono || c.email || '(senza nome)';
 }
 function tagPills(tag){ if(!tag) return ''; return tag.split(',').map(t=>t.trim()).filter(Boolean).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join(''); }
+// Luogo di un appuntamento fissato: k.luogoAppt quando ci si vede altrove, altrimenti (vuoto) la sede del cliente.
+function apptPlace(k, c){ return (k && k.luogoAppt) || fullAddress(c || contacts.find(x=>x.id===(k && k.contactId)) || {}); }
+function apptMapsUrl(k, c){ return k && k.luogoAppt ? 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(k.luogoAppt) : mapsUrl(c); }
+function apptAddrHtml(k, c){
+  const a = apptPlace(k, c); if(!a) return '';
+  return `<div style="font-size:12.5px;margin-top:4px;"><a href="${apptMapsUrl(k, c)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${k && k.luogoAppt ? 'Incontro presso ' : ''}${esc(a)} · Vedi su Maps</a></div>`;
+}
+function apptPlaceFieldHtml(id, c, k){
+  return `<label style="margin-top:8px;">Luogo dell'incontro</label><input id="${id}" value="${esc((k && k.luogoAppt) || fullAddress(c))}" placeholder="Indirizzo dove vi vedete">
+    <div class="fc-note">Proposta la sede del cliente: cambiala se vi vedete altrove.</div>`;
+}
+function apptPlaceRead(id, c){ const v = (document.getElementById(id)?.value || '').trim(); return !v || geoKey(v)===geoKey(fullAddress(c || {})) ? '' : v; }
+const apptPoint = (k, c)=>k && k.luogoAppt ? geocodeSmart(k.luogoAppt, '', tripPause) : contactPoint(c);
 function fullAddress(c){ if(c.via || c.citta) return [c.via, c.citta].filter(Boolean).join(', '); return c.indirizzo || ''; }
 // Posizione su Google Maps (non le indicazioni: richiesta dell'utente 2026-10-22, la mappa si esplora e le
 // indicazioni si chiedono da Maps). Solo il giro di "Cosa fare in zona" apre ancora il percorso.

@@ -491,6 +491,12 @@ Campi principali:
   (riquadro Cestino) per `TRASH_DAYS` (30) giorni; poi `purgeTrash` (una volta per sessione) cancella i file.
 - **Nessun ridisegno mentre si scrive** (2026-10-14): `canAutoRender` blocca i ridisegni automatici in tutte le
   pagine quando il fuoco e' in un campo di testo/elenco di #main (prima solo Forecast, portale, Oggi).
+- **Luogo dell'incontro** (2026-11-02): con "Appuntamento fissato" i moduli call/qc/ec hanno `#<prefisso>ApptPlace`
+  (`apptPlaceFieldHtml`), proposto con la sede del cliente. Si salva `luogoAppt` sulla chiamata solo se diverso dalla
+  sede (`apptPlaceRead`, confronto con geoKey; vuoto = sede). `apptPlace(k, c)` / `apptMapsUrl` / `apptAddrHtml` /
+  `apptPoint` lo usano: invito Outlook (location e "presso ..." al posto di "presso i vostri uffici"), .ics del
+  client e `netlify/functions/calendar.js`, agenda per pianificare, "Suggerisci quando" (legge anche il campo del
+  modulo aperto), elenco appuntamenti, righe del giorno e dettaglio attivita'.
 - **Invito Outlook** (blocco "Invito Outlook"): pulsante "Invia invito Outlook" sugli
   appuntamenti futuri (elenco Appuntamenti, dettaglio della chiamata) e proposta nella barra in
   alto dopo aver fissato un appuntamento (solo versione online, `offerOutlookInvite`). Apre il

@@ -137,7 +137,7 @@ exports.handler = async function (event) {
       const end = new Date(start.getTime() + 60 * 60 * 1000);
       const summary = icsEsc(fullName(c) + (k.progetto ? ' - ' + k.progetto : ''));
       const desc = icsEsc([k.progetto, k.note].filter(Boolean).join('\n'));
-      const loc = icsEsc(fullAddress(c));
+      const loc = icsEsc(k.luogoAppt || fullAddress(c));   // luogo dell'incontro, se non e' la sede del cliente
 
       ics += 'BEGIN:VEVENT\r\n';
       ics += foldLine(`UID:${k.id}@registro-chiamate`) + '\r\n';

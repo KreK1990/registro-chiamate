@@ -1273,6 +1273,37 @@ await test('rotellina o Ctrl+clic: cliente e progetto in una scheda dentro l\'ap
   expect(s.n === 0 && s.hidden && s.view === 'projects', 'una sola scheda: ' + JSON.stringify(s));
 });
 
+await test('appuntamento fissato: luogo dell\'incontro, proposta la sede del cliente', async () => {
+  const fissa = async (nota, luogo) => {
+    await show_(page, 'detail', "selectedId='c1'; confirmDeleteId=null; tableDetailCallId=null");
+    await page.check('#callApptCheck');
+    expect(await page.inputValue('#callApptPlace') === 'Via Roma 1, Torino', 'sede non proposta: ' + await page.inputValue('#callApptPlace'));
+    await page.fill('#callApptDate', daysAgo(-6));
+    await page.selectOption('#callApptTime', '15:00');
+    if (luogo) await page.fill('#callApptPlace', luogo);
+    await page.fill('#callNote', nota);
+    await page.click('#saveCallBtn');
+    await page.waitForFunction(n => window.__fake.docs('calls').some(k => k.note === n), nota);
+    return page.evaluate(n => window.__fake.docs('calls').find(k => k.note === n), nota);
+  };
+  const a = await fissa('luogo altrove', 'Via Garibaldi 5, Collegno');
+  expect(a.luogoAppt === 'Via Garibaldi 5, Collegno', 'luogo non salvato: ' + JSON.stringify(a));
+  const b = await fissa('luogo in sede');
+  expect(b.luogoAppt === '', 'in sede il luogo resta vuoto: ' + JSON.stringify(b));
+  const r = await page.evaluate(([ia, ib]) => {
+    const ka = calls.find(k => k.id === ia), kb = calls.find(k => k.id === ib);
+    const u = new URL(outlookInviteUrl(ka)), ev = plannerEvents('').find(e => e.ref === 'call:' + ia);
+    return { loc: u.searchParams.get('location'), body: u.searchParams.get('body'), ev: ev && ev.addr, sede: apptPlace(kb) };
+  }, [a.id, b.id]);
+  expect(r.loc === 'Via Garibaldi 5, Collegno' && r.body.includes('presso Via Garibaldi 5, Collegno') && r.ev === r.loc, 'luogo non usato: ' + JSON.stringify(r));
+  expect(r.sede === 'Via Roma 1, Torino', 'sede non usata: ' + r.sede);
+  // si rivede nella modifica dell'attivita'
+  await show_(page, 'table', `tableDetailCallId='${a.id}'; editingCallId='${a.id}'`);
+  expect(await page.inputValue('#ecApptPlace') === 'Via Garibaldi 5, Collegno', 'luogo non riproposto in modifica');
+  await show_(page, 'agenda', 'tableDetailCallId=null; editingCallId=null');
+  await page.evaluate(ids => ids.forEach(id => db.collection('calls').doc(id).delete()), [a.id, b.id]);
+});
+
 await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, diventato progetto', async () => {
   const seg = id => page.evaluate(id => window.__fake.docs('segnalazioni').find(d => d.id === id), id);
   // nuovo: il ricontatto si propone dall'inizio del mese del progetto pronto
