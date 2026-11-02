@@ -1572,6 +1572,7 @@ function renderMain(){
           <div><label>Data</label><input type="date" id="callFollowUpDate" value="${splitDT(fuToKeep(c)).date}"></div>
           <div><label>Ora</label><select id="callFollowUpTime">${timeOptions(splitDT(fuToKeep(c)).time)}</select></div>
         </div>
+        ${fuQuickHtml('callFollowUpDate', 'callFollowUpTime')}
         <button class="btn block" id="saveCallBtn">Salva telefonata</button>
       </div>`;
     bindActForm({ prefix:'call', date:'callDate', fuDate:'callFollowUpDate', fuTime:'callFollowUpTime', saveBtn:'saveCallBtn', phoneSave: saveCall, contactId: ()=>selectedId, done: ()=>renderMain() });
@@ -6158,6 +6159,16 @@ function bindForecastReview(main){
 // "+ Follow-up" nella scheda del contatto e "+ Aggiungi follow-up" (con scelta del contatto) nella pagina
 // Follow-up; "Sposta" sulle righe. Stesso modulo (`fuFormHtml`): data, ora, scorciatoie, "Togli".
 // ---------------------------------------------------------------------------
+const FU_QUICK = [[1,'Domani'],[7,'Tra una settimana'],[14,'Tra due settimane'],[30,'Tra un mese']];
+// Le stesse scorciatoie sotto il follow-up dei moduli telefonata/incontro: data da oggi, ora 09:00 se vuota.
+function fuQuickHtml(dateId, timeId){ return `<div class="fu-quick">${FU_QUICK.map(([d,l])=>`<button type="button" class="btn secondary small" data-fu-quick="${dateId}|${timeId}|${d}">${l}</button>`).join('')}</div>`; }
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-fu-quick]'); if(!b) return;
+  const [dateId, timeId, n] = b.dataset.fuQuick.split('|'), d = document.getElementById(dateId), t = document.getElementById(timeId);
+  if(!d) return;
+  d.value = addDaysISO(todayISO(), +n); d.dispatchEvent(new Event('input', { bubbles:true })); d.dispatchEvent(new Event('change', { bubbles:true }));
+  if(t && !t.value){ setTimeValue(t, '09:00'); t.dispatchEvent(new Event('change', { bubbles:true })); }
+});
 let fuEdit = null;   // { where:'detail'|'list', contactId }
 const fuLabel = c=>fullName(c) + (c.azienda ? ' · '+c.azienda : '');
 function fuFormHtml(c){
@@ -6170,7 +6181,7 @@ function fuFormHtml(c){
       <div><label>Data</label><input type="date" id="fuDate" value="${esc(cur.date)}"></div>
       <div><label>Ora</label><select id="fuTime">${timeOptions(cur.time || '09:00')}</select></div>
     </div>
-    <div class="fu-quick">${[[1,'Domani'],[7,'Tra una settimana'],[14,'Tra due settimane'],[30,'Tra un mese']].map(([d,l])=>`<button type="button" class="btn secondary small" data-fu-plus="${d}">${l}</button>`).join('')}</div>
+    <div class="fu-quick">${FU_QUICK.map(([d,l])=>`<button type="button" class="btn secondary small" data-fu-plus="${d}">${l}</button>`).join('')}</div>
     <div id="fuErr" style="color:var(--danger);font-size:13px;"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
       <button class="btn small" id="fuSaveBtn">Salva follow-up</button>
@@ -10207,6 +10218,7 @@ function renderCallFlow(){
         <div><label>Data</label><input type="date" id="qcFollowUpDate" value="${splitDT(clearFollowUpOnEntry?'':fuToKeep(c)).date}"></div>
         <div><label>Ora</label><select id="qcFollowUpTime">${timeOptions(splitDT(clearFollowUpOnEntry?'':fuToKeep(c)).time)}</select></div>
       </div>
+      ${fuQuickHtml('qcFollowUpDate', 'qcFollowUpTime')}
       <button class="btn block" id="saveQcBtn">Salva telefonata</button>
     </div>
     <div class="card">
@@ -10399,6 +10411,7 @@ function callEditView(k,c){
         <div><label>Data</label><input type="date" id="ecFollowUpDate" value="${splitDT(c.followUp).date}"></div>
         <div><label>Ora</label><select id="ecFollowUpTime">${timeOptions(splitDT(c.followUp).time)}</select></div>
       </div>
+      ${fuQuickHtml('ecFollowUpDate', 'ecFollowUpTime')}
       <button class="btn block" id="saveEditCallBtn" style="margin-top:14px;">Salva modifiche</button>
     </div>`;
 }

@@ -491,6 +491,10 @@ Campi principali:
   (riquadro Cestino) per `TRASH_DAYS` (30) giorni; poi `purgeTrash` (una volta per sessione) cancella i file.
 - **Nessun ridisegno mentre si scrive** (2026-10-14): `canAutoRender` blocca i ridisegni automatici in tutte le
   pagine quando il fuoco e' in un campo di testo/elenco di #main (prima solo Forecast, portale, Oggi).
+- **Scorciatoie del follow-up** (2026-11-02): `FU_QUICK` (Domani, Tra una settimana, Tra due settimane, Tra un mese)
+  nel modulo "+ Follow-up" (`data-fu-plus`) e, con `fuQuickHtml(dateId, timeId)`, sotto il follow-up dei moduli
+  call/qc/ec (`data-fu-quick`, ascoltatore su document): data da oggi, ora 09:00 se vuota, evento input (spegne la
+  proposta automatica di bindAutoFollowUp).
 - **Luogo dell'incontro** (2026-11-02): con "Appuntamento fissato" i moduli call/qc/ec hanno `#<prefisso>ApptPlace`
   (`apptPlaceFieldHtml`), proposto con la sede del cliente. Si salva `luogoAppt` sulla chiamata solo se diverso dalla
   sede (`apptPlaceRead`, confronto con geoKey; vuoto = sede). `apptPlace(k, c)` / `apptMapsUrl` / `apptAddrHtml` /

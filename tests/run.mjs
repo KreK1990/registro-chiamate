@@ -1304,6 +1304,18 @@ await test('appuntamento fissato: luogo dell\'incontro, proposta la sede del cli
   await page.evaluate(ids => ids.forEach(id => db.collection('calls').doc(id).delete()), [a.id, b.id]);
 });
 
+await test('follow-up nei moduli telefonata/incontro: Domani, Tra una settimana...', async () => {
+  for (const [view, extra, pre] of [['detail', "selectedId='c1'; confirmDeleteId=null; tableDetailCallId=null; editingCallId=null", 'call'], ['call', "selectedId='c3'; callStep='entry'; clearFollowUpOnEntry=true", 'qc']]) {
+    await show_(page, view, extra);
+    await page.evaluate(p => { document.getElementById(p + 'FollowUpDate').value = ''; const t = document.getElementById(p + 'FollowUpTime'); t.value = ''; }, pre);
+    await page.click(`[data-fu-quick="${pre}FollowUpDate|${pre}FollowUpTime|7"]`);
+    expect(await page.inputValue(`#${pre}FollowUpDate`) === daysAgo(-7) && await page.inputValue(`#${pre}FollowUpTime`) === '09:00', `${pre}: tra una settimana non compilato: ` + await page.inputValue(`#${pre}FollowUpDate`) + ' ' + await page.inputValue(`#${pre}FollowUpTime`));
+    await page.click(`[data-fu-quick="${pre}FollowUpDate|${pre}FollowUpTime|1"]`);
+    expect(await page.inputValue(`#${pre}FollowUpDate`) === daysAgo(-1), pre + ': domani non compilato');
+  }
+  await show_(page, 'agenda', "clearFollowUpOnEntry=false");
+});
+
 await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, diventato progetto', async () => {
   const seg = id => page.evaluate(id => window.__fake.docs('segnalazioni').find(d => d.id === id), id);
   // nuovo: il ricontatto si propone dall'inizio del mese del progetto pronto
