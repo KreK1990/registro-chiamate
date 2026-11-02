@@ -1316,6 +1316,27 @@ await test('follow-up nei moduli telefonata/incontro: Domani, Tra una settimana.
   await show_(page, 'agenda', "clearFollowUpOnEntry=false");
 });
 
+await test('fasi del progetto: data scritta -> Consegnata/Conferma la fissa e la timeline si aggiorna', async () => {
+  const pid = await page.evaluate(() => projects.find(p => !(p.fasi || {}).offertaPresentata && !p.persa).id);
+  const before = await page.evaluate(id => ({ ...(projects.find(p => p.id === id).fasi || {}) }), pid);
+  await show_(page, 'projectDetail', `selectedProjectId='${pid}'; orderEdit=null; loseFormProjectId=null`);
+  const d = daysAgo(3);
+  const inp = '#main [data-phase="offertaPresentata"]', ok = '#main [data-phase-ok="offertaPresentata"]';
+  expect(await page.$eval(ok, b => b.classList.contains('hidden')), 'Consegnata visibile senza data');
+  await page.focus(inp);
+  await page.fill(inp, d);
+  expect(!(await page.$eval(ok, b => b.classList.contains('hidden'))) && (await page.textContent(ok)).trim() === 'Consegnata', 'Consegnata non proposto');
+  await page.click(ok);
+  await page.waitForFunction(([id, d]) => (projects.find(p => p.id === id).fasi || {}).offertaPresentata === d && document.querySelector('#main [data-phase="offertaPresentata"]')?.closest('li').classList.contains('done'), [pid, d]);
+  expect(!(await page.$('#main [data-phase-today="offertaPresentata"]')), '"Oggi" ancora presente');
+  // senza pulsante: scritta e lasciata li', si salva e si ridisegna anche col cursore nel campo
+  await page.focus('#main [data-phase="cantiereFinito"]');
+  await page.fill('#main [data-phase="cantiereFinito"]', d);
+  await page.waitForFunction(([id, d]) => (projects.find(p => p.id === id).fasi || {}).cantiereFinito === d && document.querySelector('#main [data-phase="cantiereFinito"]')?.closest('li').classList.contains('done'), [pid, d], { timeout: 4000 });
+  await page.evaluate(([id, f]) => db.collection('projects').doc(id).update({ fasi: f }), [pid, before]);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+});
+
 await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, diventato progetto', async () => {
   const seg = id => page.evaluate(id => window.__fake.docs('segnalazioni').find(d => d.id === id), id);
   // nuovo: il ricontatto si propone dall'inizio del mese del progetto pronto

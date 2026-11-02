@@ -8652,7 +8652,7 @@ function projectDetailView(){
         ${PROJECT_PHASES.map(ph=>{ const d = f[ph.key] || ''; return `<li class="${d ? (d>today ? 'planned' : 'done') : ''}" ${PHASE_FILES.includes(ph.key) && storageAvailable() ? `data-phase-drop="${p.id}|${ph.key}"` : ''}>
           <span class="dot"></span>
           <div><div class="ph-label">${esc(ph.label)}</div>${ph.owner ? `<div class="ph-owner">a cura di ${esc(ph.owner)}</div>` : ''}${d && d>today ? '<div class="ph-owner">prevista</div>' : ''}</div>
-          <div class="ph-date"><input type="date" data-phase="${ph.key}" value="${d}">${d ? '' : `<button class="btn secondary small" data-phase-today="${ph.key}">Oggi</button>`}</div>
+          <div class="ph-date"><input type="date" data-phase="${ph.key}" value="${d}">${d ? '' : `<button class="btn secondary small" data-phase-today="${ph.key}">Oggi</button>`}<button class="btn small hidden" data-phase-ok="${ph.key}">${ph.key==='offertaPresentata' ? 'Consegnata' : 'Conferma'}</button></div>
           ${phaseFilesHtml(p, ph.key)}
           ${ph.key==='confermaOrdine' && d ? `<div class="ph-extra">
             <label>Importo deliberato (€)</label>
@@ -8842,9 +8842,24 @@ function bindProjectDetail(){
       if(inp.value===saved) return;
       if(inp.value && !validDate(inp.value)){ phaseErr('Data non valida: controlla l\'anno (es. 2026).'); inp.value = saved; return; }
       phaseErr('');
-      setProjectPhase(cur, inp.dataset.phase, inp.value).catch(fail);
+      // salvata, si ridisegna subito (pallino pieno, niente "Oggi"), a meno che si stia scrivendo in un altro campo
+      setProjectPhase(cur, inp.dataset.phase, inp.value).then(()=>{
+        const a = document.activeElement;
+        if(view==='projectDetail' && (a===inp || !a || !a.matches || !a.matches('#main input, #main textarea, #main select'))) renderMain();
+      }).catch(fail);
     };
+    // data scritta e non ancora salvata: "Conferma" (sull'offerta presentata "Consegnata") la fissa subito
+    const ok = inp.parentElement.querySelector('[data-phase-ok]'), today = inp.parentElement.querySelector('[data-phase-today]');
+    const showOk = ()=>{
+      const cur = projects.find(x=>x.id===selectedProjectId), saved = cur ? (cur.fasi||{})[inp.dataset.phase] || '' : '';
+      const pend = !!inp.value && inp.value!==saved && validDate(inp.value);
+      ok.classList.toggle('hidden', !pend); if(today) today.classList.toggle('hidden', pend);
+    };
+    ok.addEventListener('mousedown', e=>e.preventDefault());   // il campo non perde il fuoco prima del clic: un solo salvataggio
+    ok.addEventListener('click', commit);
+    inp.addEventListener('input', showOk);
     inp.addEventListener('change', ()=>{
+      showOk();
       clearTimeout(timer);
       if(!inp.value || validDate(inp.value)) timer = setTimeout(()=>{ if(document.activeElement!==inp || validDate(inp.value)) commit(); }, 1200);
     });

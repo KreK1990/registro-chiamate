@@ -491,6 +491,10 @@ Campi principali:
   (riquadro Cestino) per `TRASH_DAYS` (30) giorni; poi `purgeTrash` (una volta per sessione) cancella i file.
 - **Nessun ridisegno mentre si scrive** (2026-10-14): `canAutoRender` blocca i ridisegni automatici in tutte le
   pagine quando il fuoco e' in un campo di testo/elenco di #main (prima solo Forecast, portale, Oggi).
+- **Fasi del progetto: conferma della data** (2026-11-02): accanto a ogni data di fase un pulsante `[data-phase-ok]`
+  ("Conferma", su Offerta presentata "Consegnata") compare quando la data scritta non e' ancora salvata e la salva
+  subito. Dopo ogni salvataggio di fase (pulsante, timer o blur) `renderMain()` esplicito: prima canAutoRender lo
+  bloccava col cursore nel campo data e la fase restava grigia con "Oggi".
 - **Scorciatoie del follow-up** (2026-11-02): `FU_QUICK` (Domani, Tra una settimana, Tra due settimane, Tra un mese)
   nel modulo "+ Follow-up" (`data-fu-plus`) e, con `fuQuickHtml(dateId, timeId)`, sotto il follow-up dei moduli
   call/qc/ec (`data-fu-quick`, ascoltatore su document): data da oggi, ora 09:00 se vuota, evento input (spegne la
