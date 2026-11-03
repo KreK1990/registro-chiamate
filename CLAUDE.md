@@ -496,6 +496,11 @@ Campi principali:
   (riquadro Cestino) per `TRASH_DAYS` (30) giorni; poi `purgeTrash` (una volta per sessione) cancella i file.
 - **Nessun ridisegno mentre si scrive** (2026-10-14): `canAutoRender` blocca i ridisegni automatici in tutte le
   pagine quando il fuoco e' in un campo di testo/elenco di #main (prima solo Forecast, portale, Oggi).
+- **Mai incontrati** (blocco omonimo, 2026-11-03, view `noMeet`, pulsante `#noMeetBtn` in Contatti): `neverMet()` =
+  contatti accesi senza attivita' Incontro e senza `appuntamento` su nessuna chiamata. Filtri `nmFilter` (noPres =
+  con email e senza mail di presentazione da `contactMails`; email; all) e ricerca `nmQ`. "Mail a tutti": gruppi da
+  `NOMEET_GROUP` (30) con email, Outlook deeplink con `bcc` (separati da ;), oggetto e testo come la mail singola
+  (`copyMailPres`), poi `logPresentationMail` per ognuno; "Copia indirizzi". Righe con `mailPresBtn`.
 - **Fasi del progetto: conferma della data** (2026-11-02): accanto a ogni data di fase un pulsante `[data-phase-ok]`
   ("Conferma", su Offerta presentata "Consegnata") compare quando la data scritta non e' ancora salvata e la salva
   subito. Dopo ogni salvataggio di fase (pulsante, timer o blur) `renderMain()` esplicito: prima canAutoRender lo

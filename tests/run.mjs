@@ -173,7 +173,7 @@ console.log('Registro Chiamate - controlli automatici');
 let { ctx, page } = await openApp();
 
 await test('tutte le pagine si aprono senza errori', async () => {
-  const views = ['agenda', 'contactsList', 'call', 'followup', 'appt', 'projects', 'map', 'forecast', 'table', 'dashboard', 'settings', 'portal', 'dups', 'new', 'import', 'projectForm', 'segnalati'];
+  const views = ['agenda', 'contactsList', 'call', 'followup', 'appt', 'projects', 'map', 'forecast', 'table', 'dashboard', 'settings', 'portal', 'dups', 'new', 'import', 'projectForm', 'segnalati', 'noMeet'];
   for (const v of views) {
     const txt = await show_(page, v);
     await settle(page);
@@ -1356,6 +1356,47 @@ await test('fasi del progetto: data scritta -> Consegnata/Conferma la fissa e la
   await page.waitForFunction(([id, d]) => (projects.find(p => p.id === id).fasi || {}).cantiereFinito === d && document.querySelector('#main [data-phase="cantiereFinito"]')?.closest('li').classList.contains('done'), [pid, d], { timeout: 4000 });
   await page.evaluate(([id, f]) => db.collection('projects').doc(id).update({ fasi: f }), [pid, before]);
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
+});
+
+await test('mai incontrati: elenco, filtri, mail di presentazione a tutti in Ccn', async () => {
+  await page.evaluate(d => {
+    window.__fake.put('contacts', 'nm1', { nome: 'Anna', cognome: 'Zeta', professione: 'Architetto', email: 'anna@zeta.it' });
+    window.__fake.put('contacts', 'nm2', { nome: 'Bruno', cognome: 'Zorzi', professione: 'Ingegnere', email: 'bruno@zorzi.it' });
+    window.__fake.put('contacts', 'nm3', { nome: 'Carlo', cognome: 'Zanna', professione: 'Geometra' });
+    window.__fake.put('calls', 'nmk1', { contactId: 'nm1', data: d, esito: 'Da richiamare', note: '', createdAt: 1 });
+  }, daysAgo(10));
+  await page.waitForFunction(() => contacts.some(c => c.id === 'nm3') && calls.some(k => k.id === 'nmk1'));
+  const ids = await page.evaluate(() => neverMet().map(c => c.id));
+  expect(['nm1', 'nm2', 'nm3'].every(i => ids.includes(i)) && !ids.includes('c2'), 'mai incontrati: ' + ids.join(','));
+  await show_(page, 'contactsList');
+  expect((await page.textContent('#noMeetBtn')).includes('Mai incontrati'), 'pulsante in Contatti');
+  await page.evaluate(() => document.getElementById('noMeetBtn').click());
+  await settle(page);
+  let txt = await page.textContent('#nmList');
+  expect(txt.includes('Zeta Anna') || txt.includes('Anna Zeta'), 'Anna non in elenco: ' + txt.slice(0, 200));
+  expect(!txt.includes('Zanna'), 'senza email non va tra "presentazione mai mandata"');
+  expect(txt.includes('ultima telefonata'), 'ultima telefonata non mostrata');
+  await page.click('[data-nm-filter="all"]');
+  expect((await page.textContent('#nmList')).includes('senza email'), 'in Tutti compare anche chi non ha email');
+  await page.click('[data-nm-filter="noPres"]');
+  await page.fill('#nmSearch', 'Z');
+  const [pop] = await Promise.all([page.waitForEvent('popup'), page.click('[data-nm-group="0"]')]);
+  const u = new URL(pop.url());
+  const bcc = u.searchParams.get('bcc') || '';
+  expect(u.hostname === 'outlook.office.com' && bcc.includes('anna@zeta.it') && bcc.includes('bruno@zorzi.it') && !u.searchParams.get('to'), 'Ccn: ' + pop.url());
+  await pop.close();
+  await page.waitForFunction(() => ['nm1', 'nm2'].every(id => window.__fake.docs('calls').some(m => m.contactId === id && m.sottotipo === 'presentazione')));
+  await settle(page);
+  txt = await page.textContent('#nmList');
+  expect(!txt.includes('Zeta') && !txt.includes('Zorzi'), 'dopo la mail restano tra "mai mandata": ' + txt.slice(0, 200));
+  await page.click('[data-nm-filter="email"]');
+  expect((await page.textContent('#nmList')).includes('presentazione mandata il'), 'data della presentazione non mostrata');
+  await page.evaluate(() => {
+    window.__fake.docs('calls').filter(m => ['nm1', 'nm2', 'nm3'].includes(m.contactId)).forEach(m => db.collection('calls').doc(m.id).delete());
+    ['nm1', 'nm2', 'nm3'].forEach(id => db.collection('contacts').doc(id).delete());
+    nmQ = ''; nmFilter = 'noPres';
+  });
+  await show_(page, 'agenda');
 });
 
 await test('cantieri segnalati: nuovo dal cliente, ricontatto in Oggi, sentito, diventato progetto', async () => {

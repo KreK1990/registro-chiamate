@@ -163,6 +163,7 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .seg-mini{font-size:14px;padding:3px 0;}
 .seg-meet{margin:2px 0 8px;padding:8px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);}
 .seg-in-meet{margin-top:12px;}
+.nm-row .nm-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .seg-meet-row{margin:8px 0;padding:10px;border:1px solid var(--border-strong);border-radius:2px;}
 .seg-meet-row textarea{min-height:50px;}
 .gift-crit{display:flex;flex-wrap:wrap;gap:4px 16px;}
@@ -1289,6 +1290,7 @@ function contactsListView(){
       <button class="btn secondary" id="exportXlsBtn">⬇ Esporta tutto (Excel)</button>
       <button class="btn secondary" id="reteBtn">Rete di collaborazioni</button>
       <button class="btn secondary" id="giftBtn">Regali di Natale</button>
+      <button class="btn secondary" id="noMeetBtn">Mai incontrati (${neverMet().length})</button>
       <button class="btn secondary" id="dupsBtn">Possibili doppioni${(()=>{ const n = dupGroups().length; return n ? ` (${n})` : ''; })()}</button>
     </div>
   </div>`;
@@ -1456,6 +1458,7 @@ function renderMain(){
     if(newBtn) newBtn.addEventListener('click', ()=>{ window.__editing=null; view='new'; tableDetailCallId=null; renderMain(); });
     document.getElementById('exportXlsBtn')?.addEventListener('click', exportAllExcel);
     document.getElementById('dupsBtn')?.addEventListener('click', ()=>{ view='dups'; renderMain(); });
+    document.getElementById('noMeetBtn')?.addEventListener('click', ()=>{ view='noMeet'; renderMain(); });
     document.getElementById('reteBtn')?.addEventListener('click', ()=>{ reteFocus = null; view='rete'; renderMain(); });
     document.getElementById('giftBtn')?.addEventListener('click', ()=>{ view='regali'; renderMain(); });
     const cSearch = document.getElementById('contactsSearch');
@@ -1476,6 +1479,7 @@ function renderMain(){
   if(view==='rete'){ main.innerHTML = reteView(); bindRete(main); return; }
   if(view==='regali'){ main.innerHTML = giftView(); bindGift(main); return; }
   if(view==='segnalati'){ main.innerHTML = segView(); bindSeg(main); return; }
+  if(view==='noMeet'){ main.innerHTML = nmView(); bindNm(main); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -4491,6 +4495,7 @@ function navLabel(e){
   if(s.view==='dups') return 'Possibili doppioni';
   if(s.view==='regali') return 'Regali di Natale';
   if(s.view==='segnalati') return 'Cantieri segnalati';
+  if(s.view==='noMeet') return 'Mai incontrati';
   if(s.view==='rete'){ const n = s.reteFocus && netCache && netCache.nodes.get(s.reteFocus); return n ? n.label : 'Rete di collaborazioni'; }
   const t = document.getElementById(e.tab || 'navAgenda');
   return t ? t.firstChild.textContent.trim() : 'Indietro';
@@ -4539,7 +4544,7 @@ const TAB_CONTACT_ATTRS = ['contactId', 'contactOpen', 'openContact', 'mailConta
 const TAB_PROJECT_ATTRS = ['openProject', 'projectId', 'mapProject'];
 let appTabs = [], appTabCur = 0;   // vuoto = una sola schermata, niente barra
 const tabNavSel = ()=>[...NAV_TABS.map(id=>'#'+id), '[data-nav-back]', '[data-appt-call-id]', '[data-fu-id]', '[data-seg-goto]', '[data-go-forecast]'].join(',');
-const TAB_NAV_BTN = /BackBtn$|^(dupsBtn|giftBtn|ordToDeliveries|portalBtn|segBtn)$/;
+const TAB_NAV_BTN = /BackBtn$|^(dupsBtn|giftBtn|noMeetBtn|ordToDeliveries|portalBtn|segBtn)$/;
 // elemento che porta (forse) a un'altra schermata: voce del menu, attributo noto, pulsante "←", riga cliccabile
 function tabNavEl(el){
   if(!el || !el.closest || el.closest('input, select, textarea, label, a[href], summary, [contenteditable], .app-tabs, .fold-head, .planner')) return null;
@@ -6694,6 +6699,88 @@ function segMeetCardHtml(k){
     ${mine.map(s=>`<div class="seg-mini"><span class="name-link" data-seg-goto="${s.id}">${esc(segTitle(s))}</span><span class="fc-note">${segOpen(s) ? s.ricontattaIl ? ' · ricontattare il '+fmtDate(s.ricontattaIl) : '' : s.stato==='progetto' ? ' · diventato progetto' : ' · non si fa'}</span></div>`).join('')}
     ${mine.length ? '' : '<div class="fc-note">Nessun cantiere segnalato in questo incontro.</div>'}
     <div style="margin-top:8px;"><button class="btn secondary small" data-seg-new-meet="${k.id}">+ Cantiere segnalato</button></div></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Mai incontrati (Contatti -> "Mai incontrati"): contatti accesi senza nessun incontro registrato e senza
+// appuntamenti fissati (passati o futuri). Filtri: presentazione mai mandata (con email) / con email / tutti;
+// ricerca. "Mail a tutti" divide i destinatari con email (filtro attuale) in gruppi da NOMEET_GROUP e apre
+// Outlook con gli indirizzi in Ccn (nessuno vede gli altri), oggetto e testo della mail di presentazione
+// (testo formattato copiato negli appunti come per la mail singola); ogni contatto del gruppo aperto si
+// annota con una mail di presentazione (logPresentationMail). "Copia indirizzi" copia gli indirizzi con ";".
+// ---------------------------------------------------------------------------
+const NOMEET_GROUP = 30;
+let nmFilter = 'noPres', nmQ = '', nmSent = new Set();   // nmSent: gruppi gia' aperti in questa sessione
+function neverMet(){
+  const met = new Set(calls.filter(k=>isMeet(k) || k.appuntamento).map(k=>k.contactId));
+  return contacts.filter(c=>!isOff(c) && !met.has(c.id));
+}
+function nmList(){
+  const q = normName(nmQ.trim()).split(/\s+/).filter(Boolean);
+  return neverMet().map(c=>({ c, a: lastActivities(c.id), pres: contactMails(c.id).find(m=>m.sottotipo==='presentazione') || null }))
+    .filter(x=>nmFilter==='all' || (x.c.email && (nmFilter==='email' || !x.pres)))
+    .filter(x=>{ if(!q.length) return true; const hay = normName([fullName(x.c), x.c.azienda, x.c.professione, x.c.citta, x.c.email].join(' ')); return q.every(w=>hay.includes(w)); })
+    .sort((a,b)=>(a.c.cognome||a.c.nome||'').localeCompare(b.c.cognome||b.c.nome||''));
+}
+function nmGroups(list){
+  const withMail = list.filter(x=>x.c.email), out = [];
+  for(let i=0; i<withMail.length; i+=NOMEET_GROUP) out.push(withMail.slice(i, i+NOMEET_GROUP));
+  return out;
+}
+function nmView(){
+  const all = neverMet(), list = nmList(), groups = nmGroups(list), t = todayISO();
+  const nMail = all.filter(c=>c.email).length;
+  const ago = d=>{ const n = daysBetween(d, t); return n===0 ? 'oggi' : n===1 ? 'ieri' : n+' giorni fa'; };
+  const pill = (k, l)=>`<button class="btn ${nmFilter===k ? '' : 'secondary '}small" data-nm-filter="${k}">${l}</button>`;
+  const rows = list.map(x=>{
+    const c = x.c, last = x.a.call ? `ultima telefonata ${fmtDate(x.a.call.data)} (${ago(x.a.call.data)})${x.a.call.esito ? ' · '+esc(x.a.call.esito) : ''}` : 'mai sentito al telefono';
+    return `<div class="todo-row nm-row"><div class="todo-main">
+      <span class="name-link" data-contact-id="${c.id}">${esc(fullName(c))}</span>${c.professione || c.azienda ? `<span class="fc-addr"> · ${esc([c.professione, c.azienda].filter(Boolean).join(' · '))}</span>` : ''}
+      <div class="todo-sub">${c.email ? esc(c.email) : '<span style="color:var(--danger);">senza email</span>'} · ${last}${x.pres ? ` · <strong>presentazione mandata il ${fmtDate(x.pres.data)}</strong>` : ''}</div>
+    </div><div class="nm-act">${mailPresBtn(c)}</div></div>`;
+  }).join('');
+  const nGroup = groups.reduce((s, g)=>s+g.length, 0);
+  return `<button class="btn secondary small" id="nmBackBtn">← Contatti</button>
+  <div class="card" style="margin-top:12px;">
+    <h3>Mai incontrati (${all.length})</h3>
+    <div class="fc-note">Contatti con cui non hai ancora fatto né fissato un incontro${nMail < all.length ? ` · ${nMail} con l'email` : ''}.</div>
+    <div class="seg-btns" style="margin:10px 0;">${pill('noPres', 'Presentazione mai mandata')}${pill('email', 'Con email')}${pill('all', 'Tutti')}</div>
+    <input id="nmSearch" value="${esc(nmQ)}" placeholder="Cerca nome, studio, professione, città..." autocomplete="off">
+  </div>
+  <div class="card">
+    <h3>Mail di presentazione a tutti (${nGroup})</h3>
+    ${groups.length ? `<div class="fc-note" style="margin-bottom:8px;">Si apre Outlook con gli indirizzi in <strong>Ccn</strong> (nessuno vede gli altri), oggetto e testo della mail di presentazione: incolla il testo e invia. A gruppi di ${NOMEET_GROUP} per non finire nello spam; ogni contatto del gruppo risulta con la presentazione mandata oggi.</div>
+      <div class="seg-btns">${groups.map((g, i)=>{ const sent = nmSent.has(g.map(x=>x.c.id).join(',')); return `<button class="btn ${sent ? 'secondary ' : ''}small" data-nm-group="${i}">${sent ? '✓ ' : ''}${groups.length > 1 ? 'Gruppo '+(i+1)+' · ' : ''}${g.length} ${g.length===1 ? 'destinatario' : 'destinatari'}</button>`; }).join('')}
+        <button class="btn secondary small" id="nmCopyBtn">Copia indirizzi</button></div>`
+      : `<div class="fc-note">Nessun contatto con l'email nell'elenco qui sotto.</div>`}
+  </div>
+  <div class="card" id="nmList">${rows || '<div class="empty">Nessun contatto.</div>'}</div>`;
+}
+function bindNm(main){
+  main.querySelector('#nmBackBtn')?.addEventListener('click', ()=>{ view = 'contactsList'; setActiveTab('navContacts'); renderMain(); });
+  main.querySelectorAll('[data-nm-filter]').forEach(b=>b.addEventListener('click', ()=>{ nmFilter = b.dataset.nmFilter; renderMain(); }));
+  const s = main.querySelector('#nmSearch');
+  s?.addEventListener('input', ()=>{ nmQ = s.value; const pos = s.selectionStart; renderMain(); const n = document.getElementById('nmSearch'); if(n){ n.focus(); n.setSelectionRange(pos, pos); } });
+  main.querySelectorAll('[data-nm-group]').forEach(b=>b.addEventListener('click', ()=>{
+    const g = nmGroups(nmList())[+b.dataset.nmGroup]; if(!g) return;
+    const m = mailPres();
+    if(!m.firma){ showNotice('Per la mail di presentazione manca la tua firma: inseriscila in <strong>Impostazioni → Mail di presentazione</strong>. <button class="btn secondary small" id="noticeClose">Chiudi</button>'); return; }
+    const copied = copyMailPres(), canCopy = !!(navigator.clipboard && typeof ClipboardItem!=='undefined');
+    const body = mailPresText().replace(/\*\*/g, '');
+    const q = [['bcc', g.map(x=>x.c.email).join(';')], ['subject', m.oggetto], ['body', canCopy ? '' : body]].filter(x=>x[1]).map(([k, v])=>k+'='+encodeURIComponent(v)).join('&');
+    window.open('https://outlook.office.com/mail/deeplink/compose?' + q, '_blank', 'noopener');
+    nmSent.add(g.map(x=>x.c.id).join(','));
+    copied.then(()=>showNotice(`Outlook aperto con <strong>${g.length}</strong> indirizzi in Ccn e testo <strong>copiato con il grassetto</strong>: nel corpo fai <strong>Incolla</strong> (Ctrl+V), poi Invia. <button class="btn secondary small" id="noticeClose">Chiudi</button>`))
+      .catch(()=>{ if(canCopy) showNotice('Non sono riuscito a copiare il testo: riprova, oppure usa il testo da Impostazioni → Mail di presentazione. <button class="btn secondary small" id="noticeClose">Chiudi</button>'); });
+    g.forEach(x=>logPresentationMail(x.c, m.oggetto));
+    renderMain();
+  }));
+  main.querySelector('#nmCopyBtn')?.addEventListener('click', ()=>{
+    const mails = nmList().filter(x=>x.c.email).map(x=>x.c.email).join('; ');
+    (navigator.clipboard ? navigator.clipboard.writeText(mails) : Promise.reject())
+      .then(()=>showNotice('Indirizzi copiati: incollali nel campo <strong>Ccn</strong> della mail. <button class="btn secondary small" id="noticeClose">Chiudi</button>'))
+      .catch(()=>alert(mails));
+  });
 }
 
 // ---------------------------------------------------------------------------
