@@ -500,7 +500,11 @@ Campi principali:
   contatti accesi senza attivita' Incontro e senza `appuntamento` su nessuna chiamata. Filtri `nmFilter` (noPres =
   con email e senza mail di presentazione da `contactMails`; email; all) e ricerca `nmQ`. "Mail a tutti": gruppi da
   `NOMEET_GROUP` (30) con email, Outlook deeplink con `bcc` (separati da ;), oggetto e testo come la mail singola
-  (`copyMailPres`), poi `logPresentationMail` per ognuno; "Copia indirizzi". Righe con `mailPresBtn`.
+  (`copyMailPres`); `nmPending` chiede "Hai inviato?" e solo con "Si', inviata" `logPresentationMail` per ognuno
+  (2026-11-03, dopo un gruppo segnato senza invio). "Presentazioni segnate in blocco" (`nmClusters`: mail di
+  presentazione degli ultimi 14 giorni a <=10 s l'una dall'altra, gruppi da 2 in su) con "Togli le segnature"
+  (`nmUndo`: cancella le mail e rimette mailInviataIl vuoto sulle mail informative chiuse lo stesso giorno).
+  "Copia indirizzi". Righe con `mailPresBtn`.
 - **Fasi del progetto: conferma della data** (2026-11-02): accanto a ogni data di fase un pulsante `[data-phase-ok]`
   ("Conferma", su Offerta presentata "Consegnata") compare quando la data scritta non e' ancora salvata e la salva
   subito. Dopo ogni salvataggio di fase (pulsante, timer o blur) `renderMain()` esplicito: prima canAutoRender lo

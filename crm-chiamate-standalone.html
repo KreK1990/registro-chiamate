@@ -6706,11 +6706,27 @@ function segMeetCardHtml(k){
 // appuntamenti fissati (passati o futuri). Filtri: presentazione mai mandata (con email) / con email / tutti;
 // ricerca. "Mail a tutti" divide i destinatari con email (filtro attuale) in gruppi da NOMEET_GROUP e apre
 // Outlook con gli indirizzi in Ccn (nessuno vede gli altri), oggetto e testo della mail di presentazione
-// (testo formattato copiato negli appunti come per la mail singola); ogni contatto del gruppo aperto si
-// annota con una mail di presentazione (logPresentationMail). "Copia indirizzi" copia gli indirizzi con ";".
+// (testo formattato copiato negli appunti come per la mail singola); solo dopo "Si', inviata" ogni contatto del
+// gruppo si annota con una mail di presentazione (logPresentationMail). "Copia indirizzi" copia gli indirizzi con ";".
+// "Segnate in blocco": mail di presentazione degli ultimi 14 giorni registrate a pochi secondi l'una dall'altra
+// (gruppi da 2 in su): "Togli" le cancella e riapre le mail informative che avevano chiuso (mailInviataIl).
 // ---------------------------------------------------------------------------
 const NOMEET_GROUP = 30;
-let nmFilter = 'noPres', nmQ = '', nmSent = new Set();   // nmSent: gruppi gia' aperti in questa sessione
+let nmFilter = 'noPres', nmQ = '', nmSent = new Set();   // nmSent: gruppi gia' segnati in questa sessione
+let nmPending = null, nmUndoAsk = null;   // nmPending: gruppo aperto in Outlook in attesa di conferma {key, ids, n}
+function nmClusters(){
+  const from = addDaysISO(todayISO(), -14);
+  const list = calls.filter(k=>isMailAct(k) && k.sottotipo==='presentazione' && (k.data||'') >= from && k.createdAt).sort((a,b)=>a.createdAt - b.createdAt);
+  const out = [];
+  list.forEach(k=>{ const g = out[out.length - 1]; if(g && k.createdAt - g[g.length - 1].createdAt <= 10000) g.push(k); else out.push([k]); });
+  return out.filter(g=>g.length >= 2).reverse();
+}
+async function nmUndo(g){
+  for(const m of g){
+    await db.collection('calls').doc(m.id).delete();
+    for(const k of calls.filter(x=>x.contactId===m.contactId && x.mailDaInviare && x.mailInviataIl===m.data)) await db.collection('calls').doc(k.id).update({ mailInviataIl: '' });
+  }
+}
 function neverMet(){
   const met = new Set(calls.filter(k=>isMeet(k) || k.appuntamento).map(k=>k.contactId));
   return contacts.filter(c=>!isOff(c) && !met.has(c.id));
@@ -6750,10 +6766,20 @@ function nmView(){
   <div class="card">
     <h3>Mail di presentazione a tutti (${nGroup})</h3>
     ${groups.length ? `<div class="fc-note" style="margin-bottom:8px;">Si apre Outlook con gli indirizzi in <strong>Ccn</strong> (nessuno vede gli altri), oggetto e testo della mail di presentazione: incolla il testo e invia. A gruppi di ${NOMEET_GROUP} per non finire nello spam; ogni contatto del gruppo risulta con la presentazione mandata oggi.</div>
+      ${nmPending ? `<div class="seg-act" style="margin-bottom:8px;"><strong>Hai inviato la mail ai ${nmPending.n} destinatari?</strong>
+        <div class="seg-btns" style="margin-top:6px;"><button class="btn small" id="nmPendYes">Sì, inviata: segna i contatti</button><button class="btn secondary small" id="nmPendNo">No, non l'ho inviata</button></div></div>` : ''}
       <div class="seg-btns">${groups.map((g, i)=>{ const sent = nmSent.has(g.map(x=>x.c.id).join(',')); return `<button class="btn ${sent ? 'secondary ' : ''}small" data-nm-group="${i}">${sent ? '✓ ' : ''}${groups.length > 1 ? 'Gruppo '+(i+1)+' · ' : ''}${g.length} ${g.length===1 ? 'destinatario' : 'destinatari'}</button>`; }).join('')}
         <button class="btn secondary small" id="nmCopyBtn">Copia indirizzi</button></div>`
       : `<div class="fc-note">Nessun contatto con l'email nell'elenco qui sotto.</div>`}
   </div>
+  ${(()=>{ const cl = nmClusters(); if(!cl.length) return '';
+    const byId = Object.fromEntries(contacts.map(c=>[c.id, c]));
+    return `<div class="card"><h3>Presentazioni segnate in blocco</h3>
+      <div class="fc-note" style="margin-bottom:6px;">Se un gruppo è stato segnato ma la mail non l'hai inviata, togli le segnature: i contatti tornano tra "Presentazione mai mandata".</div>
+      ${cl.map((g, i)=>{ const names = g.slice(0, 3).map(m=>byId[m.contactId] ? fullName(byId[m.contactId]) : '').filter(Boolean).join(', ');
+        return `<div class="todo-row"><div class="todo-main">${fmtDate(g[0].data)} alle ${esc(g[0].ora || '')} · <strong>${g.length} contatti</strong><div class="todo-sub">${esc(names)}${g.length > 3 ? ' e altri '+(g.length - 3) : ''}</div></div>
+          <div class="nm-act">${nmUndoAsk===i ? `<span class="seg-del-q">Togliere ${g.length} segnature?</span><button class="btn small" style="background:var(--danger);color:#fff;" data-nm-undo-yes="${i}">Sì, togli</button><button class="btn secondary small" data-nm-undo-no>No</button>` : `<button class="btn secondary small" data-nm-undo="${i}">Togli le segnature</button>`}</div></div>`; }).join('')}
+    </div>`; })()}
   <div class="card" id="nmList">${rows || '<div class="empty">Nessun contatto.</div>'}</div>`;
 }
 function bindNm(main){
@@ -6769,12 +6795,26 @@ function bindNm(main){
     const body = mailPresText().replace(/\*\*/g, '');
     const q = [['bcc', g.map(x=>x.c.email).join(';')], ['subject', m.oggetto], ['body', canCopy ? '' : body]].filter(x=>x[1]).map(([k, v])=>k+'='+encodeURIComponent(v)).join('&');
     window.open('https://outlook.office.com/mail/deeplink/compose?' + q, '_blank', 'noopener');
-    nmSent.add(g.map(x=>x.c.id).join(','));
-    copied.then(()=>showNotice(`Outlook aperto con <strong>${g.length}</strong> indirizzi in Ccn e testo <strong>copiato con il grassetto</strong>: nel corpo fai <strong>Incolla</strong> (Ctrl+V), poi Invia. <button class="btn secondary small" id="noticeClose">Chiudi</button>`))
+    nmPending = { key: g.map(x=>x.c.id).join(','), ids: g.map(x=>x.c.id), n: g.length };
+    copied.then(()=>showNotice(`Outlook aperto con <strong>${g.length}</strong> indirizzi in Ccn e testo <strong>copiato con il grassetto</strong>: nel corpo fai <strong>Incolla</strong> (Ctrl+V), poi Invia. Torna qui e conferma l'invio. <button class="btn secondary small" id="noticeClose">Chiudi</button>`))
       .catch(()=>{ if(canCopy) showNotice('Non sono riuscito a copiare il testo: riprova, oppure usa il testo da Impostazioni → Mail di presentazione. <button class="btn secondary small" id="noticeClose">Chiudi</button>'); });
-    g.forEach(x=>logPresentationMail(x.c, m.oggetto));
     renderMain();
   }));
+  main.querySelector('#nmPendYes')?.addEventListener('click', async e=>{
+    const p = nmPending; if(!p) return; e.target.disabled = true;
+    const m = mailPres();
+    for(const id of p.ids){ const c = contacts.find(x=>x.id===id); if(c) await logPresentationMail(c, m.oggetto); }
+    nmSent.add(p.key); nmPending = null; renderMain();
+  });
+  main.querySelector('#nmPendNo')?.addEventListener('click', ()=>{ nmPending = null; renderMain(); });
+  main.querySelectorAll('[data-nm-undo]').forEach(b=>b.addEventListener('click', ()=>{ nmUndoAsk = +b.dataset.nmUndo; renderMain(); }));
+  main.querySelector('[data-nm-undo-no]')?.addEventListener('click', ()=>{ nmUndoAsk = null; renderMain(); });
+  main.querySelector('[data-nm-undo-yes]')?.addEventListener('click', async e=>{
+    const g = nmClusters()[+e.target.dataset.nmUndoYes]; nmUndoAsk = null; if(!g) return renderMain();
+    e.target.disabled = true;
+    try{ await nmUndo(g); }catch(err){ alert('Errore: '+(err.message||err.code||'')); }
+    renderMain();
+  });
   main.querySelector('#nmCopyBtn')?.addEventListener('click', ()=>{
     const mails = nmList().filter(x=>x.c.email).map(x=>x.c.email).join('; ');
     (navigator.clipboard ? navigator.clipboard.writeText(mails) : Promise.reject())

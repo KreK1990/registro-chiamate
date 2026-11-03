@@ -1385,12 +1385,25 @@ await test('mai incontrati: elenco, filtri, mail di presentazione a tutti in Ccn
   const bcc = u.searchParams.get('bcc') || '';
   expect(u.hostname === 'outlook.office.com' && bcc.includes('anna@zeta.it') && bcc.includes('bruno@zorzi.it') && !u.searchParams.get('to'), 'Ccn: ' + pop.url());
   await pop.close();
+  // aperta e chiusa senza inviare: "No" non segna niente
+  expect(!(await page.evaluate(() => window.__fake.docs('calls').some(m => ['nm1', 'nm2'].includes(m.contactId) && m.sottotipo === 'presentazione'))), 'segnati prima della conferma');
+  await page.click('#nmPendNo');
+  expect(!(await page.$('#nmPendYes')), 'conferma ancora aperta');
+  const [pop2] = await Promise.all([page.waitForEvent('popup'), page.click('[data-nm-group="0"]')]);
+  await pop2.close();
+  await page.click('#nmPendYes');
   await page.waitForFunction(() => ['nm1', 'nm2'].every(id => window.__fake.docs('calls').some(m => m.contactId === id && m.sottotipo === 'presentazione')));
   await settle(page);
   txt = await page.textContent('#nmList');
   expect(!txt.includes('Zeta') && !txt.includes('Zorzi'), 'dopo la mail restano tra "mai mandata": ' + txt.slice(0, 200));
   await page.click('[data-nm-filter="email"]');
   expect((await page.textContent('#nmList')).includes('presentazione mandata il'), 'data della presentazione non mostrata');
+  // segnate per sbaglio: "Togli le segnature" del blocco
+  await page.click('[data-nm-undo="0"]');
+  await page.click('[data-nm-undo-yes="0"]');
+  await page.waitForFunction(() => !window.__fake.docs('calls').some(m => ['nm1', 'nm2'].includes(m.contactId) && m.sottotipo === 'presentazione'));
+  await page.click('[data-nm-filter="noPres"]');
+  expect((await page.textContent('#nmList')).includes('Zorzi'), 'dopo "Togli" non torna tra mai mandata');
   await page.evaluate(() => {
     window.__fake.docs('calls').filter(m => ['nm1', 'nm2', 'nm3'].includes(m.contactId)).forEach(m => db.collection('calls').doc(m.id).delete());
     ['nm1', 'nm2', 'nm3'].forEach(id => db.collection('contacts').doc(id).delete());
