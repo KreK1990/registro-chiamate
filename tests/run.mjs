@@ -1404,6 +1404,17 @@ await test('mai incontrati: elenco, filtri, mail di presentazione a tutti in Ccn
   await page.waitForFunction(() => !window.__fake.docs('calls').some(m => ['nm1', 'nm2'].includes(m.contactId) && m.sottotipo === 'presentazione'));
   await page.click('[data-nm-filter="noPres"]');
   expect((await page.textContent('#nmList')).includes('Zorzi'), 'dopo "Togli" non torna tra mai mandata');
+  // tolto a mano dall'elenco e poi rimesso
+  await page.click('[data-nm-excl="nm2"]');
+  await page.waitForFunction(() => !neverMet().some(c => c.id === 'nm2'));
+  await settle(page);
+  expect(!(await page.textContent('#nmList')).includes('Zorzi'), 'tolto dall\'elenco ma ancora presente');
+  await page.click('[data-nm-filter="excl"]');
+  expect((await page.textContent('#nmList')).includes('Zorzi'), 'non compare tra i tolti');
+  await page.click('[data-nm-back="nm2"]');
+  await page.waitForFunction(() => neverMet().some(c => c.id === 'nm2'));
+  await page.click('[data-nm-filter="noPres"]');
+  expect((await page.textContent('#nmList')).includes('Zorzi'), 'rimesso ma non torna in elenco');
   await page.evaluate(() => {
     window.__fake.docs('calls').filter(m => ['nm1', 'nm2', 'nm3'].includes(m.contactId)).forEach(m => db.collection('calls').doc(m.id).delete());
     ['nm1', 'nm2', 'nm3'].forEach(id => db.collection('contacts').doc(id).delete());

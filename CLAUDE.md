@@ -504,7 +504,8 @@ Campi principali:
   (2026-11-03, dopo un gruppo segnato senza invio). "Presentazioni segnate in blocco" (`nmClusters`: mail di
   presentazione degli ultimi 14 giorni a <=10 s l'una dall'altra, gruppi da 2 in su) con "Togli le segnature"
   (`nmUndo`: cancella le mail e rimette mailInviataIl vuoto sulle mail informative chiuse lo stesso giorno).
-  "Copia indirizzi". Righe con `mailPresBtn`.
+  "Copia indirizzi". Righe con `mailPresBtn` e "Togli dall'elenco" (`data-nm-excl`: `nmEscluso` = data sul contatto,
+  2026-11-03; `neverMet(true)` li elenca nel filtro `excl` "Tolti dall'elenco (N)" con "Rimetti in elenco").
 - **Fasi del progetto: conferma della data** (2026-11-02): accanto a ogni data di fase un pulsante `[data-phase-ok]`
   ("Conferma", su Offerta presentata "Consegnata") compare quando la data scritta non e' ancora salvata e la salva
   subito. Dopo ogni salvataggio di fase (pulsante, timer o blur) `renderMain()` esplicito: prima canAutoRender lo

@@ -6708,6 +6708,8 @@ function segMeetCardHtml(k){
 // Outlook con gli indirizzi in Ccn (nessuno vede gli altri), oggetto e testo della mail di presentazione
 // (testo formattato copiato negli appunti come per la mail singola); solo dopo "Si', inviata" ogni contatto del
 // gruppo si annota con una mail di presentazione (logPresentationMail). "Copia indirizzi" copia gli indirizzi con ";".
+// "Togli dall'elenco" sulla riga (nmEscluso = data) toglie a mano chi non interessa incontrare; il filtro
+// "Tolti dall'elenco" li mostra con "Rimetti in elenco".
 // "Segnate in blocco": mail di presentazione degli ultimi 14 giorni registrate a pochi secondi l'una dall'altra
 // (gruppi da 2 in su): "Togli" le cancella e riapre le mail informative che avevano chiuso (mailInviataIl).
 // ---------------------------------------------------------------------------
@@ -6727,14 +6729,14 @@ async function nmUndo(g){
     for(const k of calls.filter(x=>x.contactId===m.contactId && x.mailDaInviare && x.mailInviataIl===m.data)) await db.collection('calls').doc(k.id).update({ mailInviataIl: '' });
   }
 }
-function neverMet(){
+function neverMet(excl){   // excl: quelli tolti a mano dall'elenco (nmEscluso)
   const met = new Set(calls.filter(k=>isMeet(k) || k.appuntamento).map(k=>k.contactId));
-  return contacts.filter(c=>!isOff(c) && !met.has(c.id));
+  return contacts.filter(c=>!isOff(c) && !met.has(c.id) && (excl ? c.nmEscluso : !c.nmEscluso));
 }
 function nmList(){
   const q = normName(nmQ.trim()).split(/\s+/).filter(Boolean);
-  return neverMet().map(c=>({ c, a: lastActivities(c.id), pres: contactMails(c.id).find(m=>m.sottotipo==='presentazione') || null }))
-    .filter(x=>nmFilter==='all' || (x.c.email && (nmFilter==='email' || !x.pres)))
+  return neverMet(nmFilter==='excl').map(c=>({ c, a: lastActivities(c.id), pres: contactMails(c.id).find(m=>m.sottotipo==='presentazione') || null }))
+    .filter(x=>nmFilter==='all' || nmFilter==='excl' || (x.c.email && (nmFilter==='email' || !x.pres)))
     .filter(x=>{ if(!q.length) return true; const hay = normName([fullName(x.c), x.c.azienda, x.c.professione, x.c.citta, x.c.email].join(' ')); return q.every(w=>hay.includes(w)); })
     .sort((a,b)=>(a.c.cognome||a.c.nome||'').localeCompare(b.c.cognome||b.c.nome||''));
 }
@@ -6753,14 +6755,14 @@ function nmView(){
     return `<div class="todo-row nm-row"><div class="todo-main">
       <span class="name-link" data-contact-id="${c.id}">${esc(fullName(c))}</span>${c.professione || c.azienda ? `<span class="fc-addr"> · ${esc([c.professione, c.azienda].filter(Boolean).join(' · '))}</span>` : ''}
       <div class="todo-sub">${c.email ? esc(c.email) : '<span style="color:var(--danger);">senza email</span>'} · ${last}${x.pres ? ` · <strong>presentazione mandata il ${fmtDate(x.pres.data)}</strong>` : ''}</div>
-    </div><div class="nm-act">${mailPresBtn(c)}</div></div>`;
+    </div><div class="nm-act">${nmFilter==='excl' ? `<button class="btn secondary small" data-nm-back="${c.id}">Rimetti in elenco</button>` : `${mailPresBtn(c)}<button class="btn secondary small" data-nm-excl="${c.id}" title="Non mi interessa incontrarlo: toglilo da questo elenco">Togli dall'elenco</button>`}</div></div>`;
   }).join('');
   const nGroup = groups.reduce((s, g)=>s+g.length, 0);
   return `<button class="btn secondary small" id="nmBackBtn">← Contatti</button>
   <div class="card" style="margin-top:12px;">
     <h3>Mai incontrati (${all.length})</h3>
     <div class="fc-note">Contatti con cui non hai ancora fatto né fissato un incontro${nMail < all.length ? ` · ${nMail} con l'email` : ''}.</div>
-    <div class="seg-btns" style="margin:10px 0;">${pill('noPres', 'Presentazione mai mandata')}${pill('email', 'Con email')}${pill('all', 'Tutti')}</div>
+    <div class="seg-btns" style="margin:10px 0;">${pill('noPres', 'Presentazione mai mandata')}${pill('email', 'Con email')}${pill('all', 'Tutti')}${(()=>{ const n = neverMet(true).length; return n || nmFilter==='excl' ? pill('excl', 'Tolti dall\'elenco ('+n+')') : ''; })()}</div>
     <input id="nmSearch" value="${esc(nmQ)}" placeholder="Cerca nome, studio, professione, città..." autocomplete="off">
   </div>
   <div class="card">
@@ -6785,6 +6787,11 @@ function nmView(){
 function bindNm(main){
   main.querySelector('#nmBackBtn')?.addEventListener('click', ()=>{ view = 'contactsList'; setActiveTab('navContacts'); renderMain(); });
   main.querySelectorAll('[data-nm-filter]').forEach(b=>b.addEventListener('click', ()=>{ nmFilter = b.dataset.nmFilter; renderMain(); }));
+  main.querySelectorAll('[data-nm-excl],[data-nm-back]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id = b.dataset.nmExcl || b.dataset.nmBack; b.disabled = true;
+    try{ await db.collection('contacts').doc(id).update({ nmEscluso: b.dataset.nmExcl ? todayISO() : null }); renderMain(); }
+    catch(e){ b.disabled = false; alert('Non sono riuscito a salvare: ' + e.message); }
+  }));
   const s = main.querySelector('#nmSearch');
   s?.addEventListener('input', ()=>{ nmQ = s.value; const pos = s.selectionStart; renderMain(); const n = document.getElementById('nmSearch'); if(n){ n.focus(); n.setSelectionRange(pos, pos); } });
   main.querySelectorAll('[data-nm-group]').forEach(b=>b.addEventListener('click', ()=>{
