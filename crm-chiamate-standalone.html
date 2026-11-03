@@ -4528,13 +4528,27 @@ document.addEventListener('click', e=>{ if(e.target.closest('[data-nav-back]')){
 
 // ---------------------------------------------------------------------------
 // Schede dentro l'app
-// Clic con la rotellina (o Ctrl/Cmd+clic) su un cliente o un progetto: si apre una nuova scheda nella barra sopra
-// la schermata (#appTabBar), con la sua cronologia "Torna indietro"; la colonna di sinistra resta la stessa e il
-// menu lavora nella scheda attiva. Le schede ricordano schermata, cronologia e scorrimento; con una sola scheda la
-// barra sparisce. Rotellina o × su una scheda la chiude.
+// Clic con la rotellina (o Ctrl/Cmd+clic) su qualcosa che porta a un'altra schermata: si apre una nuova scheda nella
+// barra sopra la schermata (#appTabBar), con la sua cronologia "Torna indietro"; la colonna di sinistra resta la
+// stessa e il menu lavora nella scheda attiva. Clienti e progetti si aprono direttamente; per il resto (voci del
+// menu, righe e schede cliccabili, pulsanti "← ...") si esegue il clic normale e, se la schermata e' cambiata, la
+// nuova diventa una scheda e la vecchia resta com'era. Pulsanti d'azione (Salva, Elimina...) e campi: niente.
+// Le schede ricordano schermata, cronologia e scorrimento; con una sola scheda la barra sparisce. Rotellina o ×
+// su una scheda la chiude.
 const TAB_CONTACT_ATTRS = ['contactId', 'contactOpen', 'openContact', 'mailContactId', 'mapContact', 'segContact'];
 const TAB_PROJECT_ATTRS = ['openProject', 'projectId', 'mapProject'];
 let appTabs = [], appTabCur = 0;   // vuoto = una sola schermata, niente barra
+const tabNavSel = ()=>[...NAV_TABS.map(id=>'#'+id), '[data-nav-back]', '[data-appt-call-id]', '[data-fu-id]', '[data-seg-goto]', '[data-go-forecast]'].join(',');
+const TAB_NAV_BTN = /BackBtn$|^(dupsBtn|giftBtn|ordToDeliveries|portalBtn|segBtn)$/;
+// elemento che porta (forse) a un'altra schermata: voce del menu, attributo noto, pulsante "←", riga cliccabile
+function tabNavEl(el){
+  if(!el || !el.closest || el.closest('input, select, textarea, label, a[href], summary, [contenteditable], .app-tabs, .fold-head, .planner')) return null;
+  const known = el.closest(tabNavSel()); if(known) return known;
+  const b = el.closest('button');
+  if(b) return /^\s*←/.test(b.textContent) || TAB_NAV_BTN.test(b.id || '') ? b : null;
+  for(let n = el; n && n !== document.body && n.id !== 'main'; n = n.parentElement) if(getComputedStyle(n).cursor==='pointer') return n;
+  return null;
+}
 function tabTargetOf(el){
   const sel = [...TAB_CONTACT_ATTRS, ...TAB_PROJECT_ATTRS].map(a=>'[data-'+a.replace(/[A-Z]/g, m=>'-'+m.toLowerCase())+']').join(',');
   const t = el && el.closest && el.closest(sel); if(!t) return null;
@@ -4545,7 +4559,7 @@ function tabTargetOf(el){
   for(const a of TAB_PROJECT_ATTRS) if(t.dataset[a] && projects.some(p=>p.id===t.dataset[a])) return { kind: 'p', id: t.dataset[a] };
   return null;
 }
-function tabSnap(){ const main = document.getElementById('main'); return { cur: navCur, stack: navStack, scroll: main ? main.scrollTop : 0, tab: navActiveTab() }; }
+function tabSnap(){ const main = document.getElementById('main'); return { cur: navCur, stack: [...navStack], scroll: main ? main.scrollTop : 0, tab: navActiveTab() }; }
 function tabRestore(t){
   navStack = t.stack || []; navCur = null;
   if(t.cur) navApply(t.cur.s);
@@ -4558,7 +4572,8 @@ function tabRestore(t){
   updateNavBack();
 }
 function tabOpen(e){
-  const tg = tabTargetOf(e.target); if(!tg) return;
+  const tg = tabTargetOf(e.target);
+  if(!tg){ tabProbe(e); return; }
   e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
   if(!appTabs.length) appTabs = [tabSnap()]; else appTabs[appTabCur] = tabSnap();
   appTabs.push(null); appTabCur = appTabs.length - 1;
@@ -4567,6 +4582,17 @@ function tabOpen(e){
   if(tg.kind==='c'){ selectedId = tg.id; view = 'detail'; setActiveTab('navContacts'); renderMain(); }
   else openProject(tg.id);
   document.getElementById('main').scrollTop = 0;
+  updateNavBack();
+}
+function tabProbe(e){
+  const el = tabNavEl(e.target); if(!el) return;
+  e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  const snap = tabSnap(), key0 = navCur ? navCur.key : '';
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+  if(!navCur || navCur.key === key0) return;   // nessuna schermata nuova: era solo un clic
+  if(!appTabs.length) appTabs = [snap]; else appTabs[appTabCur] = snap;
+  appTabs.push(null); appTabCur = appTabs.length - 1;
+  navStack = [];
   updateNavBack();
 }
 function tabSwitch(i){
@@ -4594,7 +4620,7 @@ function renderTabBar(){
     return `<div class="app-tab${i===appTabCur ? ' on' : ''}" data-app-tab="${i}" title="${esc(label)}"><span class="app-tab-l">${esc(label)}</span><button class="app-tab-x" data-app-tab-close="${i}" title="Chiudi scheda">×</button></div>`;
   }).join('');
 }
-document.addEventListener('mousedown', e=>{ if(e.button===1 && (tabTargetOf(e.target) || e.target.closest('[data-app-tab]'))) e.preventDefault(); }, true);   // niente scorrimento automatico
+document.addEventListener('mousedown', e=>{ if(e.button===1 && (tabTargetOf(e.target) || tabNavEl(e.target) || e.target.closest('[data-app-tab]'))) e.preventDefault(); }, true);   // niente scorrimento automatico
 document.addEventListener('auxclick', e=>{
   if(e.button!==1) return;
   const t = e.target.closest('[data-app-tab]'); if(t){ e.preventDefault(); tabClose(+t.dataset.appTab); return; }

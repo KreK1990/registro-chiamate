@@ -1271,6 +1271,27 @@ await test('rotellina o Ctrl+clic: cliente e progetto in una scheda dentro l\'ap
   await page.click('#appTabBar .app-tab >> nth=1', { button: 'middle' });
   s = await st();
   expect(s.n === 0 && s.hidden && s.view === 'projects', 'una sola scheda: ' + JSON.stringify(s));
+  // voce del menu con la rotellina: Follow-up in una scheda, la lista progetti resta (sul telefono il menu e' nascosto: evento diretto)
+  const mid = sel => page.evaluate(s => { const el = document.querySelector(s); el.dispatchEvent(new MouseEvent('mousedown', { button: 1, bubbles: true, cancelable: true })); el.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true })); }, sel);
+  await mid('#navFollowup');
+  s = await st();
+  expect(s.view === 'followup' && s.n === 2 && s.on.includes('Follow-up'), 'menu in una scheda: ' + JSON.stringify(s));
+  await page.click('#appTabBar .app-tab >> nth=0');
+  expect((await st()).view === 'projects', 'la scheda dei progetti e\' cambiata');
+  // pulsante d'azione: niente scheda e niente azione
+  await show_(page, 'detail', "selectedId='c1'; confirmDeleteId=null; tableDetailCallId=null; editingCallId=null");
+  const nCalls = await page.evaluate(() => window.__fake.docs('calls').length);
+  await mid('#saveCallBtn');
+  s = await st();
+  expect(s.n === 2 && s.view === 'detail' && await page.evaluate(() => window.__fake.docs('calls').length) === nCalls, 'la rotellina su Salva ha fatto qualcosa: ' + JSON.stringify(s));
+  // il "← Progetti" del progetto
+  await page.evaluate(() => { const t = appTabs.length; for (let i = t - 1; i >= 0; i--) if (i !== appTabCur) tabClose(i); });
+  await page.evaluate(id => openProject(id), pid);
+  await mid('#projBackBtn');
+  s = await st();
+  expect(s.view === 'projects' && s.n === 2, '← Progetti in una scheda: ' + JSON.stringify(s));
+  await page.evaluate(() => { for (let i = appTabs.length - 1; i >= 0; i--) if (i !== appTabCur) tabClose(i); });
+  await show_(page, 'agenda');
 });
 
 await test('appuntamento fissato: luogo dell\'incontro, proposta la sede del cliente', async () => {

@@ -306,6 +306,11 @@ Campi principali:
   barra sparisce. Etichette da `navLabel`, ridisegnate da `updateNavBack`. Cambiare scheda ridisegna: un modulo
   aperto non salvato si perde (come con Torna indietro). Un nuovo attributo che apre un cliente/progetto va
   aggiunto a quelle liste. Link e pulsanti dentro la riga restano loro.
+  Tutto il resto che porta a una schermata (2026-11-03): `tabProbe` -> `tabNavEl` sceglie voci del menu e attributi
+  noti (`tabNavSel`: NAV_TABS, data-nav-back, -appt-call-id, -fu-id, -seg-goto, -go-forecast), pulsanti "←..." o con id
+  in `TAB_NAV_BTN`, altrimenti il primo antenato con cursor:pointer (no campi, link, summary, .fold-head, .planner,
+  altri pulsanti). Esegue il clic normale: se navCur.key cambia, la schermata nuova diventa una scheda e la vecchia
+  (`tabSnap` prima del clic, pila copiata) resta nella sua. Pulsanti d'azione: niente.
 - **Riquadri di Oggi richiudibili** (blocco "Riquadri di Oggi richiudibili e barra del portale che ricompare
   risalendo", 2026-10-14): `foldTodayCards` dopo il disegno di Oggi rende ogni `.card` figlia di #main con un h3
   apribile/chiudibile toccando il titolo (freccia `.fold-head`, `.folded` nasconde tutto tranne il primo figlio);
