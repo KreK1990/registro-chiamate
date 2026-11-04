@@ -521,6 +521,9 @@ Campi principali:
   nel modulo "+ Follow-up" (`data-fu-plus`) e, con `fuQuickHtml(dateId, timeId)`, sotto il follow-up dei moduli
   call/qc/ec (`data-fu-quick`, ascoltatore su document): data da oggi, ora 09:00 se vuota, evento input (spegne la
   proposta automatica di bindAutoFollowUp).
+- **Esito "Appuntamento fissato"** (2026-11-04): ascoltatore `change` su document per `#(call|qc|ec)Esito`: mette da
+  sola la spunta `#<prefisso>ApptCheck` (`data-auto`), mostra data e ora e apre il calendario (`showPicker`); un altro
+  esito toglie la spunta messa cosi' se la data e' ancora vuota.
 - **Luogo dell'incontro** (2026-11-02): con "Appuntamento fissato" i moduli call/qc/ec hanno `#<prefisso>ApptPlace`
   (`apptPlaceFieldHtml`), proposto con la sede del cliente. Si salva `luogoAppt` sulla chiamata solo se diverso dalla
   sede (`apptPlaceRead`, confronto con geoKey; vuoto = sede). `apptPlace(k, c)` / `apptMapsUrl` / `apptAddrHtml` /

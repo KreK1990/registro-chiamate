@@ -1304,7 +1304,12 @@ await test('rotellina o Ctrl+clic: cliente e progetto in una scheda dentro l\'ap
 await test('appuntamento fissato: luogo dell\'incontro, proposta la sede del cliente', async () => {
   const fissa = async (nota, luogo) => {
     await show_(page, 'detail', "selectedId='c1'; confirmDeleteId=null; tableDetailCallId=null");
-    await page.check('#callApptCheck');
+    // l'esito "Appuntamento fissato" mette da solo la spunta e apre data e ora; un altro esito la toglie
+    await page.selectOption('#callEsito', 'Appuntamento fissato');
+    expect(await page.isChecked('#callApptCheck') && await page.isVisible('#callApptDate'), 'esito non apre l\'appuntamento');
+    await page.selectOption('#callEsito', 'Interessato');
+    expect(!(await page.isChecked('#callApptCheck')), 'cambiando esito la spunta resta');
+    await page.selectOption('#callEsito', 'Appuntamento fissato');
     expect(await page.inputValue('#callApptPlace') === 'Via Roma 1, Torino', 'sede non proposta: ' + await page.inputValue('#callApptPlace'));
     await page.fill('#callApptDate', daysAgo(-6));
     await page.selectOption('#callApptTime', '15:00');

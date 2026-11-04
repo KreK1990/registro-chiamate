@@ -3033,6 +3033,19 @@ function bindContactOff(c){
     catch(err){ e.target.disabled = false; fail(err); }
   });
 }
+// Esito "Appuntamento fissato" (moduli call/qc/ec, 2026-11-04): spunta da sola "Appuntamento fissato", apre data e ora e
+// porta al calendario; cambiando esito si toglie la spunta messa cosi' se la data e' ancora vuota.
+document.addEventListener('change', e=>{
+  const m = /^(call|qc|ec)Esito$/.exec(e.target.id || ''); if(!m) return;
+  const chk = document.getElementById(m[1]+'ApptCheck'), date = document.getElementById(m[1]+'ApptDate'); if(!chk) return;
+  if(e.target.value==='Appuntamento fissato'){
+    if(chk.checked) return;
+    chk.checked = true; chk.dataset.auto = '1'; chk.dispatchEvent(new Event('change', { bubbles:true }));
+    if(date){ date.scrollIntoView({ block: 'center', behavior: 'smooth' }); date.focus({ preventScroll: true }); try{ date.showPicker(); }catch(_){} }
+  } else if(chk.checked && chk.dataset.auto && !(date && date.value)){
+    chk.checked = false; delete chk.dataset.auto; chk.dispatchEvent(new Event('change', { bubbles:true }));
+  }
+});
 function bindAutoFollowUp(esitoId, dateId, timeId, callDateId){
   const es = document.getElementById(esitoId), d = document.getElementById(dateId), t = document.getElementById(timeId);
   if(!es || !d || !t || !d.closest('.field-row')) return;
