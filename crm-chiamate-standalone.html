@@ -163,6 +163,7 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .seg-mini{font-size:14px;padding:3px 0;}
 .seg-meet{margin:2px 0 8px;padding:8px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);}
 .seg-in-meet{margin-top:12px;}
+mark.hl{background:#fff176;color:#1a1a1a;border-radius:2px;padding:0 1px;}
 .nm-row .nm-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .seg-meet-row{margin:8px 0;padding:10px;border:1px solid var(--border-strong);border-radius:2px;}
 .seg-meet-row textarea{min-height:50px;}
@@ -1315,7 +1316,7 @@ function renderMain(){
   updateMapReturnBtn();
   if(view!=='map') stopMyPosition();
   if(view!=='rete') stopReteGraph();
-  queueMicrotask(()=>{ mountPlanners(); mountTrips(); mountZoneMap(); });   // agende per pianificare nei moduli appena disegnati
+  queueMicrotask(()=>{ mountPlanners(); mountTrips(); mountZoneMap(); hlSearch(); });   // agende per pianificare nei moduli appena disegnati
   if(tableDetailCallId){ main.innerHTML = tableDetailView(); bindTableDetail(); return; }
   if(view==='deliveries'){ main.innerHTML = deliveriesView(); bindDeliveries(); return; }
   if(view==='sop'){ main.innerHTML = sopFormView(); bindSopForm(); return; }
@@ -6700,6 +6701,42 @@ function segMeetCardHtml(k){
     ${mine.length ? '' : '<div class="fc-note">Nessun cantiere segnalato in questo incontro.</div>'}
     <div style="margin-top:8px;"><button class="btn secondary small" data-seg-new-meet="${k.id}">+ Cantiere segnalato</button></div></div>`;
 }
+
+// ---------------------------------------------------------------------------
+// Parole cercate evidenziate: dopo ogni disegno di #main (renderMain) e a ogni battuta in un campo di ricerca
+// (HL_SEARCH_IDS, anche quelli che ridisegnano solo l'elenco) le parole del campo vengono evidenziate in giallo
+// (<mark class="hl">) nei testi della schermata, senza badare a maiuscole e accenti. Le parole di 1-3 lettere
+// solo all'inizio di una parola ("ne", "con"), le altre anche a meta'. Si rifa' da zero ogni volta.
+// ---------------------------------------------------------------------------
+const HL_SEARCH_IDS = ['apptSearch', 'tableSearchInput', 'contactsSearch', 'projSearch', 'segSearch', 'nmSearch', 'pfQ', 'reteQ'];
+const hlFold = ch=>{ const n = ch.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /^[a-z0-9]$/.test(n[0] || '') ? n[0] : ' '; };
+function hlSearch(){
+  const main = document.getElementById('main'); if(!main) return;
+  main.querySelectorAll('mark.hl').forEach(m=>m.replaceWith(document.createTextNode(m.textContent)));
+  main.normalize();
+  const inp = HL_SEARCH_IDS.map(id=>main.querySelector('#'+id)).find(x=>x && x.value.trim());
+  const words = inp ? normName(inp.value).split(' ').filter(Boolean) : [];
+  if(!words.length) return;
+  const walk = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, { acceptNode: n=>
+    !n.nodeValue.trim() || n.parentElement.closest('input,textarea,select,option,script,style,button,.app-tabs,.hl-skip') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+  const nodes = []; while(walk.nextNode()) nodes.push(walk.currentNode);
+  nodes.forEach(n=>{
+    const s = n.nodeValue, f = Array.from(s, hlFold).join('');
+    if(f.length !== s.length) return;   // caratteri doppi (emoji): lascia stare
+    const hit = new Array(s.length).fill(false);
+    words.forEach(w=>{ for(let i = f.indexOf(w); i >= 0; i = f.indexOf(w, i + 1)) if(w.length >= 4 || i===0 || f[i - 1]===' ') hit.fill(true, i, i + w.length); });
+    if(!hit.includes(true)) return;
+    const frag = document.createDocumentFragment();
+    for(let i = 0; i < s.length;){
+      let j = i; while(j < s.length && hit[j]===hit[i]) j++;
+      if(hit[i]){ const m = document.createElement('mark'); m.className = 'hl'; m.textContent = s.slice(i, j); frag.appendChild(m); }
+      else frag.appendChild(document.createTextNode(s.slice(i, j)));
+      i = j;
+    }
+    n.replaceWith(frag);
+  });
+}
+document.addEventListener('input', e=>{ if(HL_SEARCH_IDS.includes(e.target.id)) setTimeout(hlSearch, e.target.id==='pfQ' || e.target.id==='reteQ' ? 450 : 0); });
 
 // ---------------------------------------------------------------------------
 // Mai incontrati (Contatti -> "Mai incontrati"): contatti accesi senza nessun incontro registrato e senza

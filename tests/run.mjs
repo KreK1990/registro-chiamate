@@ -1358,6 +1358,23 @@ await test('fasi del progetto: data scritta -> Consegnata/Conferma la fissa e la
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
 });
 
+await test('ricerca: parole cercate evidenziate nel testo', async () => {
+  await page.evaluate(d => window.__fake.put('calls', 'hlk1', { contactId: 'c1', tipo: 'incontro', data: d, ora: '10:00', esito: '', note: "Ieri incontrava l'Ing Mosso e ne parlava con lui. Città di Bergamo", createdAt: 5 }), daysAgo(2));
+  await page.waitForFunction(() => calls.some(k => k.id === 'hlk1'));
+  await show_(page, 'appt', "apptSubView='done'; apptSearch=''");
+  await page.fill('#apptSearch', 'ne parla con citta');
+  await page.waitForFunction(() => document.querySelectorAll('#main mark.hl').length >= 4);
+  const marks = await page.evaluate(() => [...document.querySelectorAll('#main mark.hl')].map(m => m.textContent));
+  expect(marks.includes('ne') && marks.includes('parla') && marks.includes('con') && marks.includes('Città'), 'evidenziate: ' + marks.join('|'));
+  expect(!marks.some(m => m === 'ne' && false) && !(await page.evaluate(() => [...document.querySelectorAll('#main mark.hl')].some(m => m.parentElement.closest('button,input')))), 'evidenziato dentro un pulsante');
+  // "con" non a inizio parola ("incontrava") non va evidenziato
+  expect(!(await page.evaluate(() => [...document.querySelectorAll('#main mark.hl')].some(m => /^con$/i.test(m.textContent) && /[a-z]$/i.test(m.previousSibling?.textContent || '')))), '"con" evidenziato a metà parola');
+  await page.fill('#apptSearch', '');
+  await page.waitForFunction(() => !document.querySelector('#main mark.hl'));
+  await page.evaluate(() => { db.collection('calls').doc('hlk1').delete(); apptSearch = ''; });
+  await show_(page, 'agenda');
+});
+
 await test('mai incontrati: elenco, filtri, mail di presentazione a tutti in Ccn', async () => {
   await page.evaluate(d => {
     window.__fake.put('contacts', 'nm1', { nome: 'Anna', cognome: 'Zeta', professione: 'Architetto', email: 'anna@zeta.it' });
