@@ -163,6 +163,8 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .seg-mini{font-size:14px;padding:3px 0;}
 .seg-meet{margin:2px 0 8px;padding:8px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);}
 .seg-in-meet{margin-top:12px;}
+.fu-move{flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:10px;}
+.fu-move .fu-form{flex:1 1 100%;}
 mark.hl{background:#fff176;color:#1a1a1a;border-radius:2px;padding:0 1px;}
 .nm-row .nm-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .seg-meet-row{margin:8px 0;padding:10px;border:1px solid var(--border-strong);border-radius:2px;}
@@ -6230,7 +6232,17 @@ function fuButtonHtml(c){
 function bindFuForm(main, contactOf){
   main.querySelector('#fuOpenBtn')?.addEventListener('click', ()=>{ fuEdit = { where: 'detail', contactId: selectedId }; renderMain(); document.getElementById('fuDate')?.focus(); });
   main.querySelector('#fuAddBtn')?.addEventListener('click', ()=>{ fuEdit = { where: 'list', contactId: null }; renderMain(); document.getElementById('fuWho')?.focus(); });
-  main.querySelectorAll('[data-fu-edit]').forEach(b=>b.addEventListener('click', ()=>{ fuEdit = { where: 'list', contactId: b.dataset.fuEdit }; renderMain(); }));
+  main.querySelectorAll('[data-fu-edit]').forEach(b=>b.addEventListener('click', ()=>{ fuEdit = fuEdit && fuEdit.contactId===b.dataset.fuEdit ? null : { where: 'list', contactId: b.dataset.fuEdit, step: 'quick' }; renderMain(); }));
+  // "Sposta" sulla riga: scorciatoie che salvano subito (da oggi, stessa ora), "Altra data…" apre il modulo nella riga
+  main.querySelectorAll('[data-fu-move]').forEach(b=>b.addEventListener('click', async ()=>{
+    const c = contacts.find(x=>x.id===fuEdit?.contactId); if(!c) return;
+    const t = (c.followUp && splitDT(c.followUp).time) || '09:00';
+    b.disabled = true;
+    try{ await db.collection('contacts').doc(c.id).update({ followUp: `${addDaysISO(todayISO(), +b.dataset.fuMove)}T${t}`, followUpSetAt: Date.now() }); fuEdit = null; renderMain(); }
+    catch(e){ b.disabled = false; alert('Non salvato: '+(e.message || e.code || '')); }
+  }));
+  main.querySelector('[data-fu-move-other]')?.addEventListener('click', ()=>{ fuEdit.step = 'form'; renderMain(); document.getElementById('fuDate')?.focus(); });
+  main.querySelector('[data-fu-move-cancel]')?.addEventListener('click', ()=>{ fuEdit = null; renderMain(); });
   const form = main.querySelector('#fuForm'); if(!form) return;
   const err = t=>{ form.querySelector('#fuErr').textContent = t; };
   form.querySelectorAll('[data-fu-plus]').forEach(b=>b.addEventListener('click', ()=>{ form.querySelector('#fuDate').value = addDaysISO(todayISO(), +b.dataset.fuPlus); }));
@@ -10312,7 +10324,7 @@ function followupView(){
       <h2 style="margin:0;">Follow-up da effettuare (${withFU.length})</h2>
       ${fuEdit && fuEdit.where==='list' ? '' : '<button class="btn small" id="fuAddBtn">+ Aggiungi follow-up</button>'}
     </div>
-    ${fuEdit && fuEdit.where==='list' ? `<div class="card"><h3>${fuEdit.contactId ? 'Sposta il follow-up di '+esc(fullName(contacts.find(x=>x.id===fuEdit.contactId) || {})) : 'Nuovo follow-up'}</h3>${fuFormHtml(fuEdit.contactId ? contacts.find(x=>x.id===fuEdit.contactId) : null)}</div>` : ''}`;
+    ${fuEdit && fuEdit.where==='list' && !fuEdit.contactId ? `<div class="card"><h3>Nuovo follow-up</h3>${fuFormHtml(null)}</div>` : ''}`;
   if(withFU.length===0) return head + '<div class="empty">Nessun follow-up programmato al momento.</div>';
   const groups = {};
   withFU.forEach(c=>{
@@ -10338,6 +10350,8 @@ function followupView(){
           <button class="btn secondary small" data-fu-edit="${c.id}">Sposta</button>
           <button class="btn small" data-fu-id="${c.id}">Follow-up effettuato</button>
         </div>
+        ${fuEdit && fuEdit.where==='list' && fuEdit.contactId===c.id ? `<div class="fu-move">${fuEdit.step==='form' ? fuFormHtml(c)
+          : `<strong>Sposta a:</strong> ${FU_QUICK.map(([d,l])=>`<button type="button" class="btn small" data-fu-move="${d}">${l}</button>`).join('')}<button type="button" class="btn secondary small" data-fu-move-other>Altra data…</button><button type="button" class="btn secondary small" data-fu-move-cancel>Annulla</button>`}</div>` : ''}
       </div>`;
     }).join('');
     return `<div class="day-group">

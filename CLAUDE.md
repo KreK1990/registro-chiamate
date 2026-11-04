@@ -74,6 +74,9 @@ Campi principali:
   conserva quello esistente) ma con "+ Follow-up" / "Modifica follow-up" nella scheda del contatto e "+ Aggiungi
   follow-up" (contatto da datalist) e "Sposta" nella pagina Follow-up; modulo comune `fuFormHtml` (data, ora,
   scorciatoie domani/+1 sett/+2 sett/+1 mese, "Togli il follow-up"), stato `fuEdit`, scrive followUp e followUpSetAt.
+  2026-11-04: "Sposta" apre le scelte nella riga stessa (`.fu-move`, `fuEdit.step` quick|form): Domani / +1 sett / +2 sett /
+  +1 mese salvano subito da oggi con la stessa ora (`data-fu-move`), "Altra data…" apre `fuFormHtml` nella riga; prima il
+  modulo compariva in cima alla pagina e, scorrendo in basso, sembrava che il pulsante non facesse nulla.
   Restano i campi follow-up nella registrazione di un'attivita'.
   **Contatto spento** (blocco "Contatti spenti e nuovo tentativo con chi non ha risposto"):
   "Spegni contatto" nella scheda (motivi `SPENTO_MOTIVI`: attivita' cessata, pensione, deceduto,

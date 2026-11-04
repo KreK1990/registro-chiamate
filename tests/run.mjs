@@ -1190,8 +1190,15 @@ await test('follow-up: dalla scheda del contatto e dalla pagina Follow-up, non d
   await page.click('#fuSaveBtn');
   await page.waitForFunction(d => (window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).followUp === d + 'T15:00', daysAgo(-3));
   await page.evaluate(() => renderMain());
+  // "Sposta" nella riga: "Tra una settimana" salva subito da oggi
   await page.click('[data-fu-edit="c3"]');
-  await page.click('#fuClearBtn');
+  expect(!!(await page.$('.fu-move [data-fu-move="7"]')), 'scelte di Sposta non nella riga');
+  await page.click('[data-fu-move="7"]');
+  await page.waitForFunction(d => ((window.__fake.docs('contacts').find(c => c.id === 'c3') || {}).followUp || '').startsWith(d + 'T'), daysAgo(-7));
+  await page.evaluate(() => renderMain());
+  await page.click('[data-fu-edit="c3"]');
+  await page.click('[data-fu-move-other]');
+  await page.click('.fu-move #fuClearBtn');
   await page.waitForFunction(() => !(window.__fake.docs('contacts').find(c => c.id === 'c3') || {}).followUp);
   expect(!(await c3fu()), 'follow-up non tolto');
 });
