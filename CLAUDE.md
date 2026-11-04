@@ -526,7 +526,8 @@ Campi principali:
   sede (`apptPlaceRead`, confronto con geoKey; vuoto = sede). `apptPlace(k, c)` / `apptMapsUrl` / `apptAddrHtml` /
   `apptPoint` lo usano: invito Outlook (location e "presso ..." al posto di "presso i vostri uffici"), .ics del
   client e `netlify/functions/calendar.js`, agenda per pianificare, "Suggerisci quando" (legge anche il campo del
-  modulo aperto), elenco appuntamenti, righe del giorno e dettaglio attivita'.
+  modulo aperto), elenco appuntamenti, righe del giorno e dettaglio attivita'. Calendario settimanale (2026-11-04): sotto il nome
+  `.appt-chip-addr` con `apptPlace` (sopralluoghi: `sopAddr` se diverso dal titolo), per capire a colpo d'occhio la zona.
 - **Invito Outlook** (blocco "Invito Outlook"): pulsante "Invia invito Outlook" sugli
   appuntamenti futuri (elenco Appuntamenti, dettaglio della chiamata) e proposta nella barra in
   alto dopo aver fissato un appuntamento (solo versione online, `offerOutlookInvite`). Apre il

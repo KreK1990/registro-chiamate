@@ -1328,7 +1328,11 @@ await test('appuntamento fissato: luogo dell\'incontro, proposta la sede del cli
   // si rivede nella modifica dell'attivita'
   await show_(page, 'table', `tableDetailCallId='${a.id}'; editingCallId='${a.id}'`);
   expect(await page.inputValue('#ecApptPlace') === 'Via Garibaldi 5, Collegno', 'luogo non riproposto in modifica');
-  await show_(page, 'agenda', 'tableDetailCallId=null; editingCallId=null');
+  // calendario settimanale: indirizzo dell'incontro sotto il nome
+  await show_(page, 'appt', `tableDetailCallId=null; editingCallId=null; apptSubView='calendar'; apptSearch=''; apptWeekOffset=Math.round((new Date('${daysAgo(-6)}T12:00:00') - new Date()) / 864e5) >= 7 - ((new Date().getDay() + 6) % 7) ? 1 : 0`);
+  const chips = await page.evaluate(ids => ids.map(id => (document.querySelector(`.appt-chip[data-appt-call-id="${id}"] .appt-chip-addr`) || {}).textContent), [a.id, b.id]);
+  expect(chips[0] === 'Via Garibaldi 5, Collegno' && chips[1] === 'Via Roma 1, Torino', 'indirizzo nel calendario: ' + JSON.stringify(chips));
+  await show_(page, 'agenda', 'tableDetailCallId=null; editingCallId=null; apptWeekOffset=0');
   await page.evaluate(ids => ids.forEach(id => db.collection('calls').doc(id).delete()), [a.id, b.id]);
 });
 
