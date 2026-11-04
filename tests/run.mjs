@@ -1391,6 +1391,27 @@ await test('ricerca: parole cercate evidenziate nel testo', async () => {
   await show_(page, 'agenda');
 });
 
+await test('portale: "Crea contatto" in una scheda nuova, salvando si resta nel contatto', async () => {
+  const open = () => page.evaluate(() => {
+    window.__editing = { nome: 'Piero', cognome: 'Portalino', professione: 'Architetto', azienda: '', via: '', citta: 'Sangano', cellulare: '', telefono: '', email: '', note: 'Dal portale' };
+    window.__returnToPortal = tabNewAfterCur(); view = 'new'; setActiveTab('navContacts'); renderMain(); updateNavBack();
+  });
+  await show_(page, 'portal');
+  // Annulla: si chiude la scheda e si torna al portale
+  await open();
+  expect(await page.evaluate(() => appTabs.length === 2 && appTabCur === 1), 'scheda nuova non aperta');
+  await page.click('#cancelBtn');
+  expect(await page.evaluate(() => view === 'portal' && appTabs.length === 0), 'Annulla non torna al portale');
+  // Salva: resta nella scheda del contatto nuovo, il portale nell'altra
+  await open();
+  await page.click('#saveContactBtn');
+  await page.waitForFunction(() => view === 'detail' && contacts.some(c => c.id === selectedId && c.cognome === 'Portalino'));
+  expect(await page.evaluate(() => appTabs.length === 2 && appTabCur === 1 && appTabs[0].cur.s.view === 'portal'), 'portale non nella sua scheda');
+  expect((await page.textContent('#appTabBar')).includes('Portalino'), 'scheda senza il nome del contatto');
+  await page.evaluate(() => { tabClose(1); const c = contacts.find(x => x.cognome === 'Portalino'); if (c) db.collection('contacts').doc(c.id).delete(); });
+  await show_(page, 'agenda');
+});
+
 await test('mai incontrati: elenco, filtri, mail di presentazione a tutti in Ccn', async () => {
   await page.evaluate(d => {
     window.__fake.put('contacts', 'nm1', { nome: 'Anna', cognome: 'Zeta', professione: 'Architetto', email: 'anna@zeta.it' });

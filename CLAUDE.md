@@ -644,7 +644,10 @@ Campi principali:
   nella scheda progetto il riquadro "NII Progetti" (`projectPortalCardHtml`) elenca le schede
   collegate con dati, "Apri scheda", "Scollega" e avviso se collegate anche ad altri progetti; sul
   cantiere compaiono tutti i progetti collegati (`portalProjectsOf`), ognuno con Apri/Scollega. "Crea contatto" / "Crea progetto" aprono i moduli
-  precompilati (`__returnToPortal`, `projects.portaleId`).
+  precompilati (`__returnToPortal`, `projects.portaleId`). Dal 2026-11-04 "Crea contatto" apre il modulo in una SCHEDA NUOVA
+  (`tabNewAfterCur`, subito dopo quella del portale, che resta com'e'; `__returnToPortal` = indice di partenza + 1):
+  salvando si resta nel contatto nuovo (per registrare la telefonata e l'appuntamento), Annulla chiude la scheda e
+  torna al portale (`tabCloseTo`). `saveContact` aspetta (max 3 s) che il contatto nuovo arrivi in `contacts`.
 - `importBatch` (contatti e chiamate): presente sui record creati da "Importa incontri
   (Excel)" (Appuntamenti), serve ad annullare quell'importazione. L'importazione legge
   .xlsx con SheetJS (caricato da cdnjs solo al bisogno), associa le colonne per titolo,

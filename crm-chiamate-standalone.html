@@ -4508,6 +4508,7 @@ function navLabel(e){
   if(s.view==='call' && s.callStep==='entry' && c(s.selectedId)) return 'Attività con '+fullName(c(s.selectedId));
   if(s.view==='projectDetail' && p(s.selectedProjectId)) return p(s.selectedProjectId).nome || 'Progetto';
   if(s.view==='portal') return 'Cantieri dal portale';
+  if(s.view==='new') return 'Nuovo contatto';
   if(s.view==='sop') return 'Sopralluogo';
   if(s.view==='dups') return 'Possibili doppioni';
   if(s.view==='regali') return 'Regali di Natale';
@@ -4616,6 +4617,25 @@ function tabProbe(e){
   appTabs.push(null); appTabCur = appTabs.length - 1;
   navStack = [];
   updateNavBack();
+}
+// Scheda nuova subito dopo quella attuale (che resta com'e'); ritorna l'indice di partenza + 1 (mai 0, si usa come flag).
+function tabNewAfterCur(){
+  const snap = tabSnap();
+  if(!appTabs.length){ appTabs = [snap]; appTabCur = 0; } else appTabs[appTabCur] = snap;
+  const from = appTabCur;
+  appTabs.splice(from + 1, 0, null); appTabCur = from + 1;
+  navStack = []; navCur = null;
+  return from + 1;
+}
+// Chiude la scheda i e torna alla scheda "to" (indice prima della chiusura).
+function tabCloseTo(i, to){
+  if(!appTabs[to] && to!==i){ tabClose(i); return; }
+  appTabs.splice(i, 1);
+  appTabCur = to > i ? to - 1 : to;
+  const t = appTabs[appTabCur];
+  if(appTabs.length < 2) appTabs = [];
+  if(t) tabRestore(t);
+  renderTabBar();
 }
 function tabSwitch(i){
   if(i===appTabCur || !appTabs[i]) return;
@@ -7703,7 +7723,9 @@ function bindPortal(){
       azienda: company, via: s.via || '', citta: (s.citta||'').replace(/^\d{5}\s+/, '').replace(/\s*\([A-Z]{2}\)\s*$/, ''),
       cellulare: /^3/.test(tel) ? formatPhone(tel) : '', telefono: /^3/.test(tel) ? '' : formatPhone(tel), email: (s.email||[])[0] || '',
       note: `Dal portale NII Progetti: ${p.titolo} (${p.comune}), ${s.ruolo || 'soggetto'}.` };
-    window.__returnToPortal = true; view = 'new'; setActiveTab('navContacts'); renderMain();
+    // in una scheda nuova (richiesta 2026-11-04): il portale resta nella sua; salvando si resta nel contatto nuovo
+    window.__returnToPortal = tabNewAfterCur(); view = 'new'; setActiveTab('navContacts'); renderMain();
+    document.getElementById('main').scrollTop = 0; updateNavBack();
   }));
   main.querySelectorAll('[data-portal-project]').forEach(b=>b.addEventListener('click', ()=>{
     const pid = b.dataset.portalProject, p = portalFindProject(pid); if(!p) return;
@@ -10885,7 +10907,7 @@ function bindNewForm(){
   document.getElementById('cancelBtn').addEventListener('click', ()=>{
     window.__editing=null;
     if(window.__returnToCall){ window.__returnToCall=false; view='call'; callStep='pick'; }
-    else if(window.__returnToPortal){ window.__returnToPortal=false; view='portal'; setActiveTab('navProjects'); }
+    else if(window.__returnToPortal){ const from = window.__returnToPortal - 1; window.__returnToPortal = false; tabCloseTo(appTabCur, from); return; }
     else{ view=selectedId?'detail':'contactsList'; }
     renderMain();
   });
@@ -10949,7 +10971,8 @@ async function saveContact(){
   }
   try{
     if(editing && editing.id){ await db.collection('contacts').doc(editing.id).update(data); selectedId = editing.id; }
-    else { const ref = await db.collection('contacts').add({...data, createdAt: Date.now()}); selectedId = ref.id; }
+    else { const ref = await db.collection('contacts').add({...data, createdAt: Date.now()}); selectedId = ref.id;
+      for(let i = 0; i < 30 && !contacts.some(x=>x.id===ref.id); i++) await new Promise(r=>setTimeout(r, 100)); }   // aspetta il contatto in tempo reale: senza, la scheda tornava all'elenco
     if(studio && window.__studioChoice==='all'){
       for(const m of studio.members){
         const upd = {};
@@ -10961,7 +10984,7 @@ async function saveContact(){
     window.__studioChoice = null;
     window.__editing=null;
     if(window.__returnToCall){ window.__returnToCall=false; view='call'; callStep='entry'; }
-    else if(window.__returnToPortal){ window.__returnToPortal=false; view='portal'; setActiveTab('navProjects'); }
+    else if(window.__returnToPortal){ window.__returnToPortal=false; view='detail'; confirmDeleteId=null; tableDetailCallId=null; setActiveTab('navContacts'); }
     else{ view='detail'; }
     renderMain();
   }catch(e){ alert('Errore nel salvataggio: '+(e.message||e.code||'')); }
