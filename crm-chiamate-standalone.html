@@ -165,6 +165,11 @@ h3{font-family:var(--serif);font-weight:700;font-size:18px;margin:0 0 12px;color
 .seg-in-meet{margin-top:12px;}
 .fu-move{flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:10px;}
 .fu-move .fu-form{flex:1 1 100%;}
+.avz-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding-bottom:6px;border-bottom:1px solid var(--border);}
+.avz-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;padding:12px 0;border-bottom:1px solid var(--border);}
+.avz-row:last-child{border-bottom:0;}
+.avz-note textarea{width:100%;min-height:64px;resize:vertical;}
+@media (max-width:720px){ .avz-head{display:none;} .avz-row{grid-template-columns:1fr;gap:8px;} }
 mark.hl{background:#fff176;color:#1a1a1a;border-radius:2px;padding:0 1px;}
 .nm-row .nm-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .seg-meet-row{margin:8px 0;padding:10px;border:1px solid var(--border-strong);border-radius:2px;}
@@ -1484,6 +1489,7 @@ function renderMain(){
   if(view==='regali'){ main.innerHTML = giftView(); bindGift(main); return; }
   if(view==='segnalati'){ main.innerHTML = segView(); bindSeg(main); return; }
   if(view==='noMeet'){ main.innerHTML = nmView(); bindNm(main); return; }
+  if(view==='avanz'){ main.innerHTML = avzView(); bindAvz(main); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
   if(view==='projectForm'){ main.innerHTML = projectFormView(); bindProjectForm(); return; }
@@ -4514,6 +4520,7 @@ function navLabel(e){
   if(s.view==='regali') return 'Regali di Natale';
   if(s.view==='segnalati') return 'Cantieri segnalati';
   if(s.view==='noMeet') return 'Mai incontrati';
+  if(s.view==='avanz') return 'Avanzamento progetti';
   if(s.view==='rete'){ const n = s.reteFocus && netCache && netCache.nodes.get(s.reteFocus); return n ? n.label : 'Rete di collaborazioni'; }
   const t = document.getElementById(e.tab || 'navAgenda');
   return t ? t.firstChild.textContent.trim() : 'Indietro';
@@ -4562,7 +4569,7 @@ const TAB_CONTACT_ATTRS = ['contactId', 'contactOpen', 'openContact', 'mailConta
 const TAB_PROJECT_ATTRS = ['openProject', 'projectId', 'mapProject'];
 let appTabs = [], appTabCur = 0;   // vuoto = una sola schermata, niente barra
 const tabNavSel = ()=>[...NAV_TABS.map(id=>'#'+id), '[data-nav-back]', '[data-appt-call-id]', '[data-fu-id]', '[data-seg-goto]', '[data-go-forecast]'].join(',');
-const TAB_NAV_BTN = /BackBtn$|^(dupsBtn|giftBtn|noMeetBtn|ordToDeliveries|portalBtn|segBtn)$/;
+const TAB_NAV_BTN = /BackBtn$|^(avzBtn|dupsBtn|giftBtn|noMeetBtn|ordToDeliveries|portalBtn|segBtn)$/;
 // elemento che porta (forse) a un'altra schermata: voce del menu, attributo noto, pulsante "←", riga cliccabile
 function tabNavEl(el){
   if(!el || !el.closest || el.closest('input, select, textarea, label, a[href], summary, [contenteditable], .app-tabs, .fold-head, .planner')) return null;
@@ -6754,7 +6761,7 @@ function segMeetCardHtml(k){
 // (<mark class="hl">) nei testi della schermata, senza badare a maiuscole e accenti. Le parole di 1-3 lettere
 // solo all'inizio di una parola ("ne", "con"), le altre anche a meta'. Si rifa' da zero ogni volta.
 // ---------------------------------------------------------------------------
-const HL_SEARCH_IDS = ['apptSearch', 'tableSearchInput', 'contactsSearch', 'projSearch', 'segSearch', 'nmSearch', 'pfQ', 'reteQ'];
+const HL_SEARCH_IDS = ['apptSearch', 'tableSearchInput', 'contactsSearch', 'projSearch', 'segSearch', 'nmSearch', 'pfQ', 'reteQ', 'avzSearch'];
 const hlFold = ch=>{ const n = ch.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /^[a-z0-9]$/.test(n[0] || '') ? n[0] : ' '; };
 function hlSearch(){
   const main = document.getElementById('main'); if(!main) return;
@@ -6783,6 +6790,72 @@ function hlSearch(){
   });
 }
 document.addEventListener('input', e=>{ if(HL_SEARCH_IDS.includes(e.target.id)) setTimeout(hlSearch, e.target.id==='pfQ' || e.target.id==='reteQ' ? 450 : 0); });
+
+// ---------------------------------------------------------------------------
+// Avanzamento progetti (Progetti -> "Avanzamento progetti", view 'avanz', richiesta dell'utente 2026-11-05): le commesse
+// aperte (non perse, non confermate) divise in "In attesa di conferma" (offerta presentata) e "In corso" (prima
+// dell'offerta), con ID, nome, indirizzo e figure come nell'elenco Progetti, fase attuale e una colonna di note
+// sull'avanzamento: `projects.avanzamento` {testo, il} (separato da `note` del progetto), salvato all'uscita dal
+// campo o dopo 1,5 s di pausa, senza ridisegnare la pagina. Ricerca `avzQ`.
+// ---------------------------------------------------------------------------
+let avzQ = '';
+function avzList(){
+  const q = normName(avzQ).split(' ').filter(Boolean), byId = Object.fromEntries(contacts.map(c=>[c.id, c]));
+  return projects.filter(p=>!isLost(p) && !isWon(p)).filter(p=>{
+    if(!q.length) return true;
+    const people = (p.partecipanti||[]).map(x=>{ const c = byId[x.contactId]; return c ? fullName(c)+' '+(c.azienda||'') : ''; });
+    const hay = normName([p.codice, p.nome, p.via, p.citta, (p.avanzamento||{}).testo, ...people].join(' '));
+    return q.every(w=>hay.includes(w));
+  }).sort(byProjectId);
+}
+function avzRowHtml(p, byId){
+  const people = (p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).map(fullName);
+  const a = p.avanzamento || {}, ph = projectPhase(p);
+  return `<div class="avz-row ${projectStateClass(p)}">
+    <div class="avz-proj">
+      <div class="proj-code">${esc(p.codice||'')}</div>
+      <div class="name-link" data-open-project="${p.id}" style="font-weight:600;font-size:15px;">${esc(p.nome || 'Progetto senza nome')}</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc([p.via, p.citta].filter(Boolean).join(', '))}${people.length ? `${p.via||p.citta ? ' · ' : ''}${esc(people.join(', '))}` : ''}</div>
+      <div style="margin-top:6px;">${phaseBadge(p)}${ph && p.fasi[ph.key] ? `<span class="fc-note"> dal ${fmtDate(p.fasi[ph.key])}</span>` : ''}${projectAmount(p) ? ` <strong style="font-size:13px;">${fmtEuro(projectAmount(p))}</strong>` : ''}</div>
+    </div>
+    <div class="avz-note">
+      <textarea data-avz-note="${p.id}" rows="3" placeholder="A che punto siamo, ultimi aggiornamenti da progettisti e clienti...">${esc(a.testo || '')}</textarea>
+      <div class="fc-note" data-avz-when="${p.id}">${a.il ? 'aggiornato il '+fmtDate(a.il) : ''}</div>
+    </div>
+  </div>`;
+}
+function avzView(){
+  const byId = Object.fromEntries(contacts.map(c=>[c.id, c])), list = avzList();
+  const waiting = list.filter(p=>phaseDone(p, 'offertaPresentata')), going = list.filter(p=>!phaseDone(p, 'offertaPresentata'));
+  const sec = (t, l)=>`<div class="card"><h3>${t} (${l.length})</h3>${l.length ? `<div class="avz-head"><span>Progetto</span><span>Note sull'avanzamento</span></div>${l.map(p=>avzRowHtml(p, byId)).join('')}` : '<div class="empty">Nessun progetto.</div>'}</div>`;
+  return `<button class="btn secondary small" id="avzBackBtn">← Progetti</button>
+  <div class="card" style="margin-top:12px;">
+    <h3>Avanzamento progetti</h3>
+    <div class="fc-note" style="margin-bottom:8px;">Le commesse aperte: scrivi a che punto siamo e gli ultimi riscontri. Si salva da solo.</div>
+    <input id="avzSearch" type="search" value="${esc(avzQ)}" placeholder="Cerca ID, nome, città, figure o parole nelle note..." autocomplete="off">
+  </div>
+  ${sec('In attesa di conferma', waiting)}
+  ${sec('In corso', going)}`;
+}
+function bindAvz(main){
+  main.querySelector('#avzBackBtn')?.addEventListener('click', ()=>{ view = 'projects'; setActiveTab('navProjects'); renderMain(); });
+  main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
+  const s = main.querySelector('#avzSearch');
+  s?.addEventListener('input', ()=>{ avzQ = s.value; const pos = s.selectionStart; renderMain(); const n = document.getElementById('avzSearch'); if(n){ n.focus(); n.setSelectionRange(pos, pos); } });
+  main.querySelectorAll('[data-avz-note]').forEach(t=>{
+    const id = t.dataset.avzNote; let timer = null;
+    const save = async ()=>{
+      clearTimeout(timer);
+      const p = projects.find(x=>x.id===id), v = t.value.trim();
+      if(!p || v===((p.avanzamento||{}).testo || '')) return;
+      const il = todayISO(), w = main.querySelector(`[data-avz-when="${id}"]`);
+      try{ await db.collection('projects').doc(id).update({ avanzamento: { testo: v, il }, updatedAt: Date.now() }); if(w) w.textContent = 'aggiornato il '+fmtDate(il); }
+      catch(e){ if(w) w.textContent = 'Non salvato: '+(e.message || e.code || ''); }
+    };
+    t.addEventListener('input', ()=>{ clearTimeout(timer); timer = setTimeout(save, 1500); });
+    t.addEventListener('blur', save);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Mai incontrati (Contatti -> "Mai incontrati"): contatti accesi senza nessun incontro registrato e senza
@@ -8677,6 +8750,7 @@ function projectsListView(){
         <button class="btn" id="newProjectBtn">+ Nuovo progetto</button>
         <button class="btn secondary" id="orderPdfBtn" title="Legge la conferma d'ordine e apre il progetto con l'ordine già compilato">Ordine da PDF</button>
         <button class="btn secondary" id="portalBtn" title="Analizza il PDF dei cantieri scaricato dal portale">Cantieri dal portale</button>
+        <button class="btn secondary" id="avzBtn" title="Commesse aperte con le note su a che punto siamo">Avanzamento progetti</button>
         <button class="btn secondary" id="segBtn" title="Lavori accennati dai clienti, non ancora progetti">Cantieri segnalati (${segnalazioni.filter(segOpen).length})</button>
       </div>
     </div>
@@ -8694,6 +8768,7 @@ function bindProjectsList(){
   document.getElementById('newProjectBtn').addEventListener('click', ()=>{ window.__editingProject = { partecipanti:[] }; view = 'projectForm'; renderMain(); });
   document.getElementById('orderPdfBtn').addEventListener('click', ()=>pickOrderPdf(null));
   document.getElementById('portalBtn').addEventListener('click', ()=>{ view='portal'; renderMain(); });
+  document.getElementById('avzBtn').addEventListener('click', ()=>{ view='avanz'; renderMain(); });
   document.getElementById('segBtn').addEventListener('click', ()=>{ segEdit = null; segAct = null; view='segnalati'; renderMain(); });
 }
 

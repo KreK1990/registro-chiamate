@@ -509,6 +509,11 @@ Campi principali:
   (`nmUndo`: cancella le mail e rimette mailInviataIl vuoto sulle mail informative chiuse lo stesso giorno).
   "Copia indirizzi". Righe con `mailPresBtn` e "Togli dall'elenco" (`data-nm-excl`: `nmEscluso` = data sul contatto,
   2026-11-03; `neverMet(true)` li elenca nel filtro `excl` "Tolti dall'elenco (N)" con "Rimetti in elenco").
+- **Avanzamento progetti** (Progetti -> "Avanzamento progetti", `view='avanz'`, blocco omonimo, 2026-11-05): commesse
+  aperte (non perse ne' confermate) in "In attesa di conferma" (offertaPresentata raggiunta) e "In corso"; righe a due
+  colonne (`.avz-row`: ID, nome, indirizzo, figure, fase e importo | note) con `projects.avanzamento` {testo, il},
+  separato da `note`, salvato all'uscita dal campo o dopo 1,5 s (aggiorna anche updatedAt), senza ridisegno. Ricerca `avzQ`
+  (anche nelle note, evidenziata).
 - **Parole cercate evidenziate** (2026-11-04): `hlSearch()` (nel queueMicrotask di renderMain e a ogni `input`
   nei campi `HL_SEARCH_IDS`, pfQ/reteQ dopo il loro ritardo) toglie i vecchi `mark.hl` e avvolge in `<mark class="hl">`
   le parole del campo di ricerca con un valore presenti nei testi di #main (no input, button, .hl-skip); confronto

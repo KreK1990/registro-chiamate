@@ -173,7 +173,7 @@ console.log('Registro Chiamate - controlli automatici');
 let { ctx, page } = await openApp();
 
 await test('tutte le pagine si aprono senza errori', async () => {
-  const views = ['agenda', 'contactsList', 'call', 'followup', 'appt', 'projects', 'map', 'forecast', 'table', 'dashboard', 'settings', 'portal', 'dups', 'new', 'import', 'projectForm', 'segnalati', 'noMeet'];
+  const views = ['agenda', 'contactsList', 'call', 'followup', 'appt', 'projects', 'map', 'forecast', 'table', 'dashboard', 'settings', 'portal', 'dups', 'new', 'import', 'projectForm', 'segnalati', 'noMeet', 'avanz'];
   for (const v of views) {
     const txt = await show_(page, v);
     await settle(page);
@@ -1409,6 +1409,30 @@ await test('portale: "Crea contatto" in una scheda nuova, salvando si resta nel 
   expect(await page.evaluate(() => appTabs.length === 2 && appTabCur === 1 && appTabs[0].cur.s.view === 'portal'), 'portale non nella sua scheda');
   expect((await page.textContent('#appTabBar')).includes('Portalino'), 'scheda senza il nome del contatto');
   await page.evaluate(() => { tabClose(1); const c = contacts.find(x => x.cognome === 'Portalino'); if (c) db.collection('contacts').doc(c.id).delete(); });
+  await show_(page, 'agenda');
+});
+
+await test('avanzamento progetti: aperti divisi per fase, note salvate da sole', async () => {
+  await page.evaluate(d => {
+    window.__fake.put('projects', 'av1', { codice: '4815528', nome: 'Palazzine vista mare', via: 'Via Aurelia', citta: 'Andora', partecipanti: [{ contactId: 'c1', ruolo: 'Committente' }], fasi: { richiesta: d, offertaPresentata: d } });
+    window.__fake.put('projects', 'av2', { codice: '4815529', nome: 'Villa in collina', citta: 'Pino', partecipanti: [], fasi: { richiesta: d } });
+    window.__fake.put('projects', 'av3', { codice: '4815530', nome: 'Commessa persa', partecipanti: [], fasi: { richiesta: d }, esito: 'persa', persaIl: d });
+  }, daysAgo(20));
+  await page.waitForFunction(() => ['av1', 'av2', 'av3'].every(id => projects.some(p => p.id === id)));
+  await show_(page, 'projects');
+  await page.evaluate(() => document.getElementById('avzBtn').click());
+  await settle(page);
+  const secs = await page.evaluate(() => [...document.querySelectorAll('#main .card')].map(c => c.innerText));
+  const wait = secs.find(t => t.startsWith('In attesa di conferma')) || '', going = secs.find(t => t.startsWith('In corso')) || '';
+  expect(wait.includes('Palazzine vista mare') && wait.includes('4815528') && wait.includes('Via Aurelia, Andora') && !wait.includes('Villa in collina'), 'in attesa: ' + wait.slice(0, 300));
+  expect(going.includes('Villa in collina') && !secs.join(' ').includes('Commessa persa'), 'in corso: ' + going.slice(0, 300));
+  await page.fill('[data-avz-note="av1"]', 'Il geom. aspetta i calcoli dello strutturista');
+  await page.click('#avzSearch');   // uscita dal campo = salvataggio
+  await page.waitForFunction(() => ((window.__fake.docs('projects').find(p => p.id === 'av1') || {}).avanzamento || {}).testo === 'Il geom. aspetta i calcoli dello strutturista');
+  expect((await page.textContent('[data-avz-when="av1"]')).includes('aggiornato il'), 'data dell\'aggiornamento non mostrata');
+  await page.fill('#avzSearch', 'strutturista');
+  await page.waitForFunction(() => !document.querySelector('[data-avz-note="av2"]') && !!document.querySelector('[data-avz-note="av1"]'));
+  await page.evaluate(() => { avzQ = ''; ['av1', 'av2', 'av3'].forEach(id => db.collection('projects').doc(id).delete()); });
   await show_(page, 'agenda');
 });
 
