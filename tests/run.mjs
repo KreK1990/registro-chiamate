@@ -716,6 +716,18 @@ await test('mail di presentazione: firma richiesta, poi Outlook con destinatario
   await page.fill('#mpFirma', 'Geom. Prova Test');
   await page.press('#mpFirma', 'Tab');
   await page.waitForFunction(() => (appSettings.mailPres || {}).firma === 'Geom. Prova Test');
+  // predefinita l'app di posta (mailto:, Outlook desktop)
+  await show_(page, 'detail', "selectedId='c1'");
+  await page.evaluate(() => { window.__mailto = []; mailGo = u => window.__mailto.push(u); });
+  await page.click('[data-mail-pres="c1"]');
+  const mt = await page.evaluate(() => window.__mailto[0] || '');
+  expect(mt.startsWith('mailto:mario%40studiorossi.it?subject=SCH%C3%96CK%20Isokorb'), 'app di posta: ' + mt);
+  expect((await page.textContent('[data-mail-pres-app="c1"]')).includes('Outlook web'), 'il link piccolo deve offrire Outlook web');
+  await page.evaluate(() => { const m = window.__fake.docs('calls').find(k => k.contactId === 'c1' && k.sottotipo === 'presentazione'); if (m) db.collection('calls').doc(m.id).delete(); });
+  // Outlook web scelto in Impostazioni
+  await show_(page, 'settings');
+  await page.selectOption('#mpApp', 'web');
+  await page.waitForFunction(() => (appSettings.mailPres || {}).app === 'web');
   await show_(page, 'detail', "selectedId='c1'");
   const [pop] = await Promise.all([page.waitForEvent('popup'), page.click('[data-mail-pres="c1"]')]);
   const u = new URL(pop.url());
@@ -1467,8 +1479,11 @@ await test('mai incontrati: elenco, filtri, mail di presentazione a tutti in Ccn
   expect(!(await page.evaluate(() => window.__fake.docs('calls').some(m => ['nm1', 'nm2'].includes(m.contactId) && m.sottotipo === 'presentazione'))), 'segnati prima della conferma');
   await page.click('#nmPendNo');
   expect(!(await page.$('#nmPendYes')), 'conferma ancora aperta');
-  const [pop2] = await Promise.all([page.waitForEvent('popup'), page.click('[data-nm-group="0"]')]);
-  await pop2.close();
+  // con l'app di posta: mailto: con gli indirizzi in Ccn separati da ;
+  await page.evaluate(() => { appSettings.mailPres = { ...appSettings.mailPres, app: 'app' }; window.__mailto = []; mailGo = u => window.__mailto.push(u); });
+  await page.click('[data-nm-group="0"]');
+  const mt = await page.evaluate(() => window.__mailto[0] || '');
+  expect(/^mailto:\?bcc=[^&]*anna%40zeta\.it;[^&]*bruno%40zorzi\.it|^mailto:\?bcc=[^&]*bruno%40zorzi\.it;[^&]*anna%40zeta\.it/.test(mt) && mt.includes('&subject=SCH%C3%96CK'), 'Ccn con l\'app: ' + mt);
   await page.click('#nmPendYes');
   await page.waitForFunction(() => ['nm1', 'nm2'].every(id => window.__fake.docs('calls').some(m => m.contactId === id && m.sottotipo === 'presentazione')));
   await settle(page);

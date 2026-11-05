@@ -228,6 +228,9 @@ Campi principali:
   <b>, <br>) + testo semplice con ClipboardItem (dentro il clic, per Safari) e Outlook/mailto si aprono con
   destinatario e oggetto senza corpo; l'utente incolla. Senza ClipboardItem: corpo in testo semplice nel link.
   Oggetto predefinito e grassetti presi dalla mail reale dell'utente (2026-10-12).
+  **App di posta** (2026-11-05, Outlook web non funzionava per l'utente): `settings.mailPres.app` (select `#mpApp` in
+  Impostazioni) 'app' predefinito = mailto: (`mailGo`, Outlook desktop se e' l'app predefinita di Windows), 'web' = deeplink;
+  il link piccolo accanto apre l'altro modo. Mai incontrati: con l'app `mailto:?bcc=a;b&subject=...`.
 - **Oggi → "Da fare"** (blocco "Da fare (in Oggi)", prima del Forecast): calcolato dai dati.
   Offerte da sollecitare (offertaPresentata raggiunta, non confermata ne' persa, da
   `promemoria.sollecito` giorni contati dall'ultimo `projects.sollecitatoIl` o dall'ultima telefonata/incontro collegati al progetto in `calls.progetti` (`linkedActivityDate`); per ogni offerta l'ultima telefonata e l'ultimo incontro con i partecipanti (`projectContactActivity`), con pulsante "Riguardava questa commessa" che aggiunge il progetto a `calls.progetti`); commesse ferme

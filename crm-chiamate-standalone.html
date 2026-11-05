@@ -3973,9 +3973,13 @@ function copyMailPres(){
     return navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([mailPresHtml(t)], { type:'text/html' }), 'text/plain': new Blob([t.replace(/\*\*/g, '')], { type:'text/plain' }) })]);
   }catch(e){ return Promise.reject(e); }
 }
+// Con cosa si apre la mail (settings.mailPres.app, 2026-11-05): 'app' (predefinito) = mailto:, cioe' l'app di posta del
+// computer (Outlook desktop se e' quella predefinita di Windows); 'web' = Outlook web. Il link piccolo apre l'altra.
+function mailUseWeb(){ return (appSettings.mailPres || {}).app==='web'; }
+function mailGo(url){ location.href = url; }   // sostituibile nei test
 function mailPresBtn(c){
   if(!c || !c.email) return '';
-  return `<button type="button" class="btn secondary small" data-mail-pres="${c.id}">Mail di presentazione</button><a href="#" class="addr-link mail-pres-alt" data-mail-pres-app="${c.id}">con l'app di posta</a>`;
+  return `<button type="button" class="btn secondary small" data-mail-pres="${c.id}">Mail di presentazione</button><a href="#" class="addr-link mail-pres-alt" data-mail-pres-app="${c.id}">${mailUseWeb() ? 'con l\'app di posta' : 'con Outlook web'}</a>`;
 }
 document.addEventListener('click', e=>{
   const b = e.target.closest && e.target.closest('[data-mail-pres], [data-mail-pres-app]');
@@ -3992,7 +3996,7 @@ document.addEventListener('click', e=>{
   const copied = copyMailPres();
   const canCopy = !!(navigator.clipboard && typeof ClipboardItem!=='undefined');
   const u = mailPresUrls(c, !canCopy);
-  if(b.dataset.mailPresApp) location.href = u.mailto; else window.open(u.outlook, '_blank', 'noopener');
+  if(b.dataset.mailPresApp ? mailUseWeb() : !mailUseWeb()) mailGo(u.mailto); else window.open(u.outlook, '_blank', 'noopener');
   copied.then(()=>showNotice('Testo della mail <strong>copiato con il grassetto</strong>: nel corpo della mail fai <strong>Incolla</strong> (Ctrl+V, o tieni premuto e Incolla), poi Invia. <button class="btn secondary small" id="noticeClose">Chiudi</button>'))
     .catch(()=>{ if(canCopy) showNotice('Non sono riuscito a copiare il testo: riprova, oppure usa il testo da Impostazioni → Mail di presentazione. <button class="btn secondary small" id="noticeClose">Chiudi</button>'); });
   logPresentationMail(c, mailPres().oggetto);
@@ -4002,6 +4006,8 @@ function mailPresSettingsHtml(){
   return `<div class="card">
     <h3>Mail di presentazione</h3>
     <div class="fc-note" style="margin-bottom:8px;">La mail che si apre con "Mail di presentazione" (scheda contatto e mail da inviare). <strong>{firma}</strong> nel testo viene sostituito con la firma; le parti tra <strong>**due asterischi**</strong> vanno in grassetto. Il testo formattato viene copiato: nella mail basta incollarlo.</div>
+    <label>Apri le mail con</label><select id="mpApp"><option value="app" ${mailUseWeb() ? '' : 'selected'}>App di posta del computer (Outlook desktop)</option><option value="web" ${mailUseWeb() ? 'selected' : ''}>Outlook web (nel browser)</option></select>
+    <div class="fc-note">Per l'app: Outlook deve essere l'app di posta predefinita di Windows (Impostazioni di Windows → App → App predefinite).</div>
     <label>Firma (nome e titolo)</label><input id="mpFirma" value="${esc(m.firma)}" placeholder="Es. Geom. Mario Rossi">
     <label>Oggetto</label><input id="mpOggetto" value="${esc(m.oggetto)}">
     <label>Testo</label><textarea id="mpTesto" rows="11">${esc(m.testo)}</textarea>
@@ -4010,6 +4016,7 @@ function mailPresSettingsHtml(){
 }
 function bindMailPresSettings(){
   const save = patch=>saveSettings({ mailPres: { ...(appSettings.mailPres || {}), ...patch } });
+  document.getElementById('mpApp')?.addEventListener('change', e=>save({ app: e.target.value }));
   document.getElementById('mpFirma')?.addEventListener('change', e=>save({ firma: e.target.value.trim() }));
   document.getElementById('mpOggetto')?.addEventListener('change', e=>save({ oggetto: e.target.value.trim() }));
   document.getElementById('mpTesto')?.addEventListener('change', e=>save({ testo: e.target.value }));
@@ -6923,7 +6930,7 @@ function nmView(){
   </div>
   <div class="card">
     <h3>Mail di presentazione a tutti (${nGroup})</h3>
-    ${groups.length ? `<div class="fc-note" style="margin-bottom:8px;">Si apre Outlook con gli indirizzi in <strong>Ccn</strong> (nessuno vede gli altri), oggetto e testo della mail di presentazione: incolla il testo e invia. A gruppi di ${NOMEET_GROUP} per non finire nello spam; ogni contatto del gruppo risulta con la presentazione mandata oggi.</div>
+    ${groups.length ? `<div class="fc-note" style="margin-bottom:8px;">Si apre la mail (app di posta o Outlook web, come scelto in Impostazioni) con gli indirizzi in <strong>Ccn</strong> (nessuno vede gli altri), oggetto e testo della mail di presentazione: incolla il testo e invia. A gruppi di ${NOMEET_GROUP} per non finire nello spam; ogni contatto del gruppo risulta con la presentazione mandata oggi.</div>
       ${nmPending ? `<div class="seg-act" style="margin-bottom:8px;"><strong>Hai inviato la mail ai ${nmPending.n} destinatari?</strong>
         <div class="seg-btns" style="margin-top:6px;"><button class="btn small" id="nmPendYes">Sì, inviata: segna i contatti</button><button class="btn secondary small" id="nmPendNo">No, non l'ho inviata</button></div></div>` : ''}
       <div class="seg-btns">${groups.map((g, i)=>{ const sent = nmSent.has(g.map(x=>x.c.id).join(',')); return `<button class="btn ${sent ? 'secondary ' : ''}small" data-nm-group="${i}">${sent ? '✓ ' : ''}${groups.length > 1 ? 'Gruppo '+(i+1)+' · ' : ''}${g.length} ${g.length===1 ? 'destinatario' : 'destinatari'}</button>`; }).join('')}
@@ -6957,9 +6964,10 @@ function bindNm(main){
     const copied = copyMailPres(), canCopy = !!(navigator.clipboard && typeof ClipboardItem!=='undefined');
     const body = mailPresText().replace(/\*\*/g, '');
     const q = [['bcc', g.map(x=>x.c.email).join(';')], ['subject', m.oggetto], ['body', canCopy ? '' : body]].filter(x=>x[1]).map(([k, v])=>k+'='+encodeURIComponent(v)).join('&');
-    window.open('https://outlook.office.com/mail/deeplink/compose?' + q, '_blank', 'noopener');
+    if(mailUseWeb()) window.open('https://outlook.office.com/mail/deeplink/compose?' + q, '_blank', 'noopener');
+    else mailGo('mailto:?bcc=' + g.map(x=>encodeURIComponent(x.c.email)).join(';') + '&subject=' + encodeURIComponent(m.oggetto) + (canCopy ? '' : '&body=' + encodeURIComponent(body)));
     nmPending = { key: g.map(x=>x.c.id).join(','), ids: g.map(x=>x.c.id), n: g.length };
-    copied.then(()=>showNotice(`Outlook aperto con <strong>${g.length}</strong> indirizzi in Ccn e testo <strong>copiato con il grassetto</strong>: nel corpo fai <strong>Incolla</strong> (Ctrl+V), poi Invia. Torna qui e conferma l'invio. <button class="btn secondary small" id="noticeClose">Chiudi</button>`))
+    copied.then(()=>showNotice(`Mail aperta con <strong>${g.length}</strong> indirizzi in Ccn e testo <strong>copiato con il grassetto</strong>: nel corpo fai <strong>Incolla</strong> (Ctrl+V), poi Invia. Torna qui e conferma l'invio. <button class="btn secondary small" id="noticeClose">Chiudi</button>`))
       .catch(()=>{ if(canCopy) showNotice('Non sono riuscito a copiare il testo: riprova, oppure usa il testo da Impostazioni → Mail di presentazione. <button class="btn secondary small" id="noticeClose">Chiudi</button>'); });
     renderMain();
   }));
