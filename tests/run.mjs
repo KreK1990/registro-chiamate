@@ -1442,8 +1442,14 @@ await test('avanzamento progetti: aperti divisi per fase, note salvate da sole',
   await page.click('#avzSearch');   // uscita dal campo = salvataggio
   await page.waitForFunction(() => ((window.__fake.docs('projects').find(p => p.id === 'av1') || {}).avanzamento || {}).testo === 'Il geom. aspetta i calcoli dello strutturista');
   expect((await page.textContent('[data-avz-when="av1"]')).includes('aggiornato il'), 'data dell\'aggiornamento non mostrata');
+  // probabilita', chiusura dell'ordine e avvio del cantiere
+  await page.fill('[data-avz-prob="av1"]', '70'); await page.press('[data-avz-prob="av1"]', 'Tab');
+  await page.fill('[data-avz-close="av1"]', '2027-02'); await page.press('[data-avz-close="av1"]', 'Tab');
+  await page.fill('[data-avz-start="av1"]', '2027-05'); await page.press('[data-avz-start="av1"]', 'Tab');
+  await page.waitForFunction(() => { const p = window.__fake.docs('projects').find(x => x.id === 'av1') || {}; return p.probabilita === 70 && p.chiusuraPrevista === '2027-02' && p.avvioCantiere === '2027-05'; });
   // PDF: stesso contenuto (note comprese), scaricato con il nome del giorno
   const rep = await page.evaluate(() => avzReportHtml());
+  expect(rep.includes('70%') && rep.includes('febbraio 2027') && rep.includes('maggio 2027') && rep.includes('Avvio cantiere'), 'probabilità/chiusura/avvio nel PDF');
   expect(rep.includes('Palazzine vista mare') && rep.includes('Il geom. aspetta i calcoli dello strutturista') && rep.includes('In attesa di conferma (') && rep.includes('Villa in collina') && !rep.includes('Commessa persa'), 'contenuto del PDF');
   if (await page.evaluate(() => !!window.html2pdf && !!window.html2pdf().save)) {
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#avzPdfBtn')]);

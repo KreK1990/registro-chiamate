@@ -653,7 +653,7 @@ body.foto-open{overflow:hidden;}
 .rep-row{display:grid;gap:0 12px;padding:5px 8px;border-bottom:1px solid var(--border);align-items:start;}
 .rep-open .rep-row{grid-template-columns:70px minmax(0,2fr) minmax(0,1.2fr) 105px 45px 105px minmax(0,1fr) minmax(0,1.3fr);}
 .rep-ship .rep-row{grid-template-columns:70px minmax(0,2.4fr) 115px 70px 115px minmax(0,1.6fr);}
-.rep-avz .rep-row{grid-template-columns:70px minmax(0,1.6fr) minmax(0,.9fr) 95px minmax(0,2.4fr);}
+.rep-avz .rep-row{grid-template-columns:66px minmax(0,1.5fr) minmax(0,.85fr) 92px 52px 82px 82px minmax(0,2.1fr);}
 .avz-rep-note{white-space:pre-wrap;}
 .rep-alt{background:#f5f7fa;}
 .rep-th{background:var(--accent);color:#fff;font-weight:600;border-bottom:none;padding:6px 8px;}
@@ -6826,6 +6826,11 @@ function avzRowHtml(p, byId){
       <div class="name-link" data-open-project="${p.id}" style="font-weight:600;font-size:15px;">${esc(p.nome || 'Progetto senza nome')}</div>
       <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc([p.via, p.citta].filter(Boolean).join(', '))}${people.length ? `${p.via||p.citta ? ' · ' : ''}${esc(people.join(', '))}` : ''}</div>
       <div style="margin-top:6px;">${phaseBadge(p)}${ph && p.fasi[ph.key] ? `<span class="fc-note"> dal ${fmtDate(p.fasi[ph.key])}</span>` : ''}${projectAmount(p) ? ` <strong style="font-size:13px;">${fmtEuro(projectAmount(p))}</strong>` : ''}</div>
+      <div class="rev-edit" style="margin-top:8px;">
+        <label>Prob. %<input data-avz-prob="${p.id}" inputmode="numeric" value="${forecastProb(p).suggested ? '' : esc(String(p.probabilita))}" placeholder="${forecastProb(p).value}" style="width:64px;"></label>
+        <label>Chiusura ordine<input type="month" data-avz-close="${p.id}" value="${esc(p.chiusuraPrevista || '')}"></label>
+        <label>Avvio cantiere<input type="month" data-avz-start="${p.id}" value="${esc(p.avvioCantiere || '')}"></label>
+      </div>
     </div>
     <div class="avz-note">
       <textarea data-avz-note="${p.id}" rows="3" placeholder="A che punto siamo, ultimi aggiornamenti da progettisti e clienti...">${esc(a.testo || '')}</textarea>
@@ -6860,9 +6865,12 @@ function avzReportHtml(){
       cell(`<strong>${esc(p.nome || 'Progetto senza nome')}</strong>${addr ? `<div class="rep-sub">${esc(addr)}</div>` : ''}${people.length ? `<div class="rep-sub">${esc(people.join(', '))}</div>` : ''}`),
       cell(ph ? esc(ph.label) + (p.fasi[ph.key] ? `<div class="rep-sub">dal ${fmtDate(p.fasi[ph.key])}</div>` : '') : '—'),
       cell(projectAmount(p) ? fmtEuro(projectAmount(p)) : '—', 'num'),
+      cell(forecastProb(p).value+'%'+(forecastProb(p).suggested ? '<div class="rep-sub">suggerita</div>' : ''), 'num'),
+      cell(p.chiusuraPrevista ? esc(monthLabel(p.chiusuraPrevista)) : '—'),
+      cell(p.avvioCantiere ? esc(monthLabel(p.avvioCantiere)) : '—'),
       cell(a.testo ? `<div class="avz-rep-note">${esc(a.testo)}</div><div class="rep-sub">aggiornato il ${fmtDate(a.il)}</div>` : '<span class="rep-sub">nessuna nota</span>')], i%2 ? 'rep-alt' : '');
   });
-  const head = row(['ID', 'Progetto', 'Fase', 'Importo', 'Note sull\'avanzamento'].map((h, i)=>cell(h, i===3 ? 'num' : '')), 'rep-th');
+  const head = row(['ID', 'Progetto', 'Fase', 'Importo', 'Prob.', 'Chiusura ordine', 'Avvio cantiere', 'Note sull\'avanzamento'].map((h, i)=>cell(h, i===3 || i===4 ? 'num' : '')), 'rep-th');
   const sec = (t, l)=>{ const r = rows(l); return l.length ? `<div class="rep-section">
       <div class="rep-keep"><h3>${t} (${l.length})</h3><div class="rep-table rep-avz">${head}${r[0]}</div></div>
       <div class="rep-table rep-avz" style="margin-top:0;">${r.slice(1).join('')}</div></div>` : `<div class="rep-section"><h3>${t}</h3><div class="fc-note">Nessun progetto.</div></div>`; };
@@ -6894,6 +6902,15 @@ function bindAvz(main){
   main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   const s = main.querySelector('#avzSearch');
   s?.addEventListener('input', ()=>{ avzQ = s.value; const pos = s.selectionStart; renderMain(); const n = document.getElementById('avzSearch'); if(n){ n.focus(); n.setSelectionRange(pos, pos); } });
+  // probabilita' e chiusura prevista sono quelle del Forecast; avvio del cantiere = projects.avvioCantiere 'YYYY-MM'
+  const upd = (id, data)=>db.collection('projects').doc(id).update({ ...data, updatedAt: Date.now() }).catch(e=>alert('Non salvato: '+(e.message || e.code || '')));
+  main.querySelectorAll('[data-avz-prob]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const v = inp.value.trim(), n = Number(v);
+    if(v && (!isFinite(n) || n < 0 || n > 100)){ inp.value = ''; return; }
+    upd(inp.dataset.avzProb, { probabilita: v==='' ? null : n });
+  }));
+  main.querySelectorAll('[data-avz-close]').forEach(inp=>inp.addEventListener('change', ()=>{ if(!inp.value || /^\d{4}-\d{2}$/.test(inp.value)) upd(inp.dataset.avzClose, { chiusuraPrevista: inp.value || '' }); }));
+  main.querySelectorAll('[data-avz-start]').forEach(inp=>inp.addEventListener('change', ()=>{ if(!inp.value || /^\d{4}-\d{2}$/.test(inp.value)) upd(inp.dataset.avzStart, { avvioCantiere: inp.value || '' }); }));
   main.querySelectorAll('[data-avz-note]').forEach(t=>{
     const id = t.dataset.avzNote; let timer = null;
     const save = async ()=>{

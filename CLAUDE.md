@@ -518,6 +518,8 @@ Campi principali:
   separato da `note`, salvato all'uscita dal campo o dopo 1,5 s (aggiorna anche updatedAt), senza ridisegno. Ricerca `avzQ`
   (anche nelle note, evidenziata). "Scarica PDF" (`exportAvzPdf`, 2026-11-06): A4 orizzontale con html2pdf, righe `.rep-avz`
   (ID, progetto con indirizzo e figure, fase con data, importo, note), l'elenco mostrato con la ricerca.
+  Righe e PDF con probabilita' e chiusura prevista del Forecast (modificabili, `data-avz-prob`/`data-avz-close`) e avvio
+  del cantiere: nuovo campo `projects.avvioCantiere` 'YYYY-MM' (`data-avz-start`, 2026-11-06; per ora solo in questa pagina).
 - **Parole cercate evidenziate** (2026-11-04): `hlSearch()` (nel queueMicrotask di renderMain e a ogni `input`
   nei campi `HL_SEARCH_IDS`, pfQ/reteQ dopo il loro ritardo) toglie i vecchi `mark.hl` e avvolge in `<mark class="hl">`
   le parole del campo di ricerca con un valore presenti nei testi di #main (no input, button, .hl-skip); confronto
