@@ -653,6 +653,8 @@ body.foto-open{overflow:hidden;}
 .rep-row{display:grid;gap:0 12px;padding:5px 8px;border-bottom:1px solid var(--border);align-items:start;}
 .rep-open .rep-row{grid-template-columns:70px minmax(0,2fr) minmax(0,1.2fr) 105px 45px 105px minmax(0,1fr) minmax(0,1.3fr);}
 .rep-ship .rep-row{grid-template-columns:70px minmax(0,2.4fr) 115px 70px 115px minmax(0,1.6fr);}
+.rep-avz .rep-row{grid-template-columns:70px minmax(0,1.6fr) minmax(0,.9fr) 95px minmax(0,2.4fr);}
+.avz-rep-note{white-space:pre-wrap;}
 .rep-alt{background:#f5f7fa;}
 .rep-th{background:var(--accent);color:#fff;font-weight:600;border-bottom:none;padding:6px 8px;}
 .rep-tot{font-weight:700;border-top:2px solid var(--accent);border-bottom:none;}
@@ -6816,7 +6818,7 @@ function avzList(){
   }).sort(byProjectId);
 }
 function avzRowHtml(p, byId){
-  const people = (p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).map(fullName);
+  const people = [...new Set((p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).map(fullName))];
   const a = p.avanzamento || {}, ph = projectPhase(p);
   return `<div class="avz-row ${projectStateClass(p)}">
     <div class="avz-proj">
@@ -6835,7 +6837,7 @@ function avzView(){
   const byId = Object.fromEntries(contacts.map(c=>[c.id, c])), list = avzList();
   const waiting = list.filter(p=>phaseDone(p, 'offertaPresentata')), going = list.filter(p=>!phaseDone(p, 'offertaPresentata'));
   const sec = (t, l)=>`<div class="card"><h3>${t} (${l.length})</h3>${l.length ? `<div class="avz-head"><span>Progetto</span><span>Note sull'avanzamento</span></div>${l.map(p=>avzRowHtml(p, byId)).join('')}` : '<div class="empty">Nessun progetto.</div>'}</div>`;
-  return `<button class="btn secondary small" id="avzBackBtn">← Progetti</button>
+  return `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><button class="btn secondary small" id="avzBackBtn">← Progetti</button><button class="btn secondary small" id="avzPdfBtn">⬇ Scarica PDF</button></div>
   <div class="card" style="margin-top:12px;">
     <h3>Avanzamento progetti</h3>
     <div class="fc-note" style="margin-bottom:8px;">Le commesse aperte: scrivi a che punto siamo e gli ultimi riscontri. Si salva da solo.</div>
@@ -6844,8 +6846,51 @@ function avzView(){
   ${sec('In attesa di conferma', waiting)}
   ${sec('In corso', going)}`;
 }
+// PDF dell'avanzamento (2026-11-06): A4 orizzontale con html2pdf come il Forecast (classi .fc-report/.rep-*), l'elenco
+// mostrato (ricerca compresa): ID, progetto con indirizzo e figure, fase, importo, note sull'avanzamento.
+function avzReportHtml(){
+  const byId = Object.fromEntries(contacts.map(c=>[c.id, c])), list = avzList();
+  const waiting = list.filter(p=>phaseDone(p, 'offertaPresentata')), going = list.filter(p=>!phaseDone(p, 'offertaPresentata'));
+  const cell = (v, cls)=>`<div class="${cls||''}">${v}</div>`;
+  const row = (cells, cls)=>`<div class="rep-row ${cls||''}">${cells.join('')}</div>`;
+  const rows = l=>l.map((p, i)=>{
+    const people = [...new Set((p.partecipanti||[]).map(x=>byId[x.contactId]).filter(Boolean).map(fullName))], ph = projectPhase(p), a = p.avanzamento || {};
+    const addr = [p.via, p.citta].filter(Boolean).join(', ');
+    return row([cell(esc(p.codice||''), 'rep-code'),
+      cell(`<strong>${esc(p.nome || 'Progetto senza nome')}</strong>${addr ? `<div class="rep-sub">${esc(addr)}</div>` : ''}${people.length ? `<div class="rep-sub">${esc(people.join(', '))}</div>` : ''}`),
+      cell(ph ? esc(ph.label) + (p.fasi[ph.key] ? `<div class="rep-sub">dal ${fmtDate(p.fasi[ph.key])}</div>` : '') : '—'),
+      cell(projectAmount(p) ? fmtEuro(projectAmount(p)) : '—', 'num'),
+      cell(a.testo ? `<div class="avz-rep-note">${esc(a.testo)}</div><div class="rep-sub">aggiornato il ${fmtDate(a.il)}</div>` : '<span class="rep-sub">nessuna nota</span>')], i%2 ? 'rep-alt' : '');
+  });
+  const head = row(['ID', 'Progetto', 'Fase', 'Importo', 'Note sull\'avanzamento'].map((h, i)=>cell(h, i===3 ? 'num' : '')), 'rep-th');
+  const sec = (t, l)=>{ const r = rows(l); return l.length ? `<div class="rep-section">
+      <div class="rep-keep"><h3>${t} (${l.length})</h3><div class="rep-table rep-avz">${head}${r[0]}</div></div>
+      <div class="rep-table rep-avz" style="margin-top:0;">${r.slice(1).join('')}</div></div>` : `<div class="rep-section"><h3>${t}</h3><div class="fc-note">Nessun progetto.</div></div>`; };
+  return `<div class="fc-report">
+    <div class="rep-head"><div><div class="rep-title">Avanzamento progetti</div><div class="rep-sub">Situazione al ${fmtDate(todayISO())}${avzQ.trim() ? ` · ricerca: ${esc(avzQ.trim())}` : ''}</div></div><div class="rep-brand">Registro Chiamate</div></div>
+    ${sec('In attesa di conferma', waiting)}
+    ${sec('In corso', going)}
+  </div>`;
+}
+async function exportAvzPdf(btn){
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Preparazione PDF…';
+  try{
+    await loadHtml2Pdf();
+    const el = document.createElement('div'); el.innerHTML = avzReportHtml();
+    await html2pdf().set({
+      margin: [8, 8, 10, 8], filename: `avanzamento-progetti-${todayISO()}.pdf`,
+      image: { type:'jpeg', quality:0.95 },
+      html2canvas: { scale:2, backgroundColor:'#ffffff', scrollX:0, scrollY:0 },
+      jsPDF: { unit:'mm', format:'a4', orientation:'landscape' },
+      pagebreak: { mode:['css', 'legacy'], avoid:['.rep-row', '.rep-keep', 'h3'] }
+    }).from(el.firstElementChild).save();
+  }catch(e){ alert('Impossibile creare il PDF: '+(e.message||e)); }
+  btn.disabled = false; btn.textContent = label;
+}
 function bindAvz(main){
   main.querySelector('#avzBackBtn')?.addEventListener('click', ()=>{ view = 'projects'; setActiveTab('navProjects'); renderMain(); });
+  main.querySelector('#avzPdfBtn')?.addEventListener('click', e=>exportAvzPdf(e.currentTarget));
   main.querySelectorAll('[data-open-project]').forEach(el=>el.addEventListener('click', ()=>openProject(el.dataset.openProject)));
   const s = main.querySelector('#avzSearch');
   s?.addEventListener('input', ()=>{ avzQ = s.value; const pos = s.selectionStart; renderMain(); const n = document.getElementById('avzSearch'); if(n){ n.focus(); n.setSelectionRange(pos, pos); } });

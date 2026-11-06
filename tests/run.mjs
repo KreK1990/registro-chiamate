@@ -1442,6 +1442,14 @@ await test('avanzamento progetti: aperti divisi per fase, note salvate da sole',
   await page.click('#avzSearch');   // uscita dal campo = salvataggio
   await page.waitForFunction(() => ((window.__fake.docs('projects').find(p => p.id === 'av1') || {}).avanzamento || {}).testo === 'Il geom. aspetta i calcoli dello strutturista');
   expect((await page.textContent('[data-avz-when="av1"]')).includes('aggiornato il'), 'data dell\'aggiornamento non mostrata');
+  // PDF: stesso contenuto (note comprese), scaricato con il nome del giorno
+  const rep = await page.evaluate(() => avzReportHtml());
+  expect(rep.includes('Palazzine vista mare') && rep.includes('Il geom. aspetta i calcoli dello strutturista') && rep.includes('In attesa di conferma (') && rep.includes('Villa in collina') && !rep.includes('Commessa persa'), 'contenuto del PDF');
+  if (await page.evaluate(() => !!window.html2pdf && !!window.html2pdf().save)) {
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#avzPdfBtn')]);
+    const size = fs.statSync(await dl.path()).size;
+    expect(/^avanzamento-progetti-\d{4}-\d{2}-\d{2}\.pdf$/.test(dl.suggestedFilename()) && size > 5000, 'PDF: ' + dl.suggestedFilename() + ' ' + size);
+  }
   await page.fill('#avzSearch', 'strutturista');
   await page.waitForFunction(() => !document.querySelector('[data-avz-note="av2"]') && !!document.querySelector('[data-avz-note="av1"]'));
   await page.evaluate(() => { avzQ = ''; ['av1', 'av2', 'av3'].forEach(id => db.collection('projects').doc(id).delete()); });

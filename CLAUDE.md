@@ -516,7 +516,8 @@ Campi principali:
   aperte (non perse ne' confermate) in "In attesa di conferma" (offertaPresentata raggiunta) e "In corso"; righe a due
   colonne (`.avz-row`: ID, nome, indirizzo, figure, fase e importo | note) con `projects.avanzamento` {testo, il},
   separato da `note`, salvato all'uscita dal campo o dopo 1,5 s (aggiorna anche updatedAt), senza ridisegno. Ricerca `avzQ`
-  (anche nelle note, evidenziata).
+  (anche nelle note, evidenziata). "Scarica PDF" (`exportAvzPdf`, 2026-11-06): A4 orizzontale con html2pdf, righe `.rep-avz`
+  (ID, progetto con indirizzo e figure, fase con data, importo, note), l'elenco mostrato con la ricerca.
 - **Parole cercate evidenziate** (2026-11-04): `hlSearch()` (nel queueMicrotask di renderMain e a ogni `input`
   nei campi `HL_SEARCH_IDS`, pfQ/reteQ dopo il loro ritardo) toglie i vecchi `mark.hl` e avvolge in `<mark class="hl">`
   le parole del campo di ricerca con un valore presenti nei testi di #main (no input, button, .hl-skip); confronto
