@@ -1462,6 +1462,35 @@ await test('avanzamento progetti: aperti divisi per fase, note salvate da sole',
   await show_(page, 'agenda');
 });
 
+await test('impegni personali: in agenda in verde, fuori da mappa e report, poi sopralluogo -> personale', async () => {
+  await show_(page, 'appt', "apptSubView='list'; apptSearch=''");
+  await page.click('#main [data-sop-new="pers"]');
+  await page.waitForSelector('#sopTitolo');
+  expect(!(await page.$('#sopProj')) && !(await page.$('.trip-box')), 'il modulo personale non deve chiedere progetto e giro');
+  await page.fill('#sopDate', daysAgo(-1));
+  await page.selectOption('#sopTime', '15:00');
+  await page.click('#sopSaveBtn');
+  expect((await page.textContent('#sopErr')).includes('di che impegno'), 'titolo obbligatorio');
+  await page.fill('#sopTitolo', 'Visita medica');
+  await page.click('#sopSaveBtn');
+  await page.waitForFunction(() => sops.some(s => s.personale && s.titolo === 'Visita medica'));
+  const id = await page.evaluate(() => sops.find(s => s.titolo === 'Visita medica').id);
+  await show_(page, 'appt', "apptSubView='list'");
+  expect(await page.$(`.sop-card.pers[data-sop-id="${id}"]`) && (await page.textContent(`[data-sop-id="${id}"]`)).includes('Personale'), 'non in elenco come personale');
+  const r = await page.evaluate(id => ({ planner: (plannerEvents('').find(e => e.ref === 'sop:' + id) || {}).kind, map: realSops().some(s => s.id === id), label: sopKind(sops.find(s => s.id === id)) }), id);
+  expect(r.planner === 'sop pers' && !r.map && r.label === 'Personale', 'integrazioni: ' + JSON.stringify(r));
+  // un sopralluogo usato come impegno personale si trasforma con la spunta
+  await page.evaluate(d => window.__fake.put('sopralluoghi', 'sopcasa', { quando: d + 'T10:00', durata: 60, titolo: 'Casa', projectId: '', note: '', createdAt: 1 }), daysAgo(-2));
+  await page.waitForFunction(() => sops.some(s => s.id === 'sopcasa'));
+  await page.evaluate(() => openSop('sopcasa'));
+  await page.check('#sopPers');
+  await page.waitForFunction(() => (sops.find(s => s.id === 'sopcasa') || {}).personale === true);
+  await page.waitForSelector('#sopTitolo:not([placeholder*="palazzina"])');
+  expect(!(await page.$('#sopProj')), 'dopo la spunta il modulo diventa personale');
+  await page.evaluate(id => { db.collection('sopralluoghi').doc(id).delete(); db.collection('sopralluoghi').doc('sopcasa').delete(); sopEdit = null; }, id);
+  await show_(page, 'agenda');
+});
+
 await test('mai incontrati: elenco, filtri, mail di presentazione a tutti in Ccn', async () => {
   await page.evaluate(d => {
     window.__fake.put('contacts', 'nm1', { nome: 'Anna', cognome: 'Zeta', professione: 'Architetto', email: 'anna@zeta.it' });

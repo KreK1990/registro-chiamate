@@ -398,6 +398,12 @@ Campi principali:
   laterale, nel calendario del mese, nelle notifiche (15 min prima), nel file .ics e nel feed
   `calendar.js` (con VALARM e durata), sulla mappa (filtro "Sopralluoghi in programma", cerchi
   grigio scuro con "S"; posizione del progetto o geocodifica di via/citta' salvata in `geo`).
+  **Impegni personali** (2026-11-16, visite mediche e simili): documenti di `sopralluoghi` con `personale: true` (titolo
+  obbligatorio, via/citta facoltativi, durata 30 min-8 ore, note), "+ Impegno personale" (`data-sop-new="pers"`) in
+  Appuntamenti; nel modulo niente progetto, "Suggerisci quando" ed esito; spunta `#sopPers` per trasformare un sopralluogo
+  gia' salvato. Colore verde `--pers`/`--pers-soft` (`.pers` su chip, schede, righe, etichetta, agenda per pianificare),
+  etichetta `sopKind` "Personale" anche in notifiche, .ics e `calendar.js`. Esclusi con `realSops()`: mappa, geocodifica,
+  giro in zona, report, scheda progetto; in "Suggerisci quando" occupano il tempo senza chiedere una posizione.
 - **Agenda per pianificare** (blocco omonimo): sotto data/ora di appuntamenti (scheda contatto,
   Chiamata, modifica chiamata) e sopralluoghi, `<div class="planner" data-planner="idData|idOra|
   chiave">` mostra la settimana lun-dom, ore 7-21 (`PLAN_H0/H1`, mezz'ora = `PLAN_ROW` px) con

@@ -162,10 +162,10 @@ exports.handler = async function (event) {
       const s = doc.data();
       const start = parseLocal(s.quando);
       if (!start) return;
-      const p = s.projectId ? projectsById[s.projectId] : null;
-      const title = p ? [p.codice, p.nome].filter(Boolean).join(' ') : (s.titolo || fullAddress(s) || 'Cantiere');
+      const p = s.projectId && !s.personale ? projectsById[s.projectId] : null;
+      const title = p ? [p.codice, p.nome].filter(Boolean).join(' ') : (s.titolo || fullAddress(s) || (s.personale ? 'Impegno personale' : 'Cantiere'));
       const end = new Date(start.getTime() + (Number(s.durata) || 60) * 60 * 1000);
-      const summary = icsEsc('Sopralluogo - ' + title);
+      const summary = icsEsc((s.personale ? 'Personale - ' : 'Sopralluogo - ') + title);
       const loc = icsEsc(p && fullAddress(p) ? fullAddress(p) : fullAddress(s));
       ics += 'BEGIN:VEVENT\r\n';
       ics += foldLine(`UID:sop-${doc.id}@registro-chiamate`) + '\r\n';

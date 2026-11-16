@@ -21,6 +21,7 @@
 <style>
 :root{
   --bg:#EEEEEE; --panel:#FFFFFF; --border:#D3DBE5; --border-strong:#BEC8DA; --text:#1A1A1A; --muted:#5F6B77; --trend-1:#2a6fb0; --trend-2:#b97f00;
+  --pers:#2E7D4F; --pers-soft:#E2F1E7;
   --accent:#00487E; --accent-soft:#E3E9F1; --on-accent:#FFFFFF; --brand-yellow:#DC9D00; --danger:#B3261E;
   --net-acq:#00487E; --net-tratt:#2F78B7; --net-cont:#8DB6DD; --net-rub:#E2E6EA; --net-stroke:#3B4D5E;
   --serif:"Fira Sans Condensed","Arial Narrow",sans-serif;
@@ -32,6 +33,7 @@
   :root:not([data-theme="light"]){
     --bg:#0D1822; --panel:#14222F; --border:#27394B; --border-strong:#34506A; --text:#E6ECF2; --muted:#98A8B8; --trend-1:#4a8acb; --trend-2:#c08a10;
     --accent:#7DB2E3; --accent-soft:#1B3246; --on-accent:#0D1822; --danger:#F08C80;
+    --pers:#7CCB9A; --pers-soft:#17331F;
     --net-acq:#A9CEF2; --net-tratt:#5E97CF; --net-cont:#2F5C88; --net-rub:#33404C; --net-stroke:#C9D6E2;
   }
   :root:not([data-theme="light"]) .followup.due{background:#3E1F1C;}
@@ -39,6 +41,7 @@
 :root[data-theme="dark"]{
   --bg:#0D1822; --panel:#14222F; --border:#27394B; --border-strong:#34506A; --text:#E6ECF2; --muted:#98A8B8; --trend-1:#4a8acb; --trend-2:#c08a10;
   --accent:#7DB2E3; --accent-soft:#1B3246; --on-accent:#0D1822; --danger:#F08C80;
+  --pers:#7CCB9A; --pers-soft:#17331F;
   --net-acq:#A9CEF2; --net-tratt:#5E97CF; --net-cont:#2F5C88; --net-rub:#33404C; --net-stroke:#C9D6E2;
 }
 html{scroll-padding-top:env(safe-area-inset-top,0px);}
@@ -456,6 +459,10 @@ body.foto-open{overflow:hidden;}
 .sop-tag{display:inline-block;padding:1px 6px;border-radius:2px;background:var(--accent);color:#fff;font-size:11px;font-weight:600;vertical-align:1px;margin-right:2px;}
 .sop-card,.day-appt-row.sop{border-left:3px solid var(--brand-yellow);}
 .appt-chip.sop{border-left:3px solid var(--brand-yellow);}
+.appt-chip.pers{background:var(--pers-soft);color:var(--pers);border-left-color:var(--pers);}
+.sop-card.pers,.day-appt-row.sop.pers{border-left-color:var(--pers);}
+.sop-tag.pers{background:var(--pers);color:var(--on-accent);}
+.plan-ev.sop.pers{background:var(--pers);color:var(--on-accent);border-left-color:var(--pers-soft);}
 .map-sw.sop,.map-mk.sop{border-radius:50%;background:#3d4650;}
 .map-sw.sop{width:12px;height:12px;}
 .contact-off{opacity:.55;}
@@ -3093,8 +3100,15 @@ function onSopSnapshot(snap){
   if(canAutoRender()) renderMain();
   renderSidebarToday(); renderFooter();
 }
-function sopProject(s){ return s && s.projectId ? projects.find(p=>p.id===s.projectId) || null : null; }
-function sopTitle(s){ const p = sopProject(s); return p ? projectTitle(p) : (s.titolo || [s.via, s.citta].filter(Boolean).join(', ') || 'Cantiere'); }
+// Impegni personali (2026-11-16: visite mediche e simili): documenti di "sopralluoghi" con personale:true, titolo, via/citta
+// facoltativi (luogo), durata, note; colore verde (.pers). Stanno in agenda, Oggi, calendari, agenda per pianificare,
+// "Suggerisci quando", notifiche e .ics come i sopralluoghi; fuori da mappa, giro in zona, report e scheda progetto.
+const isPers = s=>!!(s && s.personale);
+const sopKind = s=>isPers(s) ? 'Personale' : 'Sopralluogo';
+const sopTag = s=>`<span class="sop-tag${isPers(s) ? ' pers' : ''}">${sopKind(s)}</span>`;
+const realSops = ()=>sops.filter(s=>!isPers(s));
+function sopProject(s){ return s && s.projectId && !isPers(s) ? projects.find(p=>p.id===s.projectId) || null : null; }
+function sopTitle(s){ const p = sopProject(s); return p ? projectTitle(p) : (s.titolo || [s.via, s.citta].filter(Boolean).join(', ') || (isPers(s) ? 'Impegno personale' : 'Cantiere')); }
 function sopAddr(s){ const p = sopProject(s); if(p){ const a = projectGeoAddr(p).a; if(a) return a; } return [s.via, s.citta].filter(Boolean).join(', '); }
 function sopMapsUrl(s){ const p = sopProject(s); return p && projectAddress(p) ? mapsUrl(p) : mapsUrl({ via: sopAddr(s) }); }
 function sopTime(s){ return (s.quando||'').slice(11, 16); }
@@ -3102,26 +3116,26 @@ function sopOnDay(dayStr){ return sops.filter(s=>new Date(s.quando).toDateString
 function sopMatches(s){
   const words = normName(apptSearch).split(' ').filter(Boolean);
   if(!words.length) return true;
-  const hay = normName(['sopralluogo', sopTitle(s), sopAddr(s), s.note, s.noteDopo].join(' '));
+  const hay = normName([sopKind(s), sopTitle(s), sopAddr(s), s.note, s.noteDopo].join(' '));
   return words.every(w=>hay.includes(w));
 }
 function sopCardHtml(s){
-  return `<div class="card sop-card" data-sop-id="${s.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-    <div><div style="font-weight:600;font-size:15px;"><span class="sop-tag">Sopralluogo</span> ${esc(sopTitle(s))}</div>
+  return `<div class="card sop-card${isPers(s) ? ' pers' : ''}" data-sop-id="${s.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div><div style="font-weight:600;font-size:15px;">${sopTag(s)} ${esc(sopTitle(s))}</div>
       ${sopAddr(s) ? `<div style="font-size:12.5px;margin-top:4px;"><a href="${sopMapsUrl(s)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()">${esc(sopAddr(s))} · Vedi su Maps</a></div>` : ''}
       ${s.note ? `<div style="font-size:13px;margin-top:4px;white-space:pre-wrap;">${esc(s.note)}</div>` : ''}
       ${s.noteDopo ? `<div style="font-size:13px;margin-top:4px;white-space:pre-wrap;"><strong>Esito:</strong> ${esc(s.noteDopo)}</div>` : ''}</div>
     <div class="followup ok">${fmtDateTime(s.quando)}</div></div>`;
 }
 function sopDayRow(s){
-  return `<div class="day-appt-row sop" data-sop-id="${s.id}" style="flex-direction:column;align-items:stretch;margin-bottom:8px;">
-    <span><span style="font-family:var(--mono);">${sopTime(s)}</span> — <span class="sop-tag">Sopralluogo</span> ${esc(sopTitle(s))}</span>
+  return `<div class="day-appt-row sop${isPers(s) ? ' pers' : ''}" data-sop-id="${s.id}" style="flex-direction:column;align-items:stretch;margin-bottom:8px;">
+    <span><span style="font-family:var(--mono);">${sopTime(s)}</span> — ${sopTag(s)} ${esc(sopTitle(s))}</span>
     ${sopAddr(s) ? `<a href="${sopMapsUrl(s)}" target="_blank" rel="noopener" class="addr-link" onclick="event.stopPropagation()" style="font-size:11.5px;">${esc(sopAddr(s))} · Vedi su Maps</a>` : ''}
   </div>`;
 }
-function sopMiniRow(s){ return `<div class="mini-row" data-sop-id="${s.id}"><span class="mini-time">${sopTime(s)}</span><span class="sop-tag">S</span> ${esc(sopTitle(s))}</div>`; }
+function sopMiniRow(s){ return `<div class="mini-row" data-sop-id="${s.id}"><span class="mini-time">${sopTime(s)}</span><span class="sop-tag${isPers(s) ? ' pers' : ''}">${isPers(s) ? 'P' : 'S'}</span> ${esc(sopTitle(s))}</div>`; }
 function projectSopsHtml(p){
-  const list = sops.filter(s=>s.projectId===p.id).slice().reverse(), now = new Date();
+  const list = realSops().filter(s=>s.projectId===p.id).slice().reverse(), now = new Date();
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
       <h3 style="margin:0;">Sopralluoghi (${list.length})</h3>
@@ -3154,19 +3168,24 @@ function sopFormView(){
   if(!isNew && !s.quando) return '<div class="empty">Sopralluogo non trovato (forse eliminato).</div><button class="btn secondary" id="sopBackBtn">← Indietro</button>';
   const { date, time } = splitDT(s.quando || '');
   const projs = projects.filter(p=>!isLost(p) || p.id===s.projectId).sort(byProjectId);
-  const durs = [10, 15, 20, 30, 45, 60, 90, 120, 180, 240];
+  const pers = isPers(s);
+  const durs = pers ? [30, 45, 60, 90, 120, 180, 240, 300, 480] : [10, 15, 20, 30, 45, 60, 90, 120, 180, 240];
   const durLbl = m=>m < 60 ? m+' minuti' : (m/60).toLocaleString('it-IT')+(m===60 ? ' ora' : ' ore');
   return `<div class="top-actions"><button class="btn secondary small" id="sopBackBtn">← Indietro</button></div>
   <div class="card">
-    <h2 style="margin-bottom:10px;">${isNew ? 'Pianifica un sopralluogo' : 'Sopralluogo'}</h2>
+    <h2 style="margin-bottom:10px;">${pers ? (isNew ? 'Nuovo impegno personale' : 'Impegno personale') : isNew ? 'Pianifica un sopralluogo' : 'Sopralluogo'}</h2>
+    ${pers ? `<label>Cosa</label><input id="sopTitolo" value="${esc(s.titolo||'')}" placeholder="Es. visita medica, dentista">` : ''}
     <div class="field-row">
       <div><label>Data</label><input type="date" id="sopDate" value="${esc(date)}"></div>
       <div><label>Ora</label><select id="sopTime">${timeOptions(time || '09:00')}</select></div>
     </div>
-    ${tripBoxHtml('sopDate|sopTime|sop:'+(isNew ? '' : sopEdit.id)+'|sop')}
+    ${pers ? '' : tripBoxHtml('sopDate|sopTime|sop:'+(isNew ? '' : sopEdit.id)+'|sop')}
     <div class="planner" data-planner="sopDate|sopTime|sop:${isNew ? '' : sopEdit.id}"></div>
     <label>Durata</label>
     <select id="sopDur">${durs.map(m=>`<option value="${m}" ${(+s.durata || 60)===m ? 'selected' : ''}>${durLbl(m)}</option>`).join('')}</select>
+    ${pers ? `<div class="field-row"><div><label>Dove (facoltativo)</label><input id="sopVia" value="${esc(s.via||'')}" placeholder="Via e numero civico"></div><div><label>Città</label><input id="sopCitta" value="${esc(s.citta||'')}"></div></div>
+    <label>Note</label><textarea id="sopNote">${esc(s.note||'')}</textarea>
+    <div class="fc-note">Segnato in verde: occupa il tempo in agenda ma non è lavoro (fuori da mappa e report).</div>` : `
     <label>Progetto</label>
     <select id="sopProj"><option value="">— Cantiere non presente tra i progetti —</option>${projs.map(p=>`<option value="${p.id}" ${s.projectId===p.id ? 'selected' : ''}>${esc(projectTitle(p))}${p.citta ? ' · '+esc(p.citta) : ''}</option>`).join('')}</select>
     <div id="sopFree" class="${s.projectId ? 'hidden' : ''}">
@@ -3175,13 +3194,14 @@ function sopFormView(){
     </div>
     <label>Note (cosa verificare, chi incontrare)</label>
     <textarea id="sopNote">${esc(s.note||'')}</textarea>
-    ${isNew ? '' : `<label>Esito del sopralluogo</label><textarea id="sopNoteDopo" placeholder="Cosa hai visto, prossimi passi">${esc(s.noteDopo||'')}</textarea>`}
+    ${isNew ? '' : `<label>Esito del sopralluogo</label><textarea id="sopNoteDopo" placeholder="Cosa hai visto, prossimi passi">${esc(s.noteDopo||'')}</textarea>`}`}
+    ${!isNew ? `<label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;"><input type="checkbox" id="sopPers" style="width:auto;" ${pers ? 'checked' : ''}>Impegno personale (non di lavoro)</label>` : ''}
     <div id="sopErr" style="color:var(--danger);font-size:13px;margin-top:6px;"></div>
     <div class="todo-actions" style="margin-top:10px;align-items:center;">
       <button class="btn" id="sopSaveBtn">Salva</button>
       ${sopAddr(s) ? `<a class="btn secondary" href="${sopMapsUrl(s)}" target="_blank" rel="noopener">Su Maps</a>` : ''}
       ${isNew ? '' : confirmDeleteSopId===sopEdit.id
-        ? `<span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare il sopralluogo?</span><button class="btn small" id="sopDelYes" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì, elimina</button><button class="btn secondary small" id="sopDelNo">No</button>`
+        ? `<span style="color:var(--danger);font-size:12.5px;font-weight:600;">Eliminare ${pers ? 'l\'impegno' : 'il sopralluogo'}?</span><button class="btn small" id="sopDelYes" style="background:var(--danger);border-color:var(--danger);color:#fff;">Sì, elimina</button><button class="btn secondary small" id="sopDelNo">No</button>`
         : '<button class="btn secondary" id="sopDelBtn">Elimina</button>'}
     </div>
   </div>`;
@@ -3190,10 +3210,22 @@ async function saveSop(){
   const v = id=>(document.getElementById(id) || {}).value || '';
   const err = t=>{ document.getElementById('sopErr').textContent = t; };
   const date = v('sopDate'), time = v('sopTime');
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || +date.slice(0,4) < 2000) return err('Indica la data del sopralluogo.');
+  const pers = !!document.getElementById('sopTitolo') && !document.getElementById('sopProj');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || +date.slice(0,4) < 2000) return err(pers ? 'Indica la data.' : 'Indica la data del sopralluogo.');
   if(!time) return err('Indica l\'ora.');
+  if(pers){
+    const rec = { quando: `${date}T${time}`, durata: +v('sopDur') || 60, personale: true, projectId: '', titolo: v('sopTitolo').trim(), via: v('sopVia').trim(), citta: v('sopCitta').trim(), note: v('sopNote').trim() };
+    if(!rec.titolo) return err('Scrivi di che impegno si tratta (es. visita medica).');
+    const btn = document.getElementById('sopSaveBtn'); btn.disabled = true;
+    try{
+      if(sopEdit.id==='new') await db.collection('sopralluoghi').add({ ...rec, createdAt: Date.now() });
+      else await db.collection('sopralluoghi').doc(sopEdit.id).update(rec);
+      sopGoBack();
+    }catch(e){ btn.disabled = false; err('Errore nel salvataggio: '+(e.message||e.code||'')); }
+    return;
+  }
   const projectId = v('sopProj');
-  const rec = { quando: `${date}T${time}`, durata: +v('sopDur') || 60, projectId, note: v('sopNote').trim() };
+  const rec = { personale: false, quando: `${date}T${time}`, durata: +v('sopDur') || 60, projectId, note: v('sopNote').trim() };
   if(projectId){ rec.titolo = ''; rec.via = ''; rec.citta = ''; }
   else {
     rec.titolo = v('sopTitolo').trim(); rec.via = v('sopVia').trim(); rec.citta = v('sopCitta').trim();
@@ -3211,6 +3243,12 @@ async function saveSop(){
 function bindSopForm(){
   document.getElementById('sopBackBtn')?.addEventListener('click', sopGoBack);
   document.getElementById('sopProj')?.addEventListener('change', e=>document.getElementById('sopFree').classList.toggle('hidden', !!e.target.value));
+  // cambia tipo (sopralluogo <-> personale) di un impegno gia' salvato
+  document.getElementById('sopPers')?.addEventListener('change', async e=>{
+    e.target.disabled = true;
+    try{ await db.collection('sopralluoghi').doc(sopEdit.id).update(e.target.checked ? { personale: true, projectId: '' } : { personale: false }); renderMain(); }
+    catch(err){ e.target.disabled = false; document.getElementById('sopErr').textContent = 'Non salvato: '+(err.message||err.code||''); }
+  });
   document.getElementById('sopSaveBtn')?.addEventListener('click', saveSop);
   document.getElementById('sopDelBtn')?.addEventListener('click', ()=>{ confirmDeleteSopId = sopEdit.id; renderMain(); });
   document.getElementById('sopDelNo')?.addEventListener('click', ()=>{ confirmDeleteSopId = null; renderMain(); });
@@ -3232,7 +3270,7 @@ document.addEventListener('click', e=>{
     const pid = el.dataset.sopPortal, p = portalFindProject(pid) || {}, vc = portalViaCitta(p), pr = portalProjectOf(pid);
     return openSop('new', pr ? { projectId: pr.id, pid } : { titolo: p.titolo || '', via: vc.via, citta: vc.citta || p.comune || '', pid });
   }
-  openSop('new', {});
+  openSop('new', el.dataset.sopNew==='pers' ? { personale: true, durata: 60 } : {});
 });
 
 // ---------------------------------------------------------------------------
@@ -3255,7 +3293,7 @@ function plannerEvents(exclude){
   });
   sops.forEach(s=>{
     if('sop:'+s.id===exclude) return;
-    out.push({ ref:'sop:'+s.id, t:s.quando, min:+s.durata || 60, label:'Sopralluogo · '+sopTitle(s), kind:'sop', addr:sopAddr(s), maps: sopAddr(s) ? sopMapsUrl(s) : '', sub:'', tel:'', note:s.note || '' });
+    out.push({ ref:'sop:'+s.id, t:s.quando, min:+s.durata || 60, label:sopKind(s)+' · '+sopTitle(s), kind: isPers(s) ? 'sop pers' : 'sop', addr:sopAddr(s), maps: sopAddr(s) ? sopMapsUrl(s) : '', sub:'', tel:'', note:s.note || '' });
   });
   return out;
 }
@@ -3492,7 +3530,7 @@ async function suggestTimes(target, dur, exclude){
       evs.push({ start: tripMin(k.appuntamento.slice(11,16)), dur:60, label: fullName(c), p });
     }
     for(const s of sops) if(s.quando.slice(0,10)===d && 'sop:'+s.id!==exclude){
-      const p = await sopPoint(s); if(!p) missing.add('sopralluogo '+sopTitle(s));
+      const p = await sopPoint(s); if(!p && !isPers(s)) missing.add('sopralluogo '+sopTitle(s));
       evs.push({ start: tripMin(s.quando.slice(11,16)), dur: +s.durata || 60, label: 'sopralluogo '+sopTitle(s), p });
     }
     plan.push({ d, evs: evs.sort((a,b)=>a.start - b.start) });
@@ -3782,7 +3820,7 @@ function zoneOriginsHtml(){
     const c = byId[k.contactId] || {}, { a } = contactGeoAddr(c), g = a && (manualGeo(c) || docGeo(c, a));
     if(g && !g.nf) out.push({ t:k.appuntamento.slice(11,16), label: fullName(c)+(c.citta ? ', '+c.citta : ''), g });
   });
-  sops.filter(s=>s.quando.slice(0,10)===today).forEach(s=>{ const x = sopGeo(s); if(x) out.push({ t: sopTime(s), label: 'sopralluogo '+sopTitle(s), g: x.g }); });
+  realSops().filter(s=>s.quando.slice(0,10)===today).forEach(s=>{ const x = sopGeo(s); if(x) out.push({ t: sopTime(s), label: 'sopralluogo '+sopTitle(s), g: x.g }); });
   return out.sort((a,b)=>a.t.localeCompare(b.t)).map(e=>`<button type="button" class="btn secondary small" data-zone-at="${e.g.lat},${e.g.lng}|${esc(e.t+' '+e.label)}">${esc(e.t)} · ${esc(e.label)}</button>`).join('');
 }
 function zoneItemTitle(x){
@@ -4524,7 +4562,7 @@ function navLabel(e){
   if(s.view==='projectDetail' && p(s.selectedProjectId)) return p(s.selectedProjectId).nome || 'Progetto';
   if(s.view==='portal') return 'Cantieri dal portale';
   if(s.view==='new') return 'Nuovo contatto';
-  if(s.view==='sop') return 'Sopralluogo';
+  if(s.view==='sop') return isPers(sopEdit && (sopEdit.id==='new' ? sopEdit.prefill : sops.find(x=>x.id===sopEdit.id))) ? 'Impegno personale' : 'Sopralluogo';
   if(s.view==='dups') return 'Possibili doppioni';
   if(s.view==='regali') return 'Regali di Natale';
   if(s.view==='segnalati') return 'Cantieri segnalati';
@@ -4960,7 +4998,7 @@ function repData(){
   const byId = Object.fromEntries(contacts.map(c=>[c.id, c]));
   const phone = calls.filter(k=>isPhone(k) && inR(k.data)), meets = calls.filter(k=>isMeet(k) && inR(k.data)), mails = calls.filter(k=>isMailAct(k) && inR(k.data));
   const appts = phone.filter(k=>k.appuntamento);
-  const sopN = sops.filter(s=>inR((s.quando || '').slice(0,10))).length;
+  const sopN = realSops().filter(s=>inR((s.quando || '').slice(0,10))).length;
   const reached = new Set([...phone.filter(k=>!ESITI_NON_RAGGIUNTO.includes(k.esito)), ...meets].map(k=>k.contactId)).size;
   const range = [from, to];
   const ev = { richiesta: projEvents('richiesta', range), offerta: projEvents('offerta', range), conferma: projEvents('conferma', range), persa: projEvents('persa', range) };
@@ -7160,7 +7198,7 @@ function sopGeo(s){
 }
 function mapPoints(){
   const pts = [];
-  if(mapFilters.sopralluoghi){ const now = new Date(); sops.filter(s=>new Date(s.quando) > now).forEach(s=>{ const x = sopGeo(s); if(x) pts.push({ kind:'sop', s, addr:x.a, lat:x.g.lat, lng:x.g.lng, approx: !!x.g.approx }); }); }
+  if(mapFilters.sopralluoghi){ const now = new Date(); realSops().filter(s=>new Date(s.quando) > now).forEach(s=>{ const x = sopGeo(s); if(x) pts.push({ kind:'sop', s, addr:x.a, lat:x.g.lat, lng:x.g.lng, approx: !!x.g.approx }); }); }
   mapPortalItems().forEach(it=>{
     const { a } = portalGeoAddr(it.r.p); if(!a) return; const g = docGeo(it.e, a); if(!g || g.nf) return;
     pts.push({ kind:'portale', st:it.st, addr:a, lat:g.lat, lng:g.lng, r:it.r, approx: !!g.approx });
@@ -7185,7 +7223,7 @@ function mapToGeocode(){
   contacts.forEach(c=>{ const { a, citta } = contactGeoAddr(c); if(a && !docGeo(c, a)) out.push({ col:'contacts', x:c, a, citta }); });
   projects.forEach(p=>{ const { a, citta } = projectGeoAddr(p); if(a && !docGeo(p, a)) out.push({ col:'projects', x:p, a, citta }); });
   const now = new Date();
-  sops.forEach(s=>{ if(s.projectId || new Date(s.quando) <= now) return; const a = sopAddr(s); if(a && !docGeo(s, a)) out.push({ col:'sopralluoghi', x:s, a, citta: s.citta || '' }); });
+  realSops().forEach(s=>{ if(s.projectId || new Date(s.quando) <= now) return; const a = sopAddr(s); if(a && !docGeo(s, a)) out.push({ col:'sopralluoghi', x:s, a, citta: s.citta || '' }); });
   mapPortalItems().forEach(it=>{ const { a, citta } = portalGeoAddr(it.r.p); if(a && it.e && it.e.docId && !docGeo(it.e, a)) out.push({ col:it.col, x:it.e, id:it.e.docId, a, citta }); });
   return out.filter(it=>!geoTried.has(`${it.col}/${it.id || it.x.id}/${geoKey(it.a)}`));
 }
@@ -9886,13 +9924,14 @@ function apptView(){
   const now = new Date();
   const cnt = pred=>apptSearch ? ` (${pred(new Date(0)) ? calls.filter(k=>isMeet(k) && k.data <= todayISO() && meetMatches(k)).length + apptCalls().filter(k=>apptToRegister(k) && apptMatches(k)).length + sops.filter(s=>pred(new Date(s.quando)) && sopMatches(s)).length
     : apptCalls().filter(k=>pred(new Date(k.appuntamento)) && apptMatches(k)).length + sops.filter(s=>pred(new Date(s.quando)) && sopMatches(s)).length})` : '';
-  const header = `<div class="top-actions" style="justify-content:space-between;">
+  const header = `<div class="top-actions" style="justify-content:space-between;flex-wrap:wrap;">
     <div class="subnav" style="margin-bottom:0;">
       <button id="apptListBtn" class="${apptSubView==='list'?'active':''}">Elenco${cnt(d=>d>now)}</button>
       <button id="apptCalBtn" class="${apptSubView==='calendar'?'active':''}">Calendario settimanale</button>
       <button id="apptDoneBtn" class="${apptSubView==='done'?'active':''}">Svolti${cnt(d=>d<=now)}</button>
     </div>
     <button class="btn small" data-sop-new="1">+ Sopralluogo</button>
+    <button class="btn secondary small" data-sop-new="pers">+ Impegno personale</button>
     <button class="btn secondary small" id="importMeetingsBtn">⬆ Importa incontri (Excel)</button>
     <button class="btn secondary small" id="exportIcsBtn">⬇ Esporta calendario (.ics)</button>
   </div>
@@ -10423,7 +10462,7 @@ function apptCalendarView(){
       <div class="calendar-day-head ${d.toDateString()===todayStr?'today':''}">${dayNames[i]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</div>
       <div class="calendar-day-appts">${dayAppts.map(k=>{ const c=byId[k.contactId]||{}; const t=new Date(k.appuntamento); const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
         return `<div class="appt-chip" data-appt-call-id="${k.id}"><span class="t">${hh}:${mm}</span> ${esc(fullName(c))}${(a=>a ? `<span class="appt-chip-addr">${esc(a)}</span>` : '')(apptPlace(k, c))}</div>`;
-      }).join('')}${daySops.map(s=>`<div class="appt-chip sop" data-sop-id="${s.id}"><span class="t">${sopTime(s)}</span> Sopralluogo · ${esc(sopTitle(s))}${(a=>a && a!==sopTitle(s) ? `<span class="appt-chip-addr">${esc(a)}</span>` : '')(sopAddr(s))}</div>`).join('')}</div>
+      }).join('')}${daySops.map(s=>`<div class="appt-chip sop${isPers(s) ? ' pers' : ''}" data-sop-id="${s.id}"><span class="t">${sopTime(s)}</span> ${sopKind(s)} · ${esc(sopTitle(s))}${(a=>a && a!==sopTitle(s) ? `<span class="appt-chip-addr">${esc(a)}</span>` : '')(sopAddr(s))}</div>`).join('')}</div>
     </div>`;
   }).join('');
   return `
@@ -11374,7 +11413,7 @@ function checkDueNotifications(){
   });
   sops.forEach(s=>{
     const key = 'sop|'+s.id+'|'+s.quando, diffMin = (new Date(s.quando)-now)/60000;
-    if(diffMin>0 && diffMin<=15 && !notifiedAppts.has(key)){ notifiedAppts.add(key); showNotif('Sopralluogo tra poco', `${sopTitle(s)} alle ${sopTime(s)}`); }
+    if(diffMin>0 && diffMin<=15 && !notifiedAppts.has(key)){ notifiedAppts.add(key); showNotif(sopKind(s)+' tra poco', `${sopTitle(s)} alle ${sopTime(s)}`); }
   });
 }
 document.getElementById('notifBtn')?.addEventListener('click', async ()=>{
@@ -11436,7 +11475,7 @@ function exportICS(){
     ics += foldLine(`DTSTAMP:${dtstamp}`) + '\r\n';
     ics += foldLine(`DTSTART;TZID=Europe/Rome:${toICS(start)}`) + '\r\n';
     ics += foldLine(`DTEND;TZID=Europe/Rome:${toICS(end)}`) + '\r\n';
-    ics += foldLine(`SUMMARY:${icsEsc('Sopralluogo - '+sopTitle(s))}`) + '\r\n';
+    ics += foldLine(`SUMMARY:${icsEsc(sopKind(s)+' - '+sopTitle(s))}`) + '\r\n';
     if(s.note) ics += foldLine(`DESCRIPTION:${icsEsc(s.note)}`) + '\r\n';
     if(sopAddr(s)) ics += foldLine(`LOCATION:${icsEsc(sopAddr(s))}`) + '\r\n';
     ics += 'END:VEVENT\r\n';
