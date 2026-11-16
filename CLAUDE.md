@@ -404,8 +404,10 @@ Campi principali:
   gia' salvato. Colore verde `--pers`/`--pers-soft` (`.pers` su chip, schede, righe, etichetta, agenda per pianificare),
   etichetta `sopKind` "Personale" anche in notifiche, .ics e `calendar.js`. Esclusi con `realSops()`: mappa, geocodifica,
   giro in zona, report, scheda progetto; in "Suggerisci quando" occupano il tempo senza chiedere una posizione.
-  Nella modifica di una telefonata con appuntamento "Non e' lavoro: rendilo un impegno personale" (`apptToPersAsk`, conferma
-  inline): crea l'impegno (stessa data e ora, titolo = nome del contatto, luogo, note), elimina l'attivita' e apre il modulo.
+  "Non e' lavoro: rendilo un impegno personale" (`toPersHtml`, `data-to-pers`, ascoltatore su document, conferma inline
+  `apptToPersAsk`) nella modifica di una telefonata con appuntamento e nella registrazione dell'incontro (appuntamenti passati):
+  crea l'impegno (stessa data e ora, titolo = nome del contatto, luogo, note), elimina la telefonata e l'eventuale incontro
+  registrato (`meetingOf`) e apre il modulo.
 - **Agenda per pianificare** (blocco omonimo): sotto data/ora di appuntamenti (scheda contatto,
   Chiamata, modifica chiamata) e sopralluoghi, `<div class="planner" data-planner="idData|idOra|
   chiave">` mostra la settimana lun-dom, ore 7-21 (`PLAN_H0/H1`, mezz'ora = `PLAN_ROW` px) con

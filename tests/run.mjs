@@ -1491,13 +1491,21 @@ await test('impegni personali: in agenda in verde, fuori da mappa e report, poi 
   await page.evaluate(d => window.__fake.put('calls', 'kpsy', { contactId: 'c4', data: d, esito: 'Appuntamento fissato', note: 'Secondo appuntamento', appuntamento: d + 'T15:30', createdAt: 9 }), daysAgo(-4));
   await page.waitForFunction(() => calls.some(k => k.id === 'kpsy'));
   await show_(page, 'table', "tableDetailCallId='kpsy'; editingCallId='kpsy'; apptToPersAsk=null");
-  await page.click('#ecToPersBtn');
-  await page.click('#ecToPersYes');
+  await page.click('[data-to-pers="kpsy"]');
+  await page.click('[data-to-pers-yes="kpsy"]');
   await page.waitForFunction(() => !calls.some(k => k.id === 'kpsy') && view === 'sop' && sops.some(s => s.personale && s.note === 'Secondo appuntamento'));
   const ps = await page.evaluate(() => sops.find(s => s.note === 'Secondo appuntamento'));
   expect(ps.quando === daysAgo(-4) + 'T15:30' && /Verdi/.test(ps.titolo), 'impegno creato: ' + JSON.stringify(ps));
   expect(await page.inputValue('#sopTitolo') === ps.titolo, 'si apre il modulo dell\'impegno');
   await page.evaluate(id => { db.collection('sopralluoghi').doc(id).delete(); db.collection('sopralluoghi').doc('sopcasa').delete(); sopEdit = null; }, ps.id);
+  // incontro passato ancora da registrare: il pulsante e' anche nella registrazione dell'incontro
+  await page.evaluate(d => window.__fake.put('calls', 'kpsy2', { contactId: 'c4', data: d, esito: 'Appuntamento fissato', note: 'Primo incontro', appuntamento: d + 'T10:00', createdAt: 10 }), daysAgo(5));
+  await page.waitForFunction(() => calls.some(k => k.id === 'kpsy2'));
+  await page.evaluate(() => openMeetRegister(calls.find(k => k.id === 'kpsy2')));
+  await page.click('[data-to-pers="kpsy2"]');
+  await page.click('[data-to-pers-yes="kpsy2"]');
+  await page.waitForFunction(d => !calls.some(k => k.id === 'kpsy2') && view === 'sop' && sops.some(s => s.personale && s.quando === d + 'T10:00'), daysAgo(5));
+  await page.evaluate(d => { const s = sops.find(x => x.personale && x.quando === d + 'T10:00'); if (s) db.collection('sopralluoghi').doc(s.id).delete(); sopEdit = null; }, daysAgo(5));
   await page.evaluate(id => { db.collection('sopralluoghi').doc(id).delete(); db.collection('sopralluoghi').doc('sopcasa').delete(); sopEdit = null; }, id);
   await show_(page, 'agenda');
 });

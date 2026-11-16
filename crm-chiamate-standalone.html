@@ -3095,6 +3095,37 @@ function bindAutoFollowUp(esitoId, dateId, timeId, callDateId){
 // del portale collegato) oppure via/citta'. Un clic su [data-sop-id] apre il modulo ovunque.
 // ---------------------------------------------------------------------------
 let sops = [], sopEdit = null, confirmDeleteSopId = null, apptToPersAsk = null;
+// Appuntamento non di lavoro (2026-11-16: visita fissata come se fosse un cliente) -> impegno personale. Pulsante nella
+// modifica della telefonata e nella registrazione dell'incontro; con "Si', sposta" crea l'impegno (data e ora del modulo
+// di modifica se aperto, altrimenti dell'appuntamento), elimina la telefonata e l'eventuale incontro registrato, apre l'impegno.
+function toPersHtml(k, c){
+  return `<div class="seg-act" style="margin:10px 0;">${apptToPersAsk===k.id
+    ? `<strong>Spostarlo tra gli impegni personali?</strong> Diventa un impegno verde con la stessa data e ora; questa attività con ${esc(fullName(c || {}))} viene eliminata (il contatto resta).
+      <div class="seg-btns" style="margin-top:6px;"><button type="button" class="btn small" data-to-pers-yes="${k.id}">Sì, sposta</button><button type="button" class="btn secondary small" data-to-pers-no>No</button></div>`
+    : `<button type="button" class="btn secondary small" data-to-pers="${k.id}">Non è lavoro: rendilo un impegno personale</button>`}</div>`;
+}
+document.addEventListener('click', async e=>{
+  const b = e.target.closest && e.target.closest('[data-to-pers], [data-to-pers-no], [data-to-pers-yes]'); if(!b || !db) return;
+  e.preventDefault(); e.stopPropagation();
+  if(b.hasAttribute('data-to-pers')){ apptToPersAsk = b.dataset.toPers; renderMain(); return; }
+  if(b.hasAttribute('data-to-pers-no')){ apptToPersAsk = null; renderMain(); return; }
+  const k = calls.find(x=>x.id===b.dataset.toPersYes); if(!k) return;
+  const c = contacts.find(x=>x.id===k.contactId) || {}, meet = meetingOf(k);
+  const d = (document.getElementById('ecApptDate') || {}).value, t = (document.getElementById('ecApptTime') || {}).value;
+  const quando = /^\d{4}-\d{2}-\d{2}$/.test(d || '') && t ? `${d}T${t}` : k.appuntamento;
+  if(!quando){ alert('Indica data e ora dell\'appuntamento.'); return; }
+  const place = (document.getElementById('ecApptPlace') || {}).value || apptPlace(k, c) || '';
+  b.disabled = true;
+  try{
+    const ref = await db.collection('sopralluoghi').add({ quando, durata: 60, personale: true, projectId: '', titolo: fullName(c), via: place.trim(), citta: '',
+      note: [k.note, k.noteIncontro, meet && meet.note].filter(Boolean).join('\n'), createdAt: Date.now() });
+    await db.collection('calls').doc(k.id).delete();
+    if(meet) await db.collection('calls').doc(meet.id).delete();
+    apptToPersAsk = null; editingCallId = null; tableDetailCallId = null; actPrefill = null; view = 'appt'; setActiveTab('navAppt');
+    for(let i = 0; i < 30 && !sops.some(s=>s.id===ref.id); i++) await new Promise(r=>setTimeout(r, 100));
+    openSop(ref.id);
+  }catch(err){ b.disabled = false; alert('Non riuscito: '+(err.message || err.code || '')); }
+}, true);
 function onSopSnapshot(snap){
   sops = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(s=>s.quando).sort((a,b)=>a.quando.localeCompare(b.quando));
   if(canAutoRender()) renderMain();
@@ -4160,7 +4191,7 @@ function actTypePills(){
 function actMeetHtml(prefix, c){
   const pf = actPf(c), from = pf.daAppuntamento ? calls.find(x=>x.id===pf.daAppuntamento) : null;
   return `<div class="act-sec" data-act-sec="incontro">
-    ${from ? `<div class="fc-note" style="margin:2px 0 6px;">Incontro dell'appuntamento fissato con la telefonata del ${fmtDate(from.data)}.</div>` : ''}
+    ${from ? `<div class="fc-note" style="margin:2px 0 6px;">Incontro dell'appuntamento fissato con la telefonata del ${fmtDate(from.data)}.</div>${toPersHtml(from, c)}` : ''}
     <label>Ora dell'incontro</label><select id="${prefix}MeetTime">${timeOptions(pf.ora || '')}</select>
     <label>Note dell'incontro</label><textarea id="${prefix}MeetNote" placeholder="Com'è andato, cosa avete deciso, prossimi passi…"></textarea>
     ${segMeetFormHtml(prefix)}
@@ -10851,10 +10882,7 @@ function callEditView(k,c){
         <div class="planner" data-planner="ecApptDate|ecApptTime|call:${k.id}"></div>
         <label style="margin-top:10px;">Note dell'incontro</label>
         <textarea id="ecNoteIncontro" placeholder="Come è andato l'incontro...">${esc(k.noteIncontro||'')}</textarea>
-        <div class="seg-act" style="margin-top:10px;">${apptToPersAsk===k.id
-          ? `<strong>Spostarlo tra gli impegni personali?</strong> Diventa un impegno verde con la stessa data e ora; questa attività con ${esc(fullName(c))} viene eliminata (il contatto resta).
-            <div class="seg-btns" style="margin-top:6px;"><button type="button" class="btn small" id="ecToPersYes">Sì, sposta</button><button type="button" class="btn secondary small" id="ecToPersNo">No</button></div>`
-          : `<button type="button" class="btn secondary small" id="ecToPersBtn">Non è lavoro: rendilo un impegno personale</button>`}</div>
+        ${toPersHtml(k, c)}
       </div>
       <label style="margin-top:12px;">Prossimo follow-up</label>
       <div class="field-row">
@@ -10871,25 +10899,6 @@ function bindTableDetail(){
     document.getElementById('cancelEditCallBtn').addEventListener('click', ()=>{ editingCallId=null; renderMain(); });
     document.getElementById('ecApptCheck')?.addEventListener('change', e=>{
       document.getElementById('ecApptWrap').classList.toggle('hidden', !e.target.checked);
-    });
-    // appuntamento non di lavoro (2026-11-16: visita fissata come cliente) -> impegno personale, poi si apre il suo modulo
-    document.getElementById('ecToPersBtn')?.addEventListener('click', ()=>{ apptToPersAsk = tableDetailCallId; renderMain(); });
-    document.getElementById('ecToPersNo')?.addEventListener('click', ()=>{ apptToPersAsk = null; renderMain(); });
-    document.getElementById('ecToPersYes')?.addEventListener('click', async e=>{
-      const k = calls.find(x=>x.id===tableDetailCallId); if(!k) return;
-      const c = contacts.find(x=>x.id===k.contactId) || {};
-      const d = document.getElementById('ecApptDate').value, t = document.getElementById('ecApptTime').value;
-      const quando = /^\d{4}-\d{2}-\d{2}$/.test(d) && t ? `${d}T${t}` : k.appuntamento;
-      if(!quando){ alert('Indica data e ora dell\'appuntamento.'); return; }
-      const place = (document.getElementById('ecApptPlace') || {}).value || apptPlace(k, c) || '';
-      e.target.disabled = true;
-      try{
-        const ref = await db.collection('sopralluoghi').add({ quando, durata: 60, personale: true, projectId: '', titolo: fullName(c), via: place.trim(), citta: '', note: [k.note, k.noteIncontro].filter(Boolean).join('\n'), createdAt: Date.now() });
-        await db.collection('calls').doc(k.id).delete();
-        apptToPersAsk = null; editingCallId = null; tableDetailCallId = null; view = 'appt'; setActiveTab('navAppt');
-        for(let i = 0; i < 30 && !sops.some(s=>s.id===ref.id); i++) await new Promise(r=>setTimeout(r, 100));
-        openSop(ref.id);
-      }catch(err){ e.target.disabled = false; alert('Non riuscito: '+(err.message || err.code || '')); }
     });
     const ek = calls.find(x=>x.id===tableDetailCallId);
     document.getElementById('saveEditCallBtn').addEventListener('click', ()=>ek && !isPhone(ek) ? saveActEdit(ek) : saveCallEdit());
