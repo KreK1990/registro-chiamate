@@ -3094,7 +3094,7 @@ function bindAutoFollowUp(esitoId, dateId, timeId, callDateId){
 // scheda progetto o da un cantiere del portale. Indirizzo: quello del progetto (o del cantiere
 // del portale collegato) oppure via/citta'. Un clic su [data-sop-id] apre il modulo ovunque.
 // ---------------------------------------------------------------------------
-let sops = [], sopEdit = null, confirmDeleteSopId = null;
+let sops = [], sopEdit = null, confirmDeleteSopId = null, apptToPersAsk = null;
 function onSopSnapshot(snap){
   sops = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(s=>s.quando).sort((a,b)=>a.quando.localeCompare(b.quando));
   if(canAutoRender()) renderMain();
@@ -10851,6 +10851,10 @@ function callEditView(k,c){
         <div class="planner" data-planner="ecApptDate|ecApptTime|call:${k.id}"></div>
         <label style="margin-top:10px;">Note dell'incontro</label>
         <textarea id="ecNoteIncontro" placeholder="Come è andato l'incontro...">${esc(k.noteIncontro||'')}</textarea>
+        <div class="seg-act" style="margin-top:10px;">${apptToPersAsk===k.id
+          ? `<strong>Spostarlo tra gli impegni personali?</strong> Diventa un impegno verde con la stessa data e ora; questa attività con ${esc(fullName(c))} viene eliminata (il contatto resta).
+            <div class="seg-btns" style="margin-top:6px;"><button type="button" class="btn small" id="ecToPersYes">Sì, sposta</button><button type="button" class="btn secondary small" id="ecToPersNo">No</button></div>`
+          : `<button type="button" class="btn secondary small" id="ecToPersBtn">Non è lavoro: rendilo un impegno personale</button>`}</div>
       </div>
       <label style="margin-top:12px;">Prossimo follow-up</label>
       <div class="field-row">
@@ -10867,6 +10871,25 @@ function bindTableDetail(){
     document.getElementById('cancelEditCallBtn').addEventListener('click', ()=>{ editingCallId=null; renderMain(); });
     document.getElementById('ecApptCheck')?.addEventListener('change', e=>{
       document.getElementById('ecApptWrap').classList.toggle('hidden', !e.target.checked);
+    });
+    // appuntamento non di lavoro (2026-11-16: visita fissata come cliente) -> impegno personale, poi si apre il suo modulo
+    document.getElementById('ecToPersBtn')?.addEventListener('click', ()=>{ apptToPersAsk = tableDetailCallId; renderMain(); });
+    document.getElementById('ecToPersNo')?.addEventListener('click', ()=>{ apptToPersAsk = null; renderMain(); });
+    document.getElementById('ecToPersYes')?.addEventListener('click', async e=>{
+      const k = calls.find(x=>x.id===tableDetailCallId); if(!k) return;
+      const c = contacts.find(x=>x.id===k.contactId) || {};
+      const d = document.getElementById('ecApptDate').value, t = document.getElementById('ecApptTime').value;
+      const quando = /^\d{4}-\d{2}-\d{2}$/.test(d) && t ? `${d}T${t}` : k.appuntamento;
+      if(!quando){ alert('Indica data e ora dell\'appuntamento.'); return; }
+      const place = (document.getElementById('ecApptPlace') || {}).value || apptPlace(k, c) || '';
+      e.target.disabled = true;
+      try{
+        const ref = await db.collection('sopralluoghi').add({ quando, durata: 60, personale: true, projectId: '', titolo: fullName(c), via: place.trim(), citta: '', note: [k.note, k.noteIncontro].filter(Boolean).join('\n'), createdAt: Date.now() });
+        await db.collection('calls').doc(k.id).delete();
+        apptToPersAsk = null; editingCallId = null; tableDetailCallId = null; view = 'appt'; setActiveTab('navAppt');
+        for(let i = 0; i < 30 && !sops.some(s=>s.id===ref.id); i++) await new Promise(r=>setTimeout(r, 100));
+        openSop(ref.id);
+      }catch(err){ e.target.disabled = false; alert('Non riuscito: '+(err.message || err.code || '')); }
     });
     const ek = calls.find(x=>x.id===tableDetailCallId);
     document.getElementById('saveEditCallBtn').addEventListener('click', ()=>ek && !isPhone(ek) ? saveActEdit(ek) : saveCallEdit());

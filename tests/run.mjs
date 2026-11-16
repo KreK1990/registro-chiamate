@@ -1487,6 +1487,17 @@ await test('impegni personali: in agenda in verde, fuori da mappa e report, poi 
   await page.waitForFunction(() => (sops.find(s => s.id === 'sopcasa') || {}).personale === true);
   await page.waitForSelector('#sopTitolo:not([placeholder*="palazzina"])');
   expect(!(await page.$('#sopProj')), 'dopo la spunta il modulo diventa personale');
+  // un appuntamento fissato come cliente (la psicologa) diventa un impegno personale
+  await page.evaluate(d => window.__fake.put('calls', 'kpsy', { contactId: 'c4', data: d, esito: 'Appuntamento fissato', note: 'Secondo appuntamento', appuntamento: d + 'T15:30', createdAt: 9 }), daysAgo(-4));
+  await page.waitForFunction(() => calls.some(k => k.id === 'kpsy'));
+  await show_(page, 'table', "tableDetailCallId='kpsy'; editingCallId='kpsy'; apptToPersAsk=null");
+  await page.click('#ecToPersBtn');
+  await page.click('#ecToPersYes');
+  await page.waitForFunction(() => !calls.some(k => k.id === 'kpsy') && view === 'sop' && sops.some(s => s.personale && s.note === 'Secondo appuntamento'));
+  const ps = await page.evaluate(() => sops.find(s => s.note === 'Secondo appuntamento'));
+  expect(ps.quando === daysAgo(-4) + 'T15:30' && /Verdi/.test(ps.titolo), 'impegno creato: ' + JSON.stringify(ps));
+  expect(await page.inputValue('#sopTitolo') === ps.titolo, 'si apre il modulo dell\'impegno');
+  await page.evaluate(id => { db.collection('sopralluoghi').doc(id).delete(); db.collection('sopralluoghi').doc('sopcasa').delete(); sopEdit = null; }, ps.id);
   await page.evaluate(id => { db.collection('sopralluoghi').doc(id).delete(); db.collection('sopralluoghi').doc('sopcasa').delete(); sopEdit = null; }, id);
   await show_(page, 'agenda');
 });
