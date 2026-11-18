@@ -11,6 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+const window_prospectCalls = [];
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const site = path.resolve(here, '..');
@@ -136,6 +137,7 @@ async function openApp({ width = 1280, height = 900 } = {}) {
   // URL dei file di Storage del Firebase finto: un'immagine qualsiasi
   await page.route('https://example.test/**', r => r.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') }));
   await page.route('**/.netlify/functions/suggest*', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
+  await page.route('**/.netlify/functions/prospect-background*', r => { window_prospectCalls.push(r.request().postDataJSON()); r.fulfill({ status: 202, body: '' }); });
   await page.route('**/.netlify/functions/backups*', async r => {
     const req = r.request(), q = new URL(req.url()).searchParams.get('date');
     backupCalls.push(req.method() + (q ? ' ' + q : ''));
@@ -173,7 +175,7 @@ console.log('Registro Chiamate - controlli automatici');
 let { ctx, page } = await openApp();
 
 await test('tutte le pagine si aprono senza errori', async () => {
-  const views = ['agenda', 'contactsList', 'call', 'followup', 'appt', 'projects', 'map', 'forecast', 'table', 'dashboard', 'settings', 'portal', 'dups', 'new', 'import', 'projectForm', 'segnalati', 'noMeet', 'avanz'];
+  const views = ['agenda', 'contactsList', 'call', 'followup', 'appt', 'projects', 'map', 'forecast', 'table', 'dashboard', 'settings', 'portal', 'dups', 'new', 'import', 'projectForm', 'segnalati', 'noMeet', 'avanz', 'prospect'];
   for (const v of views) {
     const txt = await show_(page, v);
     await settle(page);
@@ -1507,6 +1509,49 @@ await test('impegni personali: in agenda in verde, fuori da mappa e report, poi 
   await page.waitForFunction(d => !calls.some(k => k.id === 'kpsy2') && view === 'sop' && sops.some(s => s.personale && s.quando === d + 'T10:00'), daysAgo(5));
   await page.evaluate(d => { const s = sops.find(x => x.personale && x.quando === d + 'T10:00'); if (s) db.collection('sopralluoghi').doc(s.id).delete(); sopEdit = null; }, daysAgo(5));
   await page.evaluate(id => { db.collection('sopralluoghi').doc(id).delete(); db.collection('sopralluoghi').doc('sopcasa').delete(); sopEdit = null; }, id);
+  await show_(page, 'agenda');
+});
+
+await test('studi sul territorio: confronto con la rubrica, contatti con follow-up, non interessa', async () => {
+  await page.evaluate(() => {
+    window.__fake.put('prospetti', 'pA', { id: 'pA', nome: 'Studio Rossi Architetti Associati', tipo: 'architettura', via: 'Via Roma 1', comune: 'Torino', provincia: 'TO', telefono: '+39 333 123 4567', email: '', sito: '', fonte: 'https://esempio.it/a', stato: 'nuovo' });
+    window.__fake.put('prospetti', 'pB', { id: 'pB', nome: 'Ingegneria Collina Srl', tipo: 'ingegneria', via: 'Corso Francia 10', comune: 'Rivoli', provincia: 'TO', telefono: '011 555 1234', email: 'info@ingcollina.it', sito: 'https://www.ingcollina.it', fonte: 'https://www.ingcollina.it/contatti', stato: 'nuovo' });
+    window.__fake.put('prospetti', 'pC', { id: 'pC', nome: 'Studio Senza Numero', tipo: 'termotecnica', via: '', comune: 'Pinerolo', provincia: 'TO', telefono: '', email: '', sito: '', fonte: 'https://esempio.it/c', stato: 'nuovo' });
+  });
+  await page.waitForFunction(() => ['pA', 'pB', 'pC'].every(id => (window.__fake.docs('prospetti').find(p => p.id === id) || {}).stato !== 'nuovo'));
+  const st = await page.evaluate(() => Object.fromEntries(window.__fake.docs('prospetti').filter(p => ['pA', 'pB', 'pC'].includes(p.id)).map(p => [p.id, p.stato + '|' + (p.contactId || '')])));
+  expect(st.pA === 'inRubrica|c1' && st.pB === 'importato|web_pB' && st.pC === 'senzaTel|', 'stati: ' + JSON.stringify(st));
+  const c = await page.evaluate(() => window.__fake.docs('contacts').find(x => x.id === 'web_pB'));
+  const wd = new Date(c.followUp.slice(0, 10) + 'T12:00:00').getDay();
+  expect(c.azienda === 'Ingegneria Collina Srl' && c.professione === 'Ingegnere' && c.tag === 'ricerca web' && c.followUp > daysAgo(0) && /T09:00$/.test(c.followUp) && wd !== 0 && wd !== 6, 'contatto: ' + JSON.stringify(c));
+  // stesso giorno pieno (1 al giorno): il prossimo va al giorno lavorativo dopo
+  await page.evaluate(() => { appSettings.prospezione = { perGiorno: 1 }; window.__fake.put('prospetti', 'pD', { id: 'pD', nome: 'Studio Dora', tipo: 'architettura', via: '', comune: 'Settimo Torinese', provincia: 'TO', telefono: '011 777 8888', email: '', sito: '', fonte: '', stato: 'nuovo' }); });
+  await page.waitForFunction(() => (window.__fake.docs('prospetti').find(p => p.id === 'pD') || {}).stato === 'importato');
+  const fu = await page.evaluate(() => [window.__fake.docs('contacts').find(x => x.id === 'web_pB').followUp, window.__fake.docs('contacts').find(x => x.id === 'web_pD').followUp]);
+  expect(fu[1].slice(0, 10) > fu[0].slice(0, 10), 'secondo follow-up nello stesso giorno: ' + fu.join(' '));
+  // pagina: elenco, filtri, non interessa
+  await show_(page, 'contactsList');
+  await page.evaluate(() => document.getElementById('prosBtn').click());
+  await settle(page);
+  let txt = await page.textContent('#prosList');
+  expect(txt.includes('Ingegneria Collina Srl') && txt.includes('da chiamare') && !txt.includes('Studio Senza Numero'), 'aggiunti: ' + txt.slice(0, 300));
+  await page.click('[data-pros-filter="inRubrica"]');
+  expect((await page.textContent('#prosList')).includes('già in rubrica: Rossi Mario'), 'già in rubrica');
+  await page.click('[data-pros-filter="importato"]');
+  await page.click('[data-pros-no="pB"]');
+  await page.waitForFunction(() => (window.__fake.docs('prospetti').find(p => p.id === 'pB') || {}).stato === 'scartato' && (window.__fake.docs('contacts').find(x => x.id === 'web_pB') || {}).spento);
+  // nuova ricerca: documento "avviata" e chiamata alla function
+  await page.evaluate(() => { prosForm.provincia = 'CN'; prosForm.comune = 'Alba'; });
+  await show_(page, 'prospect');
+  await page.click('#prosGoBtn');
+  await page.waitForFunction(() => window.__fake.docs('prospezioni').some(r => r.provincia === 'CN' && r.comune === 'Alba' && r.stato === 'avviata'));
+  expect(window_prospectCalls.some(b => b.provincia === 'CN' && b.comune === 'Alba' && b.tipi.length === 3 && b.runId), 'function non chiamata: ' + JSON.stringify(window_prospectCalls));
+  await page.evaluate(() => {
+    ['pA', 'pB', 'pC', 'pD'].forEach(id => db.collection('prospetti').doc(id).delete());
+    ['web_pB', 'web_pD'].forEach(id => db.collection('contacts').doc(id).delete());
+    window.__fake.docs('prospezioni').forEach(r => db.collection('prospezioni').doc(r.id).delete());
+    appSettings.prospezione = undefined; prosForm = { provincia: 'TO', comune: '', tipi: ['architettura', 'ingegneria', 'termotecnica'] }; prosFilter = 'importato';
+  });
   await show_(page, 'agenda');
 });
 

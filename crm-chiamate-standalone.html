@@ -1259,6 +1259,7 @@ function startApp(uid){
   renderSidebarToday();
   unsubscribers.push(db.collection('contacts').onSnapshot(snap=>{
     contacts = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(!(snap.metadata && snap.metadata.fromCache)){ contactsFresh = true; prosAutoImport(); }
     if(canAutoRender()) renderMain();
     renderFooter();
     renderSidebarToday();
@@ -1283,6 +1284,8 @@ function startApp(uid){
   unsubscribers.push(db.collection('fatture').onSnapshot(onFattureSnapshot, showDataError));
   unsubscribers.push(db.collection('regali').onSnapshot(onRegaliSnapshot, showDataError));
   unsubscribers.push(db.collection('segnalazioni').onSnapshot(onSegSnapshot, showDataError));
+  unsubscribers.push(db.collection('prospetti').onSnapshot(onProspettiSnapshot, showDataError));
+  unsubscribers.push(db.collection('prospezioni').onSnapshot(onProspezioniSnapshot, showDataError));
 }
 
 function init(){ boot(); }
@@ -1308,6 +1311,7 @@ function contactsListView(){
       <button class="btn secondary" id="exportXlsBtn">⬇ Esporta tutto (Excel)</button>
       <button class="btn secondary" id="reteBtn">Rete di collaborazioni</button>
       <button class="btn secondary" id="giftBtn">Regali di Natale</button>
+      <button class="btn secondary" id="prosBtn" title="Cerca sul web gli studi della zona non ancora in rubrica">Studi sul territorio</button>
       <button class="btn secondary" id="noMeetBtn">Mai incontrati (${neverMet().length})</button>
       <button class="btn secondary" id="dupsBtn">Possibili doppioni${(()=>{ const n = dupGroups().length; return n ? ` (${n})` : ''; })()}</button>
     </div>
@@ -1477,6 +1481,7 @@ function renderMain(){
     document.getElementById('exportXlsBtn')?.addEventListener('click', exportAllExcel);
     document.getElementById('dupsBtn')?.addEventListener('click', ()=>{ view='dups'; renderMain(); });
     document.getElementById('noMeetBtn')?.addEventListener('click', ()=>{ view='noMeet'; renderMain(); });
+    document.getElementById('prosBtn')?.addEventListener('click', ()=>{ view='prospect'; renderMain(); });
     document.getElementById('reteBtn')?.addEventListener('click', ()=>{ reteFocus = null; view='rete'; renderMain(); });
     document.getElementById('giftBtn')?.addEventListener('click', ()=>{ view='regali'; renderMain(); });
     const cSearch = document.getElementById('contactsSearch');
@@ -1498,6 +1503,7 @@ function renderMain(){
   if(view==='regali'){ main.innerHTML = giftView(); bindGift(main); return; }
   if(view==='segnalati'){ main.innerHTML = segView(); bindSeg(main); return; }
   if(view==='noMeet'){ main.innerHTML = nmView(); bindNm(main); return; }
+  if(view==='prospect'){ main.innerHTML = prosView(); bindPros(main); return; }
   if(view==='avanz'){ main.innerHTML = avzView(); bindAvz(main); return; }
   if(view==='projects'){ main.innerHTML = projectsListView(); bindProjectsList(); return; }
   if(view==='projectDetail'){ main.innerHTML = projectDetailView(); bindProjectDetail(); return; }
@@ -4598,6 +4604,7 @@ function navLabel(e){
   if(s.view==='regali') return 'Regali di Natale';
   if(s.view==='segnalati') return 'Cantieri segnalati';
   if(s.view==='noMeet') return 'Mai incontrati';
+  if(s.view==='prospect') return 'Studi sul territorio';
   if(s.view==='avanz') return 'Avanzamento progetti';
   if(s.view==='rete'){ const n = s.reteFocus && netCache && netCache.nodes.get(s.reteFocus); return n ? n.label : 'Rete di collaborazioni'; }
   const t = document.getElementById(e.tab || 'navAgenda');
@@ -4647,7 +4654,7 @@ const TAB_CONTACT_ATTRS = ['contactId', 'contactOpen', 'openContact', 'mailConta
 const TAB_PROJECT_ATTRS = ['openProject', 'projectId', 'mapProject'];
 let appTabs = [], appTabCur = 0;   // vuoto = una sola schermata, niente barra
 const tabNavSel = ()=>[...NAV_TABS.map(id=>'#'+id), '[data-nav-back]', '[data-appt-call-id]', '[data-fu-id]', '[data-seg-goto]', '[data-go-forecast]'].join(',');
-const TAB_NAV_BTN = /BackBtn$|^(avzBtn|dupsBtn|giftBtn|noMeetBtn|ordToDeliveries|portalBtn|segBtn)$/;
+const TAB_NAV_BTN = /BackBtn$|^(avzBtn|dupsBtn|giftBtn|noMeetBtn|prosBtn|ordToDeliveries|portalBtn|segBtn)$/;
 // elemento che porta (forse) a un'altra schermata: voce del menu, attributo noto, pulsante "←", riga cliccabile
 function tabNavEl(el){
   if(!el || !el.closest || el.closest('input, select, textarea, label, a[href], summary, [contenteditable], .app-tabs, .fold-head, .planner')) return null;
@@ -6839,7 +6846,7 @@ function segMeetCardHtml(k){
 // (<mark class="hl">) nei testi della schermata, senza badare a maiuscole e accenti. Le parole di 1-3 lettere
 // solo all'inizio di una parola ("ne", "con"), le altre anche a meta'. Si rifa' da zero ogni volta.
 // ---------------------------------------------------------------------------
-const HL_SEARCH_IDS = ['apptSearch', 'tableSearchInput', 'contactsSearch', 'projSearch', 'segSearch', 'nmSearch', 'pfQ', 'reteQ', 'avzSearch'];
+const HL_SEARCH_IDS = ['apptSearch', 'tableSearchInput', 'contactsSearch', 'projSearch', 'segSearch', 'nmSearch', 'pfQ', 'reteQ', 'avzSearch', 'prosSearch'];
 const hlFold = ch=>{ const n = ch.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /^[a-z0-9]$/.test(n[0] || '') ? n[0] : ' '; };
 function hlSearch(){
   const main = document.getElementById('main'); if(!main) return;
@@ -6993,6 +7000,190 @@ function bindAvz(main){
     t.addEventListener('input', ()=>{ clearTimeout(timer); timer = setTimeout(save, 1500); });
     t.addEventListener('blur', save);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Studi sul territorio (Contatti -> "Studi sul territorio", view 'prospect', richiesta dell'utente 2026-11-18): la function
+// prospect-background fa cercare a Claude sul web studi di architettura, ingegneria e termotecnica di una provincia (o di
+// un comune) e li salva in "prospetti" {nome, tipo, via, comune, provincia, telefono, email, sito, fonte, runId, stato,
+// contactId, trovatoIl}; le ricerche in "prospezioni" {stato avviata|in corso|finita|errore, provincia, comune, tipi, data,
+// trovati, nuovi, ricerche, costo, errore}. A Claude non va la rubrica: il confronto lo fa l'app (prosMatch: telefono,
+// email, dominio del sito, nome dello studio senza forma societaria, cognome e nome di un contatto nel nome dello studio).
+// In automatico (scelta dell'utente): un prospetto 'nuovo' gia' in rubrica -> 'inRubrica'; senza telefono -> 'senzaTel';
+// altrimenti diventa il contatto web_<id> (tag "ricerca web", professione dal tipo) con un follow-up: al massimo
+// settings.prospezione.perGiorno (5) al giorno, dal primo giorno lavorativo dopo oggi, dalle 09:00 ogni mezz'ora.
+// L'importazione parte solo con i contatti letti dal server (contactsFresh), per non creare doppioni.
+// ---------------------------------------------------------------------------
+const PROS_PROV = [['TO','Torino'],['CN','Cuneo'],['AT','Asti'],['AL','Alessandria'],['NO','Novara'],['VC','Vercelli'],['BI','Biella'],['VB','Verbano-Cusio-Ossola'],
+  ['GE','Genova'],['SV','Savona'],['IM','Imperia'],['SP','La Spezia'],['AO','Aosta']];
+const PROS_TIPI = { architettura: ['Architettura', 'Architetto'], ingegneria: ['Ingegneria', 'Ingegnere'], termotecnica: ['Termotecnica', 'Termotecnico'] };
+const PROS_STATI = [['importato', 'Aggiunti ai contatti'], ['inRubrica', 'Già in rubrica'], ['senzaTel', 'Senza telefono'], ['scartato', 'Non interessano'], ['tutti', 'Tutti']];
+const PROS_TAG = 'ricerca web';
+const PROS_FREE_MAIL = /^(gmail|googlemail|libero|hotmail|outlook|live|yahoo|alice|tin|tiscali|virgilio|fastwebnet|icloud|me|email|pec|legalmail|arubapec)\./;
+let prospetti = [], prospezioni = [], contactsFresh = false, prosImporting = false;
+let prosFilter = 'importato', prosQ = '', prosForm = { provincia: 'TO', comune: '', tipi: ['architettura', 'ingegneria', 'termotecnica'] }, prosMsg = '';
+function onProspettiSnapshot(snap){ prospetti = snap.docs.map(d=>({ ...d.data(), id: d.id })); prosAutoImport(); if(view==='prospect' && canAutoRender()) renderMain(); }
+function onProspezioniSnapshot(snap){ prospezioni = snap.docs.map(d=>({ ...d.data(), id: d.id })).sort((a,b)=>(b.createdAt||0) - (a.createdAt||0)); if(view==='prospect' && canAutoRender()) renderMain(); }
+function prosPerDay(){ return Math.max(1, Math.min(30, +((appSettings.prospezione || {}).perGiorno) || 5)); }
+function prosDomain(url){ const d = String(url || '').toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split(/[\/?#]/)[0]; return /\./.test(d) && !PROS_FREE_MAIL.test(d) ? d : ''; }
+function prosMatch(p){
+  const tel = digits9(p.telefono), mail = (p.email || '').toLowerCase(), dom = prosDomain(p.sito), nn = netName(p.nome), pn = ' '+normName(p.nome)+' ';
+  return contacts.find(c=>{
+    if(c.id==='web_'+p.id) return false;
+    if(tel && [c.cellulare, c.telefono].some(x=>digits9(x)===tel)) return true;
+    if(mail && (c.email || '').toLowerCase()===mail) return true;
+    if(dom && (c.email || '').toLowerCase().endsWith('@'+dom)) return true;
+    if(nn && c.azienda && netName(c.azienda)===nn) return true;
+    return !!(c.cognome && c.nome && pn.includes(' '+normName(c.cognome)+' ') && pn.includes(' '+normName(c.nome)+' '));
+  }) || null;
+}
+// Prossimo spazio libero per un follow-up di un contatto della ricerca web (al massimo prosPerDay() al giorno).
+function prosSlots(n){
+  const used = {}, out = [];
+  contacts.forEach(c=>{ if(c.followUp && (c.tag || '').includes(PROS_TAG)){ const d = c.followUp.slice(0,10); used[d] = (used[d] || 0) + 1; } });
+  let d = todayISO();
+  while(out.length < n){
+    d = addDaysISO(d, 1);
+    const wd = new Date(d+'T12:00:00').getDay(); if(wd===0 || wd===6) continue;
+    while((used[d] || 0) < prosPerDay() && out.length < n){
+      const i = used[d] || 0; used[d] = i + 1;
+      const m = 9*60 + 30*i; out.push(`${d}T${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`);
+    }
+  }
+  return out;
+}
+function prosContact(p, followUp){
+  const tel = (p.telefono || '').replace(/^\+39\s*/, '').trim(), cell = /^3\d{8,9}$/.test(tel.replace(/\D/g, ''));
+  return { nome: '', cognome: '', azienda: p.nome, professione: (PROS_TIPI[p.tipo] || [])[1] || '', via: p.via || '', citta: p.comune || '',
+    cellulare: cell ? formatPhone(tel) : '', telefono: cell ? '' : formatPhone(tel), email: p.email || '', tag: PROS_TAG,
+    note: `Trovato con la ricerca web degli studi del territorio${p.sito ? ': '+p.sito : ''}.`, followUp: followUp || '', followUpSetAt: Date.now(),
+    fonteWeb: { prospettoId: p.id, sito: p.sito || '', fonte: p.fonte || '' }, createdAt: Date.now() };
+}
+async function prosAutoImport(){
+  if(prosImporting || !contactsFresh || !db) return;
+  const todo = prospetti.filter(p=>p.stato==='nuovo'); if(!todo.length) return;
+  prosImporting = true;
+  try{
+    const toAdd = [];
+    for(const p of todo){
+      const m = prosMatch(p);
+      if(m) await db.collection('prospetti').doc(p.id).update({ stato: 'inRubrica', contactId: m.id });
+      else if(!digits9(p.telefono)) await db.collection('prospetti').doc(p.id).update({ stato: 'senzaTel' });
+      else toAdd.push(p);
+    }
+    const slots = prosSlots(toAdd.length);
+    for(let i = 0; i < toAdd.length; i++){
+      const p = toAdd[i], id = 'web_'+p.id;
+      await db.collection('contacts').doc(id).set(prosContact(p, slots[i]));
+      await db.collection('prospetti').doc(p.id).update({ stato: 'importato', contactId: id, importatoIl: Date.now() });
+    }
+  }catch(e){ console.warn('Importazione degli studi non riuscita', e); }
+  finally{ prosImporting = false; }
+}
+async function prosStart(){
+  const f = prosForm;
+  if(!f.tipi.length){ prosMsg = 'Scegli almeno un tipo di studio.'; renderMain(); return; }
+  const runId = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  prosMsg = '';
+  try{
+    await db.collection('prospezioni').doc(runId).set({ stato: 'avviata', provincia: f.provincia, comune: f.comune.trim(), tipi: f.tipi, data: todayISO(), createdAt: Date.now() });
+    const token = await firebase.auth().currentUser.getIdToken();
+    const res = await fetch('/.netlify/functions/prospect-background', { method: 'POST', headers: { Authorization: 'Bearer '+token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ runId, provincia: f.provincia, comune: f.comune.trim(), tipi: f.tipi }) });
+    if(!res.ok) throw new Error('errore '+res.status);
+  }catch(e){
+    prosMsg = 'La ricerca non è partita: '+(e.message || e);
+    db.collection('prospezioni').doc(runId).update({ stato: 'errore', errore: prosMsg }).catch(()=>{});
+  }
+  renderMain();
+}
+function prosRunState(r){
+  if(r.stato==='finita') return `finita · ${r.trovati || 0} studi (${r.nuovi || 0} nuovi) · ${r.ricerche || 0} ricerche web · circa ${(r.costo || 0).toLocaleString('it-IT')} $`;
+  if(r.stato==='errore') return `<span style="color:var(--danger);">non riuscita: ${esc(r.errore || '')}</span>`;
+  const min = Math.round((Date.now() - (r.iniziataIl || r.createdAt || Date.now()))/60000);
+  if(min > 16) return '<span style="color:var(--danger);">interrotta</span>'+(r.trovati ? ` · ${r.trovati} studi salvati` : '');
+  return `<strong>in corso</strong>${min ? ' da '+min+' min' : ''}${r.trovati ? ` · ${r.trovati} studi finora` : ''} (qualche minuto: puoi usare l'app intanto)`;
+}
+function prosList(){
+  const q = normName(prosQ).split(' ').filter(Boolean);
+  return prospetti.filter(p=>prosFilter==='tutti' || p.stato===prosFilter || (prosFilter==='importato' && p.stato==='nuovo')).filter(p=>{
+    if(!q.length) return true;
+    const hay = normName([p.nome, p.comune, p.provincia, p.via, (PROS_TIPI[p.tipo] || [])[0], p.sito].join(' '));
+    return q.every(w=>hay.includes(w));
+  }).sort((a,b)=>(a.provincia || '').localeCompare(b.provincia || '') || (a.comune || '').localeCompare(b.comune || '') || (a.nome || '').localeCompare(b.nome || ''));
+}
+function prosRowHtml(p){
+  const c = p.contactId ? contacts.find(x=>x.id===p.contactId) : null;
+  const tel = p.telefono ? `<a href="tel:${esc(p.telefono.replace(/\s/g, ''))}" class="tel-link">${esc(p.telefono)}</a>` : '<span style="color:var(--danger);">senza telefono</span>';
+  const link = (u, l)=>/^https?:\/\//i.test(u || '') ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="addr-link">${l}</a>` : '';
+  const st = p.stato==='inRubrica' && c ? `già in rubrica: <span class="name-link" data-contact-id="${c.id}">${esc(fullName(c))}</span>`
+    : p.stato==='importato' && c ? `aggiunto ai contatti${c.followUp ? ', da chiamare '+fmtDateTime(c.followUp) : ''}` : p.stato==='scartato' ? 'non interessa' : '';
+  return `<div class="todo-row nm-row"><div class="todo-main">
+      ${c && p.stato==='importato' ? `<span class="name-link" data-contact-id="${c.id}">${esc(p.nome)}</span>` : `<strong>${esc(p.nome)}</strong>`}<span class="fc-addr"> · ${esc((PROS_TIPI[p.tipo] || [])[0] || '')}</span>
+      <div class="todo-sub">${esc([p.via, p.comune].filter(Boolean).join(', '))}${p.provincia ? ' ('+esc(p.provincia)+')' : ''} · ${tel}${p.email ? ' · '+esc(p.email) : ''}${p.sito ? ' · '+link(p.sito, 'sito') : ''}${p.fonte && p.fonte!==p.sito ? ' · '+link(p.fonte, 'fonte') : ''}</div>
+      ${st ? `<div class="todo-sub">${st}</div>` : ''}
+    </div><div class="nm-act">${p.stato==='scartato' || p.stato==='senzaTel' ? `<button class="btn secondary small" data-pros-add="${p.id}">Aggiungi ai contatti</button>` : ''}${p.stato!=='scartato' && p.stato!=='inRubrica' ? `<button class="btn secondary small" data-pros-no="${p.id}">Non interessa</button>` : ''}</div></div>`;
+}
+function prosView(){
+  const f = prosForm, list = prosList();
+  const cnt = k=>prospetti.filter(p=>k==='tutti' || p.stato===k || (k==='importato' && p.stato==='nuovo')).length;
+  const byProv = PROS_PROV.map(([s])=>[s, prospetti.filter(p=>p.provincia===s).length]).filter(x=>x[1]);
+  const running = prospezioni.some(r=>(r.stato==='avviata' || r.stato==='in corso') && Date.now() - (r.createdAt || 0) < 16*60000);
+  return `<button class="btn secondary small" id="prosBackBtn">← Contatti</button>
+  <div class="card" style="margin-top:12px;">
+    <h3>Studi sul territorio</h3>
+    <div class="fc-note" style="margin-bottom:10px;">Claude cerca sul web gli studi della zona; l'app li confronta con la rubrica e aggiunge ai contatti quelli nuovi con un telefono, ognuno con un follow-up per chiamarlo (${prosPerDay()} al giorno, dal prossimo giorno lavorativo). A Claude non va nessun dato della tua rubrica.</div>
+    <div class="field-row">
+      <div><label>Provincia</label><select id="prosProv">${PROS_PROV.map(([s, n])=>`<option value="${s}" ${f.provincia===s ? 'selected' : ''}>${n} (${s})</option>`).join('')}</select></div>
+      <div><label>Comune (facoltativo)</label><input id="prosComune" value="${esc(f.comune)}" placeholder="Tutta la provincia" autocomplete="off"></div>
+    </div>
+    <div class="seg-btns" style="margin:8px 0;">${Object.entries(PROS_TIPI).map(([k, [l]])=>`<label style="display:flex;align-items:center;gap:6px;margin:0 12px 0 0;cursor:pointer;"><input type="checkbox" data-pros-tipo="${k}" style="width:auto;" ${f.tipi.includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div>
+    <div class="todo-actions" style="align-items:center;">
+      <button class="btn" id="prosGoBtn" ${running ? 'disabled' : ''}>${running ? 'Ricerca in corso…' : 'Cerca con Claude'}</button>
+      <label style="margin:0;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;">Telefonate al giorno <input id="prosPerDay" type="number" min="1" max="30" value="${prosPerDay()}" style="width:64px;"></label>
+    </div>
+    ${prosMsg ? `<div style="color:var(--danger);font-size:13px;margin-top:6px;">${esc(prosMsg)}</div>` : ''}
+    <div class="fc-note" style="margin-top:8px;">Ogni ricerca dura qualche minuto e costa circa 1-3 $ di credito Claude (al massimo 10 al giorno). Una provincia grande va cercata più volte o comune per comune: gli studi già trovati non si ripetono.${byProv.length ? ' Trovati finora: '+byProv.map(([s, n])=>`${s} ${n}`).join(' · ')+'.' : ''}</div>
+    ${prospezioni.length ? `<div style="margin-top:10px;">${prospezioni.slice(0, 6).map(r=>`<div class="todo-sub" style="padding:3px 0;">${fmtDate(r.data)} · ${esc(r.comune ? r.comune+' ('+r.provincia+')' : 'provincia di '+r.provincia)} · ${prosRunState(r)}</div>`).join('')}</div>` : ''}
+  </div>
+  <div class="card">
+    <h3>Studi trovati (${prospetti.length})</h3>
+    <div class="seg-btns" style="margin:6px 0 10px;">${PROS_STATI.map(([k, l])=>`<button class="btn ${prosFilter===k ? '' : 'secondary '}small" data-pros-filter="${k}">${l} (${cnt(k)})</button>`).join('')}</div>
+    <input id="prosSearch" type="search" value="${esc(prosQ)}" placeholder="Cerca nome, comune, tipo..." autocomplete="off">
+    <div id="prosList" style="margin-top:8px;">${list.map(prosRowHtml).join('') || '<div class="empty">Nessuno studio qui.</div>'}</div>
+  </div>`;
+}
+function bindPros(main){
+  main.querySelector('#prosBackBtn')?.addEventListener('click', ()=>{ view = 'contactsList'; setActiveTab('navContacts'); renderMain(); });
+  main.querySelector('#prosProv')?.addEventListener('change', e=>{ prosForm.provincia = e.target.value; });
+  main.querySelector('#prosComune')?.addEventListener('input', e=>{ prosForm.comune = e.target.value; });
+  main.querySelectorAll('[data-pros-tipo]').forEach(b=>b.addEventListener('change', ()=>{ const k = b.dataset.prosTipo; prosForm.tipi = b.checked ? [...new Set([...prosForm.tipi, k])] : prosForm.tipi.filter(x=>x!==k); }));
+  main.querySelector('#prosGoBtn')?.addEventListener('click', e=>{ e.target.disabled = true; prosStart(); });
+  main.querySelector('#prosPerDay')?.addEventListener('change', e=>{ const n = Math.max(1, Math.min(30, +e.target.value || 5)); saveSettings({ prospezione: { ...(appSettings.prospezione || {}), perGiorno: n } }); });
+  main.querySelectorAll('[data-pros-filter]').forEach(b=>b.addEventListener('click', ()=>{ prosFilter = b.dataset.prosFilter; renderMain(); }));
+  const s = main.querySelector('#prosSearch');
+  s?.addEventListener('input', ()=>{ prosQ = s.value; const pos = s.selectionStart; renderMain(); const n = document.getElementById('prosSearch'); if(n){ n.focus(); n.setSelectionRange(pos, pos); } });
+  main.querySelectorAll('[data-contact-id]').forEach(el=>el.addEventListener('click', ()=>{ selectedId = el.dataset.contactId; view = 'detail'; setActiveTab('navContacts'); renderMain(); }));
+  // non interessa: se era stato aggiunto ai contatti, il contatto si spegne (resta in rubrica, senza follow-up)
+  main.querySelectorAll('[data-pros-no]').forEach(b=>b.addEventListener('click', async ()=>{
+    const p = prospetti.find(x=>x.id===b.dataset.prosNo); if(!p) return;
+    b.disabled = true;
+    try{
+      if(p.stato==='importato' && p.contactId && contacts.some(c=>c.id===p.contactId))
+        await db.collection('contacts').doc(p.contactId).update({ followUp: '', spento: { motivo: 'Altro', il: todayISO(), nota: 'Non interessa (ricerca web degli studi)' } });
+      await db.collection('prospetti').doc(p.id).update({ stato: 'scartato' });
+    }catch(e){ b.disabled = false; alert('Non salvato: '+(e.message || e.code || '')); }
+  }));
+  main.querySelectorAll('[data-pros-add]').forEach(b=>b.addEventListener('click', async ()=>{
+    const p = prospetti.find(x=>x.id===b.dataset.prosAdd); if(!p) return;
+    b.disabled = true;
+    try{
+      const id = p.contactId || 'web_'+p.id, c = contacts.find(x=>x.id===id);
+      if(c) await db.collection('contacts').doc(id).update({ spento: null, followUp: digits9(p.telefono) ? prosSlots(1)[0] : '', followUpSetAt: Date.now() });
+      else await db.collection('contacts').doc(id).set(prosContact(p, digits9(p.telefono) ? prosSlots(1)[0] : ''));
+      await db.collection('prospetti').doc(p.id).update({ stato: 'importato', contactId: id, importatoIl: Date.now() });
+    }catch(e){ b.disabled = false; alert('Non salvato: '+(e.message || e.code || '')); }
+  }));
 }
 
 // ---------------------------------------------------------------------------

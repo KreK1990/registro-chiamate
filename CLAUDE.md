@@ -522,6 +522,16 @@ Campi principali:
   (`nmUndo`: cancella le mail e rimette mailInviataIl vuoto sulle mail informative chiuse lo stesso giorno).
   "Copia indirizzi". Righe con `mailPresBtn` e "Togli dall'elenco" (`data-nm-excl`: `nmEscluso` = data sul contatto,
   2026-11-03; `neverMet(true)` li elenca nel filtro `excl` "Tolti dall'elenco (N)" con "Rimetti in elenco").
+- **Studi sul territorio** (Contatti -> "Studi sul territorio", `view='prospect'`, blocco omonimo, 2026-11-18): function
+  `netlify/functions/prospect-background.mjs` (background, 202 subito, fino a 15 min): Claude Opus 5.5 con `web_search_20260209`
+  (max 25 ricerche) e lo strumento `registra_studi` (strict) cerca studi di architettura/ingegneria/termotecnica di una provincia
+  (13 di Piemonte, Liguria, VdA) o di un comune e li scrive in `prospetti` (id stabile da nome+comune, merge che non perde dati)
+  e lo stato della ricerca in `prospezioni` (creata dall'app come 'avviata'; trovati, nuovi, ricerche, costo stimato con
+  la cache dei prompt; max 10 al giorno). A Claude NON va la rubrica: solo zona, tipi e nomi gia' trovati. In automatico (scelta
+  dell'utente) `prosAutoImport` confronta con i contatti (`prosMatch`: telefono, email, dominio del sito, `netName`, cognome+nome)
+  solo dopo uno snapshot dei contatti dal server (`contactsFresh`): inRubrica / senzaTel / contatto `web_<id>` (tag "ricerca
+  web", `fonteWeb`) con follow-up da `prosSlots` (`settings.prospezione.perGiorno`, 5, giorni lavorativi dalle 09:00 ogni 30
+  min). "Non interessa" spegne il contatto creato; "Aggiungi ai contatti" per senza telefono e scartati. `prospetti` nei backup.
 - **Avanzamento progetti** (Progetti -> "Avanzamento progetti", `view='avanz'`, blocco omonimo, 2026-11-05): commesse
   aperte (non perse ne' confermate) in "In attesa di conferma" (offertaPresentata raggiunta) e "In corso"; righe a due
   colonne (`.avz-row`: ID, nome, indirizzo, figure, fase e importo | note) con `projects.avanzamento` {testo, il},
