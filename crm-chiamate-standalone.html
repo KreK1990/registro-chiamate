@@ -7060,10 +7060,16 @@ function prosContact(p, followUp){
     fonteWeb: { prospettoId: p.id, sito: p.sito || '', fonte: p.fonte || '' }, createdAt: Date.now() };
 }
 async function prosAutoImport(){
-  if(prosImporting || !contactsFresh || !db) return;
+  if(prosImporting || !db) return;
   const todo = prospetti.filter(p=>p.stato==='nuovo'); if(!todo.length) return;
   prosImporting = true;
   try{
+    // con la persistenza offline, se la copia sul dispositivo e' gia' uguale al server non arriva uno snapshot "dal
+    // server": la si verifica una volta leggendo i contatti dal server (2026-11-19: i primi 78 studi restavano 'nuovo')
+    if(!contactsFresh){
+      const snap = await db.collection('contacts').get({ source: 'server' });
+      contacts = snap.docs.map(d=>({ id: d.id, ...d.data() })); contactsFresh = true;
+    }
     const toAdd = [];
     for(const p of todo){
       const m = prosMatch(p);
@@ -7221,8 +7227,8 @@ function neverMet(excl){   // excl: quelli tolti a mano dall'elenco (nmEscluso)
 function nmList(){
   const q = normName(nmQ.trim()).split(/\s+/).filter(Boolean);
   return neverMet(nmFilter==='excl').map(c=>({ c, a: lastActivities(c.id), pres: contactMails(c.id).find(m=>m.sottotipo==='presentazione') || null }))
-    .filter(x=>nmFilter==='all' || nmFilter==='excl' || (x.c.email && (nmFilter==='email' || !x.pres)))
-    .filter(x=>{ if(!q.length) return true; const hay = normName([fullName(x.c), x.c.azienda, x.c.professione, x.c.citta, x.c.email].join(' ')); return q.every(w=>hay.includes(w)); })
+    .filter(x=>nmFilter==='all' || nmFilter==='excl' || (nmFilter==='noCall' ? !x.a.call : x.c.email && (nmFilter==='email' || !x.pres)))
+    .filter(x=>{ if(!q.length) return true; const hay = normName([fullName(x.c), x.c.azienda, x.c.professione, x.c.citta, x.c.email, x.c.tag].join(' ')); return q.every(w=>hay.includes(w)); })
     .sort((a,b)=>(a.c.cognome||a.c.nome||'').localeCompare(b.c.cognome||b.c.nome||''));
 }
 function nmGroups(list){
@@ -7247,7 +7253,7 @@ function nmView(){
   <div class="card" style="margin-top:12px;">
     <h3>Mai incontrati (${all.length})</h3>
     <div class="fc-note">Contatti con cui non hai ancora fatto né fissato un incontro${nMail < all.length ? ` · ${nMail} con l'email` : ''}.</div>
-    <div class="seg-btns" style="margin:10px 0;">${pill('noPres', 'Presentazione mai mandata')}${pill('email', 'Con email')}${pill('all', 'Tutti')}${(()=>{ const n = neverMet(true).length; return n || nmFilter==='excl' ? pill('excl', 'Tolti dall\'elenco ('+n+')') : ''; })()}</div>
+    <div class="seg-btns" style="margin:10px 0;">${pill('noPres', 'Presentazione mai mandata')}${pill('noCall', 'Mai telefonati')}${pill('email', 'Con email')}${pill('all', 'Tutti')}${(()=>{ const n = neverMet(true).length; return n || nmFilter==='excl' ? pill('excl', 'Tolti dall\'elenco ('+n+')') : ''; })()}</div>
     <input id="nmSearch" value="${esc(nmQ)}" placeholder="Cerca nome, studio, professione, città..." autocomplete="off">
   </div>
   <div class="card">

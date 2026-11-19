@@ -532,6 +532,9 @@ Campi principali:
   solo dopo uno snapshot dei contatti dal server (`contactsFresh`): inRubrica / senzaTel / contatto `web_<id>` (tag "ricerca
   web", `fonteWeb`) con follow-up da `prosSlots` (`settings.prospezione.perGiorno`, 5, giorni lavorativi dalle 09:00 ogni 30
   min). "Non interessa" spegne il contatto creato; "Aggiungi ai contatti" per senza telefono e scartati. `prospetti` nei backup.
+  2026-11-19: con la persistenza offline lo snapshot "dal server" puo' non arrivare mai (cache gia' uguale): se `contactsFresh` e'
+  falso `prosAutoImport` rilegge i contatti con `get({source:'server'})` (prima i primi 78 studi restavano 'nuovo'). Mai
+  incontrati: filtro `noCall` "Mai telefonati" (nessuna telefonata) e ricerca anche nel tag ("ricerca web").
 - **Avanzamento progetti** (Progetti -> "Avanzamento progetti", `view='avanz'`, blocco omonimo, 2026-11-05): commesse
   aperte (non perse ne' confermate) in "In attesa di conferma" (offertaPresentata raggiunta) e "In corso"; righe a due
   colonne (`.avz-row`: ID, nome, indirizzo, figure, fase e importo | note) con `projects.avanzamento` {testo, il},

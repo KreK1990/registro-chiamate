@@ -1514,6 +1514,7 @@ await test('impegni personali: in agenda in verde, fuori da mappa e report, poi 
 
 await test('studi sul territorio: confronto con la rubrica, contatti con follow-up, non interessa', async () => {
   await page.evaluate(() => {
+    contactsFresh = false;   // come con la copia sul dispositivo: i contatti si rileggono dal server prima di importare
     window.__fake.put('prospetti', 'pA', { id: 'pA', nome: 'Studio Rossi Architetti Associati', tipo: 'architettura', via: 'Via Roma 1', comune: 'Torino', provincia: 'TO', telefono: '+39 333 123 4567', email: '', sito: '', fonte: 'https://esempio.it/a', stato: 'nuovo' });
     window.__fake.put('prospetti', 'pB', { id: 'pB', nome: 'Ingegneria Collina Srl', tipo: 'ingegneria', via: 'Corso Francia 10', comune: 'Rivoli', provincia: 'TO', telefono: '011 555 1234', email: 'info@ingcollina.it', sito: 'https://www.ingcollina.it', fonte: 'https://www.ingcollina.it/contatti', stato: 'nuovo' });
     window.__fake.put('prospetti', 'pC', { id: 'pC', nome: 'Studio Senza Numero', tipo: 'termotecnica', via: '', comune: 'Pinerolo', provincia: 'TO', telefono: '', email: '', sito: '', fonte: 'https://esempio.it/c', stato: 'nuovo' });
@@ -1538,6 +1539,10 @@ await test('studi sul territorio: confronto con la rubrica, contatti con follow-
   await page.click('[data-pros-filter="inRubrica"]');
   expect((await page.textContent('#prosList')).includes('già in rubrica: Rossi Mario'), 'già in rubrica');
   await page.click('[data-pros-filter="importato"]');
+  // in Mai incontrati il filtro "Mai telefonati" e la ricerca per tag li ritrovano
+  await show_(page, 'noMeet', "nmFilter='noCall'; nmQ='ricerca web'");
+  expect((await page.textContent('#nmList')).includes('Ingegneria Collina Srl') && !(await page.textContent('#nmList')).includes('Rossi Mario'), 'mai telefonati: ' + (await page.textContent('#nmList')).slice(0, 300));
+  await show_(page, 'prospect', "nmFilter='noPres'; nmQ=''");
   await page.click('[data-pros-no="pB"]');
   await page.waitForFunction(() => (window.__fake.docs('prospetti').find(p => p.id === 'pB') || {}).stato === 'scartato' && (window.__fake.docs('contacts').find(x => x.id === 'web_pB') || {}).spento);
   // nuova ricerca: documento "avviata" e chiamata alla function
