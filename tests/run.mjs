@@ -933,7 +933,7 @@ await test('Oggi: riquadri richiudibili; portale: barra in alto risalendo', asyn
   expect(!(await bar()).stuck, 'scendendo di nuovo la barra resta');
 });
 
-await test('chiamata registrata senza "Follow-up effettuato": il follow-up di oggi si chiude, quelli futuri restano', async () => {
+await test('chiamata registrata senza "Follow-up effettuato": il follow-up di oggi si chiude, anche quello futuro (chiamata in anticipo)', async () => {
   const fu = () => page.evaluate(() => (window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).followUp);
   await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T08:00' }), daysAgo(0));
   await page.waitForFunction(() => contacts.find(c => c.id === 'c4').followUp);
@@ -948,7 +948,20 @@ await test('chiamata registrata senza "Follow-up effettuato": il follow-up di og
   await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T10:00' }), daysAgo(-3));
   await page.waitForFunction(() => contacts.find(c => c.id === 'c4').followUp);
   await show_(page, 'call', "selectedId='c4'; callStep='entry'");
-  expect(await page.inputValue('#qcFollowUpDate') === daysAgo(-3), 'il follow-up futuro deve restare nel modulo');
+  expect(await page.inputValue('#qcFollowUpDate') === '', 'il follow-up futuro non deve essere riproposto nel modulo');
+});
+
+await test('controllo incrociato: follow-up di domani chiuso da una chiamata fatta oggi in anticipo', async () => {
+  const fu = id => page.evaluate(id => (window.__fake.docs('contacts').find(c => c.id === id) || {}).followUp, id);
+  await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T09:00', followUpSetAt: Date.now() - 86400000 }), daysAgo(-1));
+  await page.evaluate(d => db.collection('calls').add({ contactId: 'c4', data: d, esito: 'Interessato', note: 'in anticipo', createdAt: Date.now() }), daysAgo(0));
+  await page.waitForFunction(() => !(window.__fake.docs('contacts').find(c => c.id === 'c4') || {}).followUp, null, { timeout: 3000 }).catch(() => {});
+  expect(!(await fu('c4')), 'il follow-up di domani resta nonostante la chiamata di oggi: ' + await fu('c4'));
+  // fissato adesso per tra 3 giorni dalla chiamata appena registrata: resta
+  await page.evaluate(d => db.collection('calls').add({ contactId: 'c4', data: d, esito: 'Da richiamare', note: 'fissa futuro', createdAt: Date.now() - 2000 }), daysAgo(0));
+  await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T10:00', followUpSetAt: Date.now() }), daysAgo(-3));
+  await page.waitForTimeout(800);
+  expect(await fu('c4') === daysAgo(-3) + 'T10:00', 'il follow-up futuro appena fissato non doveva chiudersi');
 });
 
 await test('torna indietro: Oggi -> cliente -> chiamata registrata -> di nuovo Oggi, stesso punto', async () => {

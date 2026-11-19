@@ -4768,17 +4768,22 @@ document.addEventListener('click', e=>{
 
 // ---------------------------------------------------------------------------
 // Follow-up chiusi da un'attivita' gia' registrata
-// Controllo incrociato: un follow-up di oggi o scaduto si chiude da solo se nel giorno del follow-up o dopo
-// e' stata registrata un'attivita' con quel cliente (telefonata, appuntamento fissato, incontro o mail), anche
-// senza "Follow-up effettuato". Non conta l'attivita' durante la quale il follow-up e' stato fissato
-// (followUpSetAt, scritto da ogni modulo che imposta il follow-up): "richiamare alle 16" resta.
+// Controllo incrociato: un follow-up (scaduto, di oggi o anche futuro: l'utente spesso chiama in anticipo,
+// richiesta 2026-11-19) si chiude da solo se dopo averlo fissato e' stata registrata un'attivita' con quel
+// cliente (telefonata, appuntamento fissato, incontro o mail), anche senza "Follow-up effettuato". Non conta
+// l'attivita' durante la quale il follow-up e' stato fissato (followUpSetAt, scritto da ogni modulo che imposta
+// il follow-up): "richiamare alle 16" o "richiamare il 25" resta. Senza followUpSetAt (dati vecchi) vale la
+// regola di prima: follow-up di oggi o scaduto e attivita' dal giorno del follow-up in poi.
 const fuClosing = new Set();
 function followUpDoneBy(c){
   if(!c.followUp) return null;
-  const day = c.followUp.slice(0,10);
+  const day = c.followUp.slice(0,10), setAt = c.followUpSetAt || 0;
+  if(setAt){
+    const from = isoDay(new Date(setAt));
+    return calls.find(k=>k.contactId===c.id && (k.createdAt || 0) > setAt + 5000 && (k.data || '') >= from) || null;
+  }
   if(day > todayISO()) return null;
-  const setAt = c.followUpSetAt || 0;
-  return calls.find(k=>k.contactId===c.id && (k.data || '') >= day && (!setAt || (k.createdAt || 0) > setAt + 5000)) || null;
+  return calls.find(k=>k.contactId===c.id && (k.data || '') >= day) || null;
 }
 let fuCheckTimer = null;
 function scheduleFollowUpCheck(){
@@ -11432,9 +11437,9 @@ function readCallMailFields(emailId, checkId){
   if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alert('L\'email non sembra valida: controllala.'); return null; }
   return { email, todo: document.getElementById(checkId).checked };
 }
-// Registrando un'attivita' il follow-up gia' scaduto o di oggi si considera fatto: il modulo non lo ripropone
-// (se serve richiamare si indica una nuova data). Quelli dei giorni seguenti restano.
-function fuToKeep(c){ const f = c.followUp || ''; return f && f.slice(0,10) <= todayISO() ? '' : f; }
+// Registrando un'attivita' il follow-up aperto si considera fatto, anche se era per i giorni seguenti (chiamata
+// in anticipo, richiesta 2026-11-19): il modulo non lo ripropone, se serve richiamare si indica una nuova data.
+function fuToKeep(c){ return ''; }
 function contactUpdateAfterCall(contactId, followUp, email){
   const upd = { followUp: followUp||'', followUpSetAt: Date.now() };
   const c = contacts.find(x=>x.id===contactId);

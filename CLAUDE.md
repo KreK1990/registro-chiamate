@@ -140,12 +140,15 @@ Campi principali:
   "Oggi"/menu e come notifica dalle 17:30. L'email inserita registrando una chiamata
   aggiorna `contacts.email`.
   **Follow-up chiuso registrando** (2026-10-14): i moduli di registrazione (scheda contatto e Attivita') non
-  ripropongono un follow-up scaduto o di oggi (`fuToKeep`), quindi salvando qualunque attivita' senza toccarlo il
-  follow-up si chiude come con "Follow-up effettuato"; quelli dei giorni seguenti restano.
+  ripropongono il follow-up aperto (`fuToKeep` restituisce sempre ''; dal 2026-11-19 anche quello dei giorni
+  seguenti: l'utente chiama in anticipo), quindi salvando qualunque attivita' senza toccarlo il follow-up si chiude
+  come con "Follow-up effettuato"; se serve richiamare si indica una nuova data.
   **Follow-up chiusi da un'attivita'** (blocco omonimo, 2026-10-14): controllo incrociato a ogni aggiornamento di
-  contatti/attivita' (`scheduleFollowUpCheck`): un follow-up di oggi o scaduto si chiude (followUp '') se c'e' un'attivita'
-  del cliente con data >= giorno del follow-up, esclusa quella durante cui e' stato fissato: `contacts.followUpSetAt`
-  (ms) scritto da ogni modulo che imposta il follow-up; l'attivita' conta se createdAt > followUpSetAt + 5 s.
+  contatti/attivita' (`scheduleFollowUpCheck`, `followUpDoneBy`): un follow-up, anche futuro (2026-11-19), si chiude
+  (followUp '') se c'e' un'attivita' del cliente registrata dopo averlo fissato, esclusa quella durante cui e' stato
+  fissato: `contacts.followUpSetAt` (ms) scritto da ogni modulo che imposta il follow-up; l'attivita' conta se
+  createdAt > followUpSetAt + 5 s e data >= giorno di followUpSetAt. Senza followUpSetAt (dati vecchi): solo follow-up
+  di oggi o scaduti, attivita' con data >= giorno del follow-up.
   Esiti: Interessato, Da richiamare, Appuntamento fissato, Non interessato, Nessuna
   risposta, Filtrato dalla segreteria, Altro (liste nei moduli, `ESITO_OPTS` e
   `callEditView`). Dashboard → "Clienti" (`clientStatuses`): conta clienti, non chiamate;
