@@ -951,6 +951,13 @@ await test('chiamata registrata senza "Follow-up effettuato": il follow-up di og
   expect(await page.inputValue('#qcFollowUpDate') === '', 'il follow-up futuro non deve essere riproposto nel modulo');
 });
 
+await test('sistemazione 19/11: follow-up futuro risalvato da una chiamata registrata prima della correzione', async () => {
+  const fu = id => page.evaluate(id => (window.__fake.docs('contacts').find(c => c.id === id) || {}).followUp, id);
+  expect(await page.evaluate(() => { const t = FU_REPAIR_UNTIL - 60000, c = { id: 'zz', followUp: addDaysISO(todayISO(), 1) + 'T09:00', followUpSetAt: t + 1500 };
+    calls.push({ contactId: 'zz', data: '2026-11-19', esito: 'Interessato', createdAt: t });
+    const a = followUpCarriedOver(c); calls[calls.length - 1].esito = 'Nessuna risposta'; const b = followUpCarriedOver(c); calls.pop(); return a && !b; }), 'riconoscimento del follow-up risalvato sbagliato');
+});
+
 await test('controllo incrociato: follow-up di domani chiuso da una chiamata fatta oggi in anticipo', async () => {
   const fu = id => page.evaluate(id => (window.__fake.docs('contacts').find(c => c.id === id) || {}).followUp, id);
   await page.evaluate(d => db.collection('contacts').doc('c4').update({ followUp: d + 'T09:00', followUpSetAt: Date.now() - 86400000 }), daysAgo(-1));

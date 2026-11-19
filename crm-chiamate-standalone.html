@@ -4785,12 +4785,22 @@ function followUpDoneBy(c){
   if(day > todayISO()) return null;
   return calls.find(k=>k.contactId===c.id && (k.data || '') >= day) || null;
 }
+// Sistemazione una tantum (2026-11-19): prima della correzione registrando una chiamata in anticipo il modulo
+// risalvava il follow-up futuro (con un nuovo followUpSetAt), che quindi restava aperto. Si chiudono i follow-up
+// futuri risalvati da una chiamata del 19/11 registrata prima della correzione, se il cliente e' stato raggiunto.
+const FU_REPAIR_UNTIL = 1795082696000;
+function followUpCarriedOver(c){
+  const setAt = c.followUpSetAt || 0;
+  if(!c.followUp || !setAt || setAt > FU_REPAIR_UNTIL + 10000 || c.followUp.slice(0,10) <= todayISO()) return false;
+  return calls.some(k=>k.contactId===c.id && k.data==='2026-11-19' && !k.tipo && !ESITI_NON_RAGGIUNTO.includes(k.esito)
+    && (k.createdAt || 0) <= FU_REPAIR_UNTIL && (k.createdAt || 0) <= setAt && setAt - (k.createdAt || 0) < 10000);
+}
 let fuCheckTimer = null;
 function scheduleFollowUpCheck(){
   clearTimeout(fuCheckTimer);
   fuCheckTimer = setTimeout(()=>{
     if(!db || !callsSeen) return;
-    contacts.filter(c=>!fuClosing.has(c.id+'|'+c.followUp) && followUpDoneBy(c)).forEach(c=>{
+    contacts.filter(c=>!fuClosing.has(c.id+'|'+c.followUp) && (followUpDoneBy(c) || followUpCarriedOver(c))).forEach(c=>{
       fuClosing.add(c.id+'|'+c.followUp);
       db.collection('contacts').doc(c.id).update({ followUp: '' }).catch(e=>console.warn('Follow-up non chiuso', e));
     });

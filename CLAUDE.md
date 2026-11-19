@@ -149,6 +149,8 @@ Campi principali:
   fissato: `contacts.followUpSetAt` (ms) scritto da ogni modulo che imposta il follow-up; l'attivita' conta se
   createdAt > followUpSetAt + 5 s e data >= giorno di followUpSetAt. Senza followUpSetAt (dati vecchi): solo follow-up
   di oggi o scaduti, attivita' con data >= giorno del follow-up.
+  Sistemazione una tantum `followUpCarriedOver` (FU_REPAIR_UNTIL, 2026-11-19): chiude i follow-up futuri risalvati
+  da una chiamata del 19/11 (cliente raggiunto) registrata prima della correzione; si puo' togliere dopo qualche giorno.
   Esiti: Interessato, Da richiamare, Appuntamento fissato, Non interessato, Nessuna
   risposta, Filtrato dalla segreteria, Altro (liste nei moduli, `ESITO_OPTS` e
   `callEditView`). Dashboard → "Clienti" (`clientStatuses`): conta clienti, non chiamate;
