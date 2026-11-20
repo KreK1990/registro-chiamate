@@ -106,6 +106,8 @@ Campi principali:
   (proposto il piu' ricco, `dupScore`) e chiama `mergeContacts`, che ora sposta anche segnalazioni, prospetti.contactId
   e collegamenti (tolti se diventano doppi o su se stesso) e porta followUpSetAt col follow-up.
   **Possibili doppioni** (Contatti -> "Possibili doppioni (N)", blocco omonimo, `view='dups'`):
+  anche "stesso indirizzo" (2026-11-20, `dupAddrKey` via con civico + comune, abbreviazioni C.so/V.le/P.za; `dupSameAddrOk`:
+  studio senza nome vs persona, persone con lo stesso cognome, studi con una parola in comune; colleghi no);
   gruppi (union-find) per stesso cellulare (`digits9`), stessa email (se generica tipo info@,
   `GENERIC_MAIL`, solo con lo stesso cognome) o stesso nome+cognome anche invertiti. Si sceglie il
   contatto da tenere (proposto quello con piu' chiamate/progetti/dati, `dupScore`); "Unisci"

@@ -8491,10 +8491,25 @@ function onGeoEditClick(e){
 // colleghi. "Unisci" tiene il contatto scelto, gli porta chiamate, partecipazioni ai progetti,
 // dati mancanti e note, ed elimina gli altri. "Non sono doppioni" (settings.nonDoppioni, chiavi
 // "idA|idB" ordinate) non li ripropone.
+// Stesso indirizzo (richiesta 2026-11-20; via con numero civico e comune, `dupAddrKey`): conta solo tra uno studio
+// senza nome e cognome (es. quelli della ricerca web) e una persona, tra due persone con lo stesso cognome o tra
+// due studi con una parola del nome in comune: i colleghi dello stesso studio non vengono proposti.
 // ---------------------------------------------------------------------------
 let dupMain = {};   // chiave gruppo -> id del contatto da tenere
 const DUP_FIELDS = ['nome','cognome','professione','cellulare','azienda','via','citta','telefono','email'];
 const GENERIC_MAIL = /^(info|segreteria|studio|amministrazione|ufficio|tecnico|contatti|mail|posta|office|admin|commerciale)[@.]/i;
+function dupAddrKey(c){
+  let via = normName(c.via);
+  if(!via || !/\d/.test(via) || !normName(c.citta)) return '';
+  via = via.replace(/^(c so|cso)\b/, 'corso').replace(/^(v le|vle)\b/, 'viale').replace(/^(p za|p zza|pza|pzza|p zzale|p le)\b/, 'piazza').replace(/^v\b/, 'via').replace(/\bn\b(?= \d)/, '').replace(/ +/g, ' ');
+  return via+'|'+normName(c.citta);
+}
+function dupSameAddrOk(a, b){
+  const person = c=>!!(normName(c.cognome) || normName(c.nome));
+  if(person(a) && person(b)) return normName(a.cognome)===normName(b.cognome);
+  if(!person(a) && !person(b)){ const wa = mergeWords(a); return [...mergeWords(b)].some(w=>wa.has(w)); }
+  return true;
+}
 function dupPairKey(a, b){ return [a, b].sort().join('|'); }
 function dupIgnored(){ return new Set(appSettings.nonDoppioni || []); }
 function dupGroups(){
@@ -8509,11 +8524,12 @@ function dupGroups(){
   const by = (keyFn, reason, ok)=>{
     const m = new Map();
     contacts.forEach(c=>{ const k = keyFn(c); if(!k) return; (m.get(k) || m.set(k, []).get(k)).push(c); });
-    m.forEach(list=>{ for(let i=1; i<list.length; i++) if(!ok || ok(list[0], list[i])) join(list[0], list[i], reason); });
+    m.forEach(list=>{ for(let i=0; i<list.length; i++) for(let j=i+1; j<list.length; j++) if(!ok || ok(list[i], list[j])) join(list[i], list[j], reason); });
   };
   by(c=>digits9(c.cellulare), 'stesso cellulare');
   by(c=>(c.email||'').trim().toLowerCase(), 'stessa email', (a, b)=>!GENERIC_MAIL.test(a.email) || (normName(a.cognome) && normName(a.cognome)===normName(b.cognome)));
   by(c=>c.cognome && c.nome ? [normName(c.cognome), normName(c.nome)].sort().join('|') : '', 'stesso nome');
+  by(dupAddrKey, 'stesso indirizzo', dupSameAddrOk);
   const groups = new Map();
   contacts.forEach(c=>{ const r = find(c.id); (groups.get(r) || groups.set(r, []).get(r)).push(c); });
   return [...groups.values()].filter(g=>g.length > 1).map(g=>{

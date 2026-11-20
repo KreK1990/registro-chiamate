@@ -1583,6 +1583,20 @@ await test('unisci con...: dalla scheda, contatto suggerito, tiene quello con pi
   expect(st.pros === 'ap1', 'lo studio della ricerca web non punta al contatto tenuto: ' + st.pros);
 });
 
+await test('possibili doppioni: stesso indirizzo tra studio e persona, non tra colleghi', async () => {
+  await page.evaluate(() => Promise.all([
+    db.collection('contacts').doc('wd1').set({ nome: '', cognome: '', azienda: 'Studio Neri Architettura', via: 'C.so Francia 5', citta: 'Torino', tag: 'ricerca web' }),
+    db.collection('contacts').doc('wd2').set({ nome: 'Luca', cognome: 'Neri', azienda: 'Neri Studio', via: 'Corso Francia n. 5', citta: 'TORINO' }),
+    db.collection('contacts').doc('wd3').set({ nome: 'Anna', cognome: 'Gialli', azienda: 'Altro', via: 'Via Nizza 8', citta: 'Torino' }),
+    db.collection('contacts').doc('wd4').set({ nome: 'Piero', cognome: 'Blu', azienda: 'Altro', via: 'Via Nizza 8', citta: 'Torino' }),
+  ]));
+  await page.waitForFunction(() => ['wd1', 'wd2', 'wd3', 'wd4'].every(id => contacts.some(c => c.id === id)));
+  const g = await page.evaluate(() => dupGroups().map(x => ({ ids: x.contacts.map(c => c.id).sort().join(','), why: x.reasons.join(',') })));
+  expect(g.some(x => x.ids === 'wd1,wd2' && /stesso indirizzo/.test(x.why)), 'studio e persona allo stesso indirizzo non proposti: ' + JSON.stringify(g));
+  expect(!g.some(x => x.ids.includes('wd3') || x.ids.includes('wd4')), 'colleghi allo stesso indirizzo proposti come doppioni');
+  await page.evaluate(() => Promise.all(['wd1', 'wd2', 'wd3', 'wd4'].map(id => db.collection('contacts').doc(id).delete())));
+});
+
 await test('studi sul territorio: confronto con la rubrica, contatti con follow-up, non interessa', async () => {
   await page.evaluate(() => {
     contactsFresh = false;   // come con la copia sul dispositivo: i contatti si rileggono dal server prima di importare
