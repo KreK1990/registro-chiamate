@@ -4463,7 +4463,7 @@ function parseEml(raw){
   const cut = raw.search(/\r?\n\r?\n/);
   const h = mailHeaders(cut<0 ? raw : raw.slice(0, cut)), body = cut<0 ? '' : raw.slice(cut).replace(/^\r?\n\r?\n/, '');
   const when = h.date ? new Date(h.date) : null;
-  return { oggetto: decodeWords(h.subject).trim(), a: decodeWords(h.to).trim(), when: when && !isNaN(when) ? when : null, testo: emlText(h['content-type'], h['content-transfer-encoding'], body) };
+  return { emails: mailAddrs(decodeWords(h.to)+' '+decodeWords(h.cc)), oggetto: decodeWords(h.subject).trim(), a: decodeWords(h.to).trim(), when: when && !isNaN(when) ? when : null, testo: emlText(h['content-type'], h['content-transfer-encoding'], body) };
 }
 async function readMailFile(file){
   const n = (file.name||'').toLowerCase();
@@ -4475,7 +4475,8 @@ async function readMailFile(file){
     const hdr = d.headers ? parseEml(d.headers.trim()+'\r\n\r\n') : {};
     const ws = d.clientSubmitTime || d.messageDeliveryTime || d.creationTime, w = ws ? new Date(ws) : null;
     const a = (d.recipients||[]).filter(r=>!r.recipType || r.recipType==='to').map(r=>r.name || r.email || r.smtpAddress).filter(Boolean).join(', ');
-    return { oggetto: (d.subject||'').trim(), a: a || (d.displayTo||'').trim(), when: w && !isNaN(w) ? w : hdr.when || null, testo: (d.body||'').trim() || (d.bodyHtml ? htmlMailText(d.bodyHtml) : '') };
+    const emails = mailAddrs((d.recipients||[]).filter(r=>r.recipType!=='bcc').map(r=>[r.smtpAddress, r.email].join(' ')).join(' ') + ' ' + (hdr.emails||[]).join(' '));
+    return { emails, oggetto: (d.subject||'').trim(), a: a || (d.displayTo||'').trim(), when: w && !isNaN(w) ? w : hdr.when || null, testo: (d.body||'').trim() || (d.bodyHtml ? htmlMailText(d.bodyHtml) : '') };
   }
   if(n.endsWith('.eml') || /^message\/rfc822/.test(file.type||'')) return parseEml(await file.text());
   throw new Error('trascina una mail di Outlook (.msg) o un file .eml');
@@ -4520,6 +4521,78 @@ document.addEventListener('click', e=>{
   input.type = 'file'; input.accept = '.msg,.eml,message/rfc822';
   input.addEventListener('change', ()=>{ if(input.files && input.files[0]) takeMailFile(b.dataset.mailFile, input.files[0]); });
   input.click();
+});
+
+// ---------------------------------------------------------------------------
+// Mail di invio dell'offerta sulla fase "Offerta presentata" (richiesta 2026-11-20): trascinando la mail
+// (.msg di Outlook o .eml, letta sul dispositivo con readMailFile) o scegliendola con "Allega la mail di invio",
+// la data di invio diventa la data della fase e l'invio si registra come attivita' Mail (calls tipo 'mail',
+// progetti [id del progetto]) di ogni destinatario A/Cc che e' in rubrica (confronto per email; a parita' vince
+// una figura del progetto). Una mail uguale gia' registrata (stesso contatto, giorno e oggetto) non si ripete.
+// Sotto la fase le mail gia' collegate al progetto.
+// ---------------------------------------------------------------------------
+function mailAddrs(s){ return (String(s||'').match(/[^\s<>"',;:()\[\]]+@[^\s<>"',;:()\[\]]+\.[a-z]{2,}/gi) || []).map(x=>x.toLowerCase()); }
+function offerMailHtml(p){
+  const byId = Object.fromEntries(contacts.map(c=>[c.id, c]));
+  const sent = calls.filter(k=>k.tipo==='mail' && (k.progetti||[]).includes(p.id)).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  return `<div class="ph-files">
+    ${sent.map(k=>`<div class="ph-file">Mail del ${fmtDate(k.data)}${k.ora ? ' '+esc(k.ora) : ''} a ${byId[k.contactId] ? `<span class="name-link" data-open-contact="${k.contactId}">${esc(fullName(byId[k.contactId]))}</span>` : '(contatto eliminato)'}${k.oggetto ? ` <span class="fc-note">· ${esc(k.oggetto)}</span>` : ''}</div>`).join('')}
+    <button type="button" class="btn secondary small" data-offer-mail-file="${p.id}">Allega la mail di invio</button>
+    <span class="fc-note ph-drop-hint">oppure trascinala qui da Outlook: data e destinatario si registrano da soli</span>
+  </div>`;
+}
+async function offerMailTake(pid, file){
+  const p = projects.find(x=>x.id===pid);
+  if(!p || !file || !db) return;
+  const close = ' <button class="btn secondary small" id="noticeClose">Chiudi</button>';
+  showNotice('Leggo la mail…');
+  try{
+    const r = await readMailFile(file);
+    if(!r.when) throw new Error('nella mail non trovo la data di invio');
+    const pad = n=>String(n).padStart(2,'0'), data = isoDay(r.when), ora = `${pad(r.when.getHours())}:${pad(r.when.getMinutes())}`;
+    const partIds = new Set((p.partecipanti||[]).map(x=>x.contactId)), found = [], missing = [];
+    [...new Set(r.emails || [])].forEach(a=>{
+      const ms = contacts.filter(c=>(c.email||'').trim().toLowerCase()===a);
+      const c = ms.find(x=>partIds.has(x.id)) || ms[0];
+      if(!c) missing.push(a); else if(!found.includes(c)) found.push(c);
+    });
+    await setProjectPhase(p, 'offertaPresentata', data);
+    const added = [], already = [];
+    for(const c of found){
+      if(calls.some(k=>k.tipo==='mail' && k.contactId===c.id && k.data===data && (k.oggetto||'')===(r.oggetto||''))){ already.push(c); continue; }
+      await db.collection('calls').add({ tipo:'mail', contactId: c.id, data, ora, oggetto: r.oggetto || '', note: 'Invio dell\'offerta: '+projectTitle(p), testo: r.testo || '', progetti: [p.id], createdAt: Date.now() });
+      added.push(c);
+    }
+    const names = l=>l.map(c=>`<strong>${esc(fullName(c))}</strong>`).join(', ');
+    showNotice([`Offerta presentata il <strong>${fmtDate(data)}</strong> (ore ${ora}).`,
+      added.length ? `Mail registrata nelle attività di ${names(added)}.` : '',
+      already.length ? `Già registrata per ${names(already)}.` : '',
+      missing.length ? `Nessun contatto in rubrica con ${esc(missing.join(', '))}: aggiungi l'indirizzo alla scheda e trascina di nuovo la mail.` : '',
+      !(r.emails||[]).length ? 'Nella mail non trovo i destinatari: registra l\'invio a mano dalle Attività.' : ''].filter(Boolean).join(' ') + close);
+  }catch(e){ showNotice(`Non riesco a leggere la mail: ${esc(e.message||e)}.${close}`); }
+  if(canAutoRender()) renderMain();
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-offer-mail-file]');
+  if(!b) return;
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.msg,.eml,message/rfc822';
+  input.addEventListener('change', ()=>{ if(input.files && input.files[0]) offerMailTake(b.dataset.offerMailFile, input.files[0]); });
+  input.click();
+});
+document.addEventListener('dragover', e=>{
+  const li = e.target.closest && e.target.closest('[data-offer-mail]');
+  if(!li || !e.dataTransfer || ![...e.dataTransfer.types].includes('Files')) return;
+  e.preventDefault(); li.classList.add('drop-on');
+});
+document.addEventListener('dragleave', e=>{ const li = e.target.closest && e.target.closest('[data-offer-mail]'); if(li && !li.contains(e.relatedTarget)) li.classList.remove('drop-on'); });
+document.addEventListener('drop', e=>{
+  const li = e.target.closest && e.target.closest('[data-offer-mail]');
+  if(!li) return;
+  e.preventDefault(); li.classList.remove('drop-on');
+  const f = [...((e.dataTransfer && e.dataTransfer.files) || [])][0];
+  if(f) offerMailTake(li.dataset.offerMail, f);
+  else showNotice('Da qui non arriva nessun file: da Outlook sul web salva la mail sul desktop e trascinala da lì. <button class="btn secondary small" id="noticeClose">Chiudi</button>');
 });
 
 // ---------------------------------------------------------------------------
@@ -4791,7 +4864,7 @@ function followUpDoneBy(c){
 const FU_REPAIR_UNTIL = 1795082696000;
 function followUpCarriedOver(c){
   const setAt = c.followUpSetAt || 0;
-  if(!c.followUp || !setAt || setAt > FU_REPAIR_UNTIL + 10000 || c.followUp.slice(0,10) <= todayISO()) return false;
+  if(!c.followUp || !setAt || setAt > FU_REPAIR_UNTIL + 10000 || c.followUp.slice(0,10) <= '2026-11-19') return false;
   return calls.some(k=>k.contactId===c.id && k.data==='2026-11-19' && !k.tipo && !ESITI_NON_RAGGIUNTO.includes(k.esito)
     && (k.createdAt || 0) <= FU_REPAIR_UNTIL && (k.createdAt || 0) <= setAt && setAt - (k.createdAt || 0) < 10000);
 }
@@ -9320,11 +9393,11 @@ function projectDetailView(){
     <div class="card">
       <h3>Fasi del progetto</h3>
       <ol class="timeline">
-        ${PROJECT_PHASES.map(ph=>{ const d = f[ph.key] || ''; return `<li class="${d ? (d>today ? 'planned' : 'done') : ''}" ${PHASE_FILES.includes(ph.key) && storageAvailable() ? `data-phase-drop="${p.id}|${ph.key}"` : ''}>
+        ${PROJECT_PHASES.map(ph=>{ const d = f[ph.key] || ''; return `<li class="${d ? (d>today ? 'planned' : 'done') : ''}" ${PHASE_FILES.includes(ph.key) && storageAvailable() ? `data-phase-drop="${p.id}|${ph.key}"` : ''}${ph.key==='offertaPresentata' ? ` data-offer-mail="${p.id}"` : ''}>
           <span class="dot"></span>
           <div><div class="ph-label">${esc(ph.label)}</div>${ph.owner ? `<div class="ph-owner">a cura di ${esc(ph.owner)}</div>` : ''}${d && d>today ? '<div class="ph-owner">prevista</div>' : ''}</div>
           <div class="ph-date"><input type="date" data-phase="${ph.key}" value="${d}">${d ? '' : `<button class="btn secondary small" data-phase-today="${ph.key}">Oggi</button>`}<button class="btn small hidden" data-phase-ok="${ph.key}">${ph.key==='offertaPresentata' ? 'Consegnata' : 'Conferma'}</button></div>
-          ${phaseFilesHtml(p, ph.key)}
+          ${phaseFilesHtml(p, ph.key)}${ph.key==='offertaPresentata' ? offerMailHtml(p) : ''}
           ${ph.key==='confermaOrdine' && d ? `<div class="ph-extra">
             <label>Importo deliberato (€)</label>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">

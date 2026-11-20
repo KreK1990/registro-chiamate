@@ -1532,6 +1532,32 @@ await test('impegni personali: in agenda in verde, fuori da mappa e report, poi 
   await show_(page, 'agenda');
 });
 
+await test('offerta presentata: mail di invio trascinata -> data della fase e attivita\' Mail del destinatario', async () => {
+  await page.evaluate(() => db.collection('projects').doc('pmail').set({ codice: '4800099', nome: 'Villa Mail', citta: 'Torino', partecipanti: [{ contactId: 'c4', ruolo: 'Impresa' }], fasi: { richiesta: '2026-11-01' }, createdAt: Date.now() }));
+  await page.waitForFunction(() => projects.some(p => p.id === 'pmail'));
+  await show_(page, 'projectDetail', "selectedProjectId='pmail'");
+  expect(!!(await page.$('[data-offer-mail="pmail"] [data-offer-mail-file]')), 'manca "Allega la mail di invio" sulla fase Offerta presentata');
+  const eml = ['From: Alessandro <a@example.it>', 'To: Paolo Verdi <INFO@verdi.it>', 'Cc: sconosciuto@altro.it', 'Subject: Offerta Isokorb Villa Mail',
+    'Date: Thu, 19 Nov 2026 17:42:00 +0100', 'Content-Type: text/plain; charset="utf-8"', '', 'In allegato la nostra offerta.', ''].join('\r\n');
+  const drop = () => page.evaluate(src => {
+    const dt = new DataTransfer(); dt.items.add(new File([src], 'Offerta.eml', { type: 'message/rfc822' }));
+    const li = document.querySelector('[data-offer-mail="pmail"]');
+    li.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    li.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, eml);
+  await drop();
+  await page.waitForFunction(() => /Offerta presentata il/.test(document.getElementById('noticeBar').textContent));
+  await page.waitForFunction(() => calls.some(k => k.tipo === 'mail' && k.contactId === 'c4' && (k.progetti || []).includes('pmail')));
+  const st = await page.evaluate(() => ({ fase: projects.find(p => p.id === 'pmail').fasi.offertaPresentata, k: calls.find(k => k.tipo === 'mail' && (k.progetti || []).includes('pmail')), n: document.getElementById('noticeBar').textContent }));
+  expect(st.fase === '2026-11-19', 'data della fase: ' + st.fase);
+  expect(st.k.data === '2026-11-19' && st.k.ora === '17:42' && st.k.oggetto === 'Offerta Isokorb Villa Mail', 'attivita\': ' + JSON.stringify(st.k));
+  expect(/Paolo Verdi|Verdi Paolo/.test(st.n) && /sconosciuto@altro\.it/.test(st.n), 'avviso: ' + st.n);
+  await drop();
+  await page.waitForFunction(() => /Già registrata/.test(document.getElementById('noticeBar').textContent));
+  expect(await page.evaluate(() => calls.filter(k => k.tipo === 'mail' && (k.progetti || []).includes('pmail')).length) === 1, 'mail registrata due volte');
+  await page.evaluate(() => hideNotice());
+});
+
 await test('studi sul territorio: confronto con la rubrica, contatti con follow-up, non interessa', async () => {
   await page.evaluate(() => {
     contactsFresh = false;   // come con la copia sul dispositivo: i contatti si rileggono dal server prima di importare

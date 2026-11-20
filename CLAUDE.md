@@ -121,7 +121,12 @@ Campi principali:
   da jsDelivr (+esm), .eml letto da `parseEml` (intestazioni, parole codificate, multipart, QP/base64, html ->
   testo); compila oggetto, data, ora e testo (`applyMailData`). Tutto sul dispositivo. Test: .eml completo;
   .msg solo l'oggetto (il file di prova `../test-fixtures/prova.msg` e' generato con il Burner della
-  libreria, che scrive male i flussi piccoli). Un appuntamento passato senza incontro e' "da registrare" (`apptToRegister`,
+  libreria, che scrive male i flussi piccoli). `readMailFile` restituisce anche `emails` (A e Cc, minuscole, `mailAddrs`).
+  **Mail di invio dell'offerta** (blocco omonimo, 2026-11-20): sulla fase "Offerta presentata" della timeline
+  (`data-offer-mail` sul li, "Allega la mail di invio") la mail trascinata da `offerMailTake`: data di invio -> fasi.offertaPresentata,
+  attivita' Mail (calls tipo 'mail', progetti [id]) per ogni destinatario in rubrica (per `contacts.email`, prima le
+  figure del progetto), niente doppioni (contatto+giorno+oggetto); avviso con gli indirizzi non in rubrica.
+  Sotto la fase le mail collegate al progetto (`offerMailHtml`). Un appuntamento passato senza incontro e' "da registrare" (`apptToRegister`,
   `meetingOf`): riquadro "Incontri da registrare" in Oggi (ultimi 60 giorni) e Appuntamenti -> Svolti con
   "Registra l'incontro" (`actPrefill`: incontro precompilato con data, ora, progetti, daAppuntamento).
   Clic su un appuntamento (Oggi, riepilogo, calendari, Appuntamenti; ascoltatore in cattura su document):
