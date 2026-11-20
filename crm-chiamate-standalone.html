@@ -564,6 +564,9 @@ body.foto-open{overflow:hidden;}
 .act-tag.mail{background:#3d4650;}
 .mail-drop{margin:4px 0 8px;padding:12px;border:2px dashed var(--border-strong);border-radius:2px;background:var(--bg);font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;}
 .mail-drop strong{color:var(--text);}
+.pn-row{display:grid;grid-template-columns:auto minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:6px 10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);}
+.pn-row input:not([type=checkbox]){margin:0;}
+@media (max-width:720px){ .pn-row{grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);} .pn-studio{grid-column:2 / 4;} .pn-row [data-pn-nome]{grid-column:2;} .pn-row [data-pn-skip]{grid-column:2 / 4;justify-self:start;} }
 .merge-cand{padding:8px 4px;border-bottom:1px solid var(--border);cursor:pointer;}
 .merge-cand:hover{background:var(--accent-soft);}
 .mail-drop.drop-on{border-color:var(--accent);background:var(--accent-soft);}
@@ -1313,7 +1316,7 @@ function contactsListView(){
       <button class="btn secondary" id="exportXlsBtn">⬇ Esporta tutto (Excel)</button>
       <button class="btn secondary" id="reteBtn">Rete di collaborazioni</button>
       <button class="btn secondary" id="giftBtn">Regali di Natale</button>
-      <button class="btn secondary" id="prosBtn" title="Cerca sul web gli studi della zona non ancora in rubrica">Studi sul territorio</button>
+      <button class="btn secondary" id="prosBtn" title="Cerca sul web gli studi della zona non ancora in rubrica">Studi sul territorio${(()=>{ const n = prosNameTodo().length; return n ? ` (${n} nomi da confermare)` : ''; })()}</button>
       <button class="btn secondary" id="noMeetBtn">Mai incontrati (${neverMet().length})</button>
       <button class="btn secondary" id="dupsBtn">Possibili doppioni${(()=>{ const n = dupGroups().length; return n ? ` (${n})` : ''; })()}</button>
     </div>
@@ -7143,9 +7146,80 @@ function prosSlots(n){
   }
   return out;
 }
+// Nome e cognome dal nome dello studio (richiesta 2026-11-20): "Emanuela Casotti Architetto" -> Emanuela / Casotti.
+// Prima quelli indicati da Claude nella ricerca (prospetti.titolareNome/titolareCognome), altrimenti `guessPerson`:
+// tolti titoli e parole come studio/architettura, deve restare un solo nome proprio italiano (NOMI_IT, anche doppio
+// tipo "Gian Luca") e un cognome di una parola (o due con De/Di/Del/Dal/Lo/La...). Con piu' persone ("Rossi e Bianchi")
+// o parole in piu' non indovina. `prosNameFix` sistema una volta i contatti della ricerca web gia' importati senza nome.
+const NOMI_IT = new Set(('abele achille ada adele adriana adriano agata agnese agostino alba alberto alberta alda aldo alessandra alessandro alessia alessio alfonso alfredo alice alida alma amalia amedeo ampelio anastasia andrea angela angelo anita anna annalisa annamaria antonella antonietta antonino antonio arianna armando arnaldo arturo assunta attilio aurelio aurora barbara bartolomeo beatrice benedetta benedetto beniamino bernardo bianca bruna bruno camilla carla carlo carmela carmelo carmen carolina caterina cecilia cesare chiara christian cinzia clara claudia claudio clelia concetta corrado costanza cristian cristiana cristiano cristina dalila damiano daniela daniele dante dario davide debora delia denis denise diana diego dino domenico donatella donato edoardo elena eleonora elia eliana elio elisa elisabetta ella elvira emanuela emanuele emilia emiliano emilio emma enrica enrico enzo erica erika ermanno ernesto ester ettore eugenio eva ezio fabiana fabio fabrizia fabrizio federica federico fernanda fernando filippo fiorella flavia flavio franca francesca francesco franco gabriele gabriella gaetano gaia giacomo giada gian giancarlo gianfranco gianluca gianluigi gianmarco gianni gianpaolo gianpiero gigliola gilberto gina gino giorgia giorgio giovanna giovanni giada giulia giuliana giuliano giulio giuseppe giuseppina gloria graziano graziella gregorio guido ida ilaria ilario irene iris isabella italo ivan ivana ivano jacopo laura lazzaro lea leonardo letizia lidia liliana lino lisa livia livio loredana lorena lorenzo loris luana luca lucia luciana luciano lucio ludovica luigi luigia luisa maddalena manuel manuela manuele mara marcella marcello marco margherita maria mariangela marianna mariano marilena marina marino mario marisa marta martina massimiliano massimo matilde mattia maura maurizio mauro michela michele milena mirco mirella mirko monica nadia natale natalia nazareno nicola nicoletta nicolo nicolò noemi norma oreste orietta orlando ornella oscar ottavio paola paolo pasquale patrizia patrizio pierluigi piero pietro pierpaolo pier pio rachele raffaele raffaella renata renato riccardo rina rita roberta roberto rocco romano romina rosa rosalba rosanna rosaria rosario rossana rossella ruggero sabina sabrina salvatore samanta samuele sandra sandro sara sergio silvana silvia silvio simona simone sofia sonia stefania stefano susanna tania teresa tiziana tiziano tommaso ugo umberto valentina valentino valeria valerio vanessa vania vincenzo viola virginia vito vittoria vittorio walter wanda zeno').split(' '));
+const PERSON_SKIP = new Set(['studio','studi','tecnico','tecnica','arch','architetto','architetta','architetti','architettura','architecture','architect','ing','ingegnere','ingegneri','ingegneria','geom','geometra','dott','dottore','dr','prof','per','ind','perito','progettazione','progetti','design','engineering','termotecnica','termotecnico','energetica','associato','associati','srl','srls','sas','snc','stp','di','del','dello','della','dell']);
+const SURNAME_PART = new Set(['de','di','del','della','dal','dalla','da','lo','la','li','le','van','von','mac','dell','d']);
+function guessPerson(s){
+  const raw = String(s||'').replace(/’/g, "'").replace(/[.,;:()\-–/|]+/g, ' ').split(/\s+/).filter(Boolean);
+  if(raw.some(w=>/^(e|ed|&|and)$/i.test(w))) return null;
+  const toks = raw.filter(w=>!PERSON_SKIP.has(normName(w)));
+  const isName = w=>NOMI_IT.has(normName(w));
+  const idx = toks.map((w, i)=>isName(w) ? i : -1).filter(i=>i>=0);
+  if(!idx.length || toks.length < 2 || toks.length > 4) return null;
+  const nm = [idx[0]]; if(idx[1]===idx[0]+1 && toks.length > 2) nm.push(idx[1]);
+  if(idx.some(i=>!nm.includes(i))) return null;
+  const sur = toks.filter((w, i)=>!nm.includes(i));
+  const before = nm[0] > 0;   // "Casotti Emanuela"
+  if(before && nm[nm.length-1] !== toks.length-1) return null;
+  if(!before && nm[0] !== 0) return null;
+  if(sur.length < 1 || sur.length > 2 || (sur.length===2 && !SURNAME_PART.has(normName(sur[0])))) return null;
+  if(sur.some(w=>/\d/.test(w) || w.length < 2 && !SURNAME_PART.has(normName(w)))) return null;
+  const cap = w=>w.toLowerCase().replace(/(^|\s|')\S/g, x=>x.toUpperCase());
+  return { nome: cap(nm.map(i=>toks[i]).join(' ')), cognome: cap(sur.join(' ')) };
+}
+function prosPerson(p){
+  if(p && (p.titolareNome || p.titolareCognome)) return { nome: p.titolareNome || '', cognome: p.titolareCognome || '' };
+  return guessPerson(p && p.nome);
+}
+// Contatti della ricerca web gia' importati senza nome: NON si cambiano da soli (scelta dell'utente 2026-11-20) ma si
+// propongono in "Studi sul territorio" -> "Nomi da confermare" (nome e cognome modificabili, spunta, "Conferma i
+// selezionati" / "Salta"); `contacts.nomeVerificato` 'si' | 'no' li toglie dall'elenco.
+function prosNameTodo(){
+  return contacts.filter(c=>!c.nome && !c.cognome && c.azienda && !c.nomeVerificato && String(c.tag||'').includes(PROS_TAG)).map(c=>{
+    const p = prospetti.find(x=>x.contactId===c.id), g = prosPerson(p && (p.titolareNome || p.titolareCognome) ? p : { nome: c.azienda });
+    return g && (g.nome || g.cognome) ? { c, g } : null;
+  }).filter(Boolean).sort((a,b)=>a.c.azienda.localeCompare(b.c.azienda));
+}
+function prosNamesHtml(){
+  const todo = prosNameTodo();
+  if(!todo.length) return '';
+  return `<div class="card" id="pnCard">
+    <h3>Nomi da confermare (${todo.length})</h3>
+    <div class="fc-note" style="margin-bottom:8px;">Studi già aggiunti ai contatti che dal nome sembrano di un solo professionista. Controlla nome e cognome proposti (puoi correggerli), togli la spunta a quelli sbagliati e conferma; "Salta" lo lascia com'è.</div>
+    ${todo.map(({ c, g })=>`<div class="pn-row" data-pn="${c.id}">
+      <input type="checkbox" data-pn-ok checked style="width:auto;" aria-label="Conferma ${esc(c.azienda)}">
+      <div class="pn-studio"><span class="name-link" data-contact-id="${c.id}">${esc(c.azienda)}</span>${c.citta ? ` <span class="fc-note">· ${esc(c.citta)}</span>` : ''}</div>
+      <input data-pn-nome value="${esc(g.nome)}" placeholder="Nome" aria-label="Nome">
+      <input data-pn-cognome value="${esc(g.cognome)}" placeholder="Cognome" aria-label="Cognome">
+      <button class="btn secondary small" data-pn-skip>Salta</button>
+    </div>`).join('')}
+    <div class="todo-actions" style="margin-top:8px;"><button class="btn small" id="pnGo">Conferma i selezionati</button><span class="fc-note" id="pnMsg"></span></div>
+  </div>`;
+}
+document.addEventListener('click', async e=>{
+  const skip = e.target.closest && e.target.closest('[data-pn-skip]');
+  if(skip){
+    const id = skip.closest('[data-pn]').dataset.pn; skip.disabled = true;
+    try{ await db.collection('contacts').doc(id).update({ nomeVerificato: 'no' }); }catch(err){ skip.disabled = false; alert('Errore: '+(err.message||err.code||'')); return; }
+    renderMain(); return;
+  }
+  if(!e.target.closest || !e.target.closest('#pnGo')) return;
+  const btn = e.target.closest('#pnGo'), rows = [...document.querySelectorAll('#pnCard [data-pn]')].filter(r=>r.querySelector('[data-pn-ok]').checked);
+  const todo = rows.map(r=>({ id: r.dataset.pn, nome: r.querySelector('[data-pn-nome]').value.trim(), cognome: r.querySelector('[data-pn-cognome]').value.trim() })).filter(x=>x.nome || x.cognome);
+  if(!todo.length){ document.getElementById('pnMsg').textContent = 'Nessun contatto selezionato.'; return; }
+  btn.disabled = true; btn.textContent = 'Salvataggio…';
+  try{ for(const x of todo) await db.collection('contacts').doc(x.id).update({ nome: x.nome, cognome: x.cognome, nomeVerificato: 'si' }); }
+  catch(err){ btn.disabled = false; btn.textContent = 'Conferma i selezionati'; alert('Errore: '+(err.message||err.code||'')); return; }
+  renderMain();
+});
 function prosContact(p, followUp){
-  const tel = (p.telefono || '').replace(/^\+39\s*/, '').trim(), cell = /^3\d{8,9}$/.test(tel.replace(/\D/g, ''));
-  return { nome: '', cognome: '', azienda: p.nome, professione: (PROS_TIPI[p.tipo] || [])[1] || '', via: p.via || '', citta: p.comune || '',
+  const tel = (p.telefono || '').replace(/^\+39\s*/, '').trim(), cell = /^3\d{8,9}$/.test(tel.replace(/\D/g, '')), who = prosPerson(p) || {};
+  return { nome: who.nome || '', cognome: who.cognome || '', azienda: p.nome, professione: (PROS_TIPI[p.tipo] || [])[1] || '', via: p.via || '', citta: p.comune || '',
     cellulare: cell ? formatPhone(tel) : '', telefono: cell ? '' : formatPhone(tel), email: p.email || '', tag: PROS_TAG,
     note: `Trovato con la ricerca web degli studi del territorio${p.sito ? ': '+p.sito : ''}.`, followUp: followUp || '', followUpSetAt: Date.now(),
     fonteWeb: { prospettoId: p.id, sito: p.sito || '', fonte: p.fonte || '' }, createdAt: Date.now() };
@@ -7227,7 +7301,9 @@ function prosView(){
   const byProv = PROS_PROV.map(([s])=>[s, prospetti.filter(p=>p.provincia===s).length]).filter(x=>x[1]);
   const running = prospezioni.some(r=>(r.stato==='avviata' || r.stato==='in corso') && Date.now() - (r.createdAt || 0) < 16*60000);
   return `<button class="btn secondary small" id="prosBackBtn">← Contatti</button>
-  <div class="card" style="margin-top:12px;">
+  <div style="margin-top:12px;"></div>
+  ${prosNamesHtml()}
+  <div class="card">
     <h3>Studi sul territorio</h3>
     <div class="fc-note" style="margin-bottom:10px;">Claude cerca sul web gli studi della zona; l'app li confronta con la rubrica e aggiunge ai contatti quelli nuovi con un telefono, ognuno con un follow-up per chiamarlo (${prosPerDay()} al giorno, dal prossimo giorno lavorativo). A Claude non va nessun dato della tua rubrica.</div>
     <div class="field-row">

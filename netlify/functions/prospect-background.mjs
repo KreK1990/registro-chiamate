@@ -41,6 +41,8 @@ const SAVE_TOOL = {
           type: 'object',
           properties: {
             nome: { type: 'string', description: 'Nome dello studio o del professionista, come compare nella fonte' },
+            titolare_nome: { type: 'string', description: 'Se lo studio è di un solo professionista (es. "Emanuela Casotti Architetto"), il suo nome di battesimo; vuoto per studi associati o società' },
+            titolare_cognome: { type: 'string', description: 'Cognome di quel professionista; vuoto se titolare_nome è vuoto' },
             tipo: { type: 'string', enum: ['architettura', 'ingegneria', 'termotecnica'] },
             via: { type: 'string', description: 'Via e numero civico della sede, vuoto se non indicato' },
             comune: { type: 'string' },
@@ -50,7 +52,7 @@ const SAVE_TOOL = {
             sito: { type: 'string', description: 'Sito web dello studio, vuoto se non ne ha' },
             fonte: { type: 'string', description: 'Indirizzo della pagina da cui hai preso i dati' },
           },
-          required: ['nome', 'tipo', 'via', 'comune', 'provincia', 'telefono', 'email', 'sito', 'fonte'],
+          required: ['nome', 'titolare_nome', 'titolare_cognome', 'tipo', 'via', 'comune', 'provincia', 'telefono', 'email', 'sito', 'fonte'],
           additionalProperties: false,
         },
       },
@@ -130,7 +132,7 @@ export default async function handler(req) {
           if (!s || !s.nome || !s.comune || !TIPI[s.tipo]) continue;
           const id = prospectId(s.nome, s.comune), ref = base.collection('prospetti').doc(id);
           const old = known.find((p) => p.id === id);
-          const rec = { nome: s.nome.trim(), tipo: s.tipo, via: (s.via || '').trim(), comune: s.comune.trim(), provincia: (s.provincia || provincia).toUpperCase().slice(0, 2),
+          const rec = { nome: s.nome.trim(), titolareNome: (s.titolare_nome || '').trim(), titolareCognome: (s.titolare_cognome || '').trim(), tipo: s.tipo, via: (s.via || '').trim(), comune: s.comune.trim(), provincia: (s.provincia || provincia).toUpperCase().slice(0, 2),
             telefono: (s.telefono || '').trim(), email: (s.email || '').trim().toLowerCase(), sito: (s.sito || '').trim(), fonte: (s.fonte || '').trim(), runId: body.runId, aggiornatoIl: Date.now() };
           if (old) Object.keys(rec).forEach((k) => { if (!rec[k] && old[k]) delete rec[k]; });   // non si perde un dato gia' trovato
           else { rec.id = id; rec.stato = 'nuovo'; rec.trovatoIl = Date.now(); known.push(rec); nuovi++; }

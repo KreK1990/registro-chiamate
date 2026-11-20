@@ -552,6 +552,11 @@ Campi principali:
   2026-11-19: con la persistenza offline lo snapshot "dal server" puo' non arrivare mai (cache gia' uguale): se `contactsFresh` e'
   falso `prosAutoImport` rilegge i contatti con `get({source:'server'})` (prima i primi 78 studi restavano 'nuovo'). Mai
   incontrati: filtro `noCall` "Mai telefonati" (nessuna telefonata) e ricerca anche nel tag ("ricerca web").
+  **Nome e cognome dallo studio** (2026-11-20): `prosContact` li compila da `prosPerson` (prima `prospetti.titolareNome`/`titolareCognome`,
+  nuovi campi chiesti a Claude nello schema di `registra_studi`, poi `guessPerson`: elenco `NOMI_IT`, titoli tolti, un solo nome +
+  cognome di 1-2 parole, niente con "e"/"&"). I contatti gia' importati NON cambiano da soli (scelta dell'utente): card "Nomi da
+  confermare" in cima a Studi sul territorio (`prosNamesHtml`, modificabili, "Conferma i selezionati"/"Salta" ->
+  `contacts.nomeVerificato` si|no), conteggio sul pulsante `#prosBtn`.
 - **Avanzamento progetti** (Progetti -> "Avanzamento progetti", `view='avanz'`, blocco omonimo, 2026-11-05): commesse
   aperte (non perse ne' confermate) in "In attesa di conferma" (offertaPresentata raggiunta) e "In corso"; righe a due
   colonne (`.avz-row`: ID, nome, indirizzo, figure, fase e importo | note) con `projects.avanzamento` {testo, il},

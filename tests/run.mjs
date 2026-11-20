@@ -1597,6 +1597,31 @@ await test('possibili doppioni: stesso indirizzo tra studio e persona, non tra c
   await page.evaluate(() => Promise.all(['wd1', 'wd2', 'wd3', 'wd4'].map(id => db.collection('contacts').doc(id).delete())));
 });
 
+await test('studi sul territorio: nome e cognome dal nome dello studio, per i vecchi con conferma', async () => {
+  const nc = await page.evaluate(() => { const c = prosContact({ id: 'x', nome: 'Emanuela Casotti Architetto', telefono: '012 51893055' }, ''); const t = prosContact({ id: 'y', nome: 'X', titolareNome: 'Anna', titolareCognome: 'Neri', telefono: '011 1' }, ''); return [c.nome, c.cognome, c.azienda, t.nome, t.cognome]; });
+  expect(nc.join('|') === 'Emanuela|Casotti|Emanuela Casotti Architetto|Anna|Neri', 'contatto nuovo: ' + nc.join('|'));
+  await page.evaluate(() => Promise.all([
+    db.collection('contacts').doc('web_n1').set({ nome: '', cognome: '', azienda: 'Emanuela Casotti Architetto', citta: 'Ivrea', tag: 'ricerca web' }),
+    db.collection('contacts').doc('web_n2').set({ nome: '', cognome: '', azienda: 'Studio Tecnico Ing. Rossi Mario', citta: 'Torino', tag: 'ricerca web' }),
+    db.collection('contacts').doc('web_n3').set({ nome: '', cognome: '', azienda: 'Tetrastudio architetti associati', citta: 'Torino', tag: 'ricerca web' }),
+  ]));
+  await page.waitForFunction(() => contacts.some(c => c.id === 'web_n3'));
+  await show_(page, 'prospect');
+  const rows = await page.evaluate(() => [...document.querySelectorAll('#pnCard [data-pn]')].map(r => r.dataset.pn + ':' + r.querySelector('[data-pn-nome]').value + ' ' + r.querySelector('[data-pn-cognome]').value));
+  expect(rows.includes('web_n1:Emanuela Casotti') && rows.includes('web_n2:Mario Rossi') && !rows.some(r => r.startsWith('web_n3')), 'proposte: ' + rows.join(', '));
+  expect(await page.evaluate(() => contacts.find(c => c.id === 'web_n1').nome) === '', 'il nome non deve cambiare prima della conferma');
+  await page.fill('[data-pn="web_n2"] [data-pn-nome]', 'Mario Luigi');
+  await page.click('[data-pn="web_n1"] [data-pn-skip]');
+  await page.waitForFunction(() => contacts.find(c => c.id === 'web_n1').nomeVerificato === 'no');
+  await settle(page);
+  await page.fill('[data-pn="web_n2"] [data-pn-nome]', 'Mario Luigi');
+  await page.click('#pnGo');
+  await page.waitForFunction(() => contacts.find(c => c.id === 'web_n2').nomeVerificato === 'si');
+  const st = await page.evaluate(() => ['web_n1', 'web_n2'].map(id => { const c = contacts.find(x => x.id === id); return c.nome + '|' + c.cognome; }));
+  expect(st[0] === '|' && st[1] === 'Mario Luigi|Rossi', 'dopo la conferma: ' + st.join(', '));
+  await page.evaluate(() => Promise.all(['web_n1', 'web_n2', 'web_n3'].map(id => db.collection('contacts').doc(id).delete())));
+});
+
 await test('studi sul territorio: confronto con la rubrica, contatti con follow-up, non interessa', async () => {
   await page.evaluate(() => {
     contactsFresh = false;   // come con la copia sul dispositivo: i contatti si rileggono dal server prima di importare
