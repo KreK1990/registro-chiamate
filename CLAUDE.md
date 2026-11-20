@@ -100,6 +100,11 @@ Campi principali:
   (`studioIndex`). Il modulo suggerisce gli studi esistenti, al salvataggio usa la
   grafia prevalente (`bestStudioName`) e può propagare via/città/telefono agli altri
   membri. I doppioni di contatto si riconoscono dal cellulare, non dal telefono studio.
+  **Unisci con…** (scheda del contatto, `#mergeBtn`, blocco "Unisci con...", 2026-11-20): per doppioni non riconosciuti
+  (es. studio della ricerca web e professionista gia' in rubrica): `mergeForm` {id, pick, keep}, cerca (`#mergeQ`) o
+  suggeriti (`mergeCandidates`: parole di nome/azienda, dominio mail non generico, stessa via), sceglie chi tenere
+  (proposto il piu' ricco, `dupScore`) e chiama `mergeContacts`, che ora sposta anche segnalazioni, prospetti.contactId
+  e collegamenti (tolti se diventano doppi o su se stesso) e porta followUpSetAt col follow-up.
   **Possibili doppioni** (Contatti -> "Possibili doppioni (N)", blocco omonimo, `view='dups'`):
   gruppi (union-find) per stesso cellulare (`digits9`), stessa email (se generica tipo info@,
   `GENERIC_MAIL`, solo con lo stesso cognome) o stesso nome+cognome anche invertiti. Si sceglie il

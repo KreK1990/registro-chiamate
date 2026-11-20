@@ -564,6 +564,8 @@ body.foto-open{overflow:hidden;}
 .act-tag.mail{background:#3d4650;}
 .mail-drop{margin:4px 0 8px;padding:12px;border:2px dashed var(--border-strong);border-radius:2px;background:var(--bg);font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;}
 .mail-drop strong{color:var(--text);}
+.merge-cand{padding:8px 4px;border-bottom:1px solid var(--border);cursor:pointer;}
+.merge-cand:hover{background:var(--accent-soft);}
 .mail-drop.drop-on{border-color:var(--accent);background:var(--accent-soft);}
 .attach-row{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border);}
 .attach-main{display:flex;flex-direction:column;min-width:0;flex:1 1 220px;}
@@ -1517,19 +1519,20 @@ function renderMain(){
     main.innerHTML = `
       <div class="top-actions" style="justify-content:space-between;">
         <button class="btn secondary small" id="backToContactsBtn">← Torna ai contatti</button>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
           ${confirmDeleteId===c.id ? `
             <span style="color:var(--danger);font-size:13px;font-weight:600;align-self:center;">Eliminare definitivamente ${esc(fullName(c))}?</span>
             <button class="btn small" id="confirmDeleteBtn" style="background:var(--danger);color:#fff;">Sì, elimina</button>
             <button class="btn secondary small" id="cancelDeleteBtn">Annulla</button>
           ` : `
             ${isOff(c) ? '' : '<button class="btn secondary small" id="offBtn">Spegni contatto</button>'}
+            <button class="btn secondary small" id="mergeBtn">Unisci con…</button>
             <button class="btn secondary small" id="editBtn">Modifica contatto</button>
             <button class="btn small" id="deleteBtn" style="background:var(--danger);color:#fff;">Elimina contatto</button>
           `}
         </div>
       </div>
-      ${contactOffHtml(c)}
+      ${contactOffHtml(c)}${mergeFormHtml(c)}
       <div class="card">
         <h2>${esc(fullName(c))}${offTag(c)}</h2>
         <div style="color:var(--muted);font-size:14px;">${esc(c.professione||'')}${c.professione&&c.azienda?' · ':''}${esc(c.azienda||'')}</div>
@@ -8549,8 +8552,16 @@ async function mergeContacts(mainId, otherIds){
   if(tags.length) upd.tag = tags.join(', ');
   const notes = [...new Set([main, ...others].map(c=>(c.note||'').trim()).filter(Boolean))];
   if(notes.length > 1 || (notes.length===1 && !main.note)) upd.note = notes.join('\n');
-  if(!main.followUp){ const fu = others.map(c=>c.followUp).filter(Boolean).sort()[0]; if(fu) upd.followUp = fu; }
+  if(!main.followUp){ const fu = others.map(c=>c.followUp).filter(Boolean).sort()[0]; if(fu){ upd.followUp = fu; upd.followUpSetAt = others.find(c=>c.followUp===fu).followUpSetAt || Date.now(); } }
   const ids = new Set(otherIds);
+  // anche cantieri segnalati, studi della ricerca web e collaborazioni passano al contatto tenuto (2026-11-20)
+  for(const s of segnalazioni.filter(s=>ids.has(s.contactId))) await db.collection('segnalazioni').doc(s.id).update({ contactId: mainId });
+  for(const p of prospetti.filter(p=>ids.has(p.contactId))) await db.collection('prospetti').doc(p.id).update({ contactId: mainId });
+  for(const g of collegamenti.filter(g=>ids.has(g.a) || ids.has(g.b))){
+    const a = ids.has(g.a) ? mainId : g.a, b = ids.has(g.b) ? mainId : g.b;
+    if(a===b || collegamenti.some(x=>x.id!==g.id && [x.a, x.b].sort().join('|')===[a, b].sort().join('|'))) await db.collection('collegamenti').doc(g.id).delete();
+    else await db.collection('collegamenti').doc(g.id).update({ a, b });
+  }
   for(const k of calls.filter(k=>ids.has(k.contactId))) await db.collection('calls').doc(k.id).update({ contactId: mainId });
   for(const p of projects.filter(p=>(p.partecipanti||[]).some(x=>ids.has(x.contactId)))){
     const seen = new Set(), partecipanti = [];
@@ -8579,6 +8590,90 @@ function bindDups(){
     b.disabled = true; saveSettings({ nonDoppioni: [...keys] }); renderMain();
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Unisci con... dalla scheda del contatto (richiesta 2026-11-20): per i doppioni che "Possibili doppioni" non
+// riconosce (es. lo studio trovato con la ricerca web e il professionista gia' in rubrica). Si cerca l'altro
+// contatto (senza ricerca: suggeriti per cognome/parole del nome o dell'azienda, dominio della mail, indirizzo),
+// si sceglie quale tenere (proposto quello con piu' storia, dupScore) e mergeContacts fa il resto.
+// ---------------------------------------------------------------------------
+let mergeForm = null;   // { id, pick, keep }
+const MERGE_SKIP = new Set(['studio','arch','architetto','architetti','ing','ingegnere','ingegneri','geom','associati','associato','srl','snc','sas','spa','e','di','del','della','dei','and','tecnico','progettazione']);
+const MERGE_FREE_MAIL = /@(gmail|libero|hotmail|outlook|yahoo|tiscali|alice|virgilio|icloud|live|fastwebnet|tin|email|pec)\./i;
+function mergeWords(c){ return new Set(normName([c.nome, c.cognome, c.azienda].join(' ')).split(' ').filter(w=>w.length > 2 && !MERGE_SKIP.has(w))); }
+function mergeCandidates(c, q){
+  const others = contacts.filter(x=>x.id!==c.id);
+  const words = normName(q).split(' ').filter(Boolean);
+  if(words.length) return others.filter(x=>{ const hay = normName([x.nome, x.cognome, x.azienda, x.email, x.citta].join(' ')); return words.every(w=>hay.includes(w)); })
+    .sort((a,b)=>fullName(a).localeCompare(fullName(b))).slice(0, 12);
+  const mine = mergeWords(c), dom = (c.email||'').toLowerCase().split('@')[1] || '', via = normName(c.via);
+  return others.map(x=>{
+    let s = 0;
+    mergeWords(x).forEach(w=>{ if(mine.has(w)) s += 2; });
+    if(dom && !MERGE_FREE_MAIL.test(c.email) && (x.email||'').toLowerCase().endsWith('@'+dom)) s += 3;
+    if(via && via===normName(x.via)) s += 2;
+    return { x, s };
+  }).filter(o=>o.s >= 2).sort((a,b)=>b.s-a.s).slice(0, 6).map(o=>o.x);
+}
+function mergeRowHtml(x){
+  return `<div class="merge-cand" data-merge-pick="${x.id}"><strong>${esc(fullName(x))}</strong> <span class="todo-sub">${esc([x.professione, x.azienda, x.citta].filter(Boolean).join(' · '))}</span></div>`;
+}
+function mergeFormHtml(c){
+  if(!mergeForm || mergeForm.id!==c.id) return '';
+  const o = mergeForm.pick && contacts.find(x=>x.id===mergeForm.pick);
+  if(!o){
+    const sugg = mergeCandidates(c, '');
+    return `<div class="card merge-box">
+      <h3>Unisci ${esc(fullName(c))} con un altro contatto</h3>
+      <input id="mergeQ" type="search" placeholder="Cerca il contatto da unire: nome, cognome, studio, email..." autocomplete="off">
+      <div id="mergeList">${sugg.length ? `<div class="todo-sub" style="margin:6px 0 2px;">Forse è uno di questi:</div>${sugg.map(mergeRowHtml).join('')}` : ''}</div>
+      <div style="margin-top:8px;"><button class="btn secondary small" data-merge-cancel>Annulla</button></div>
+    </div>`;
+  }
+  const keep = mergeForm.keep || (dupScore(o) > dupScore(c) ? o.id : c.id);
+  const card = x=>{ const nk = calls.filter(k=>k.contactId===x.id).length, np = projectsOfContact(x.id).length;
+    return `<label class="dup-card ${x.id===keep ? 'main' : ''}"><input type="radio" name="merge-keep" value="${x.id}" ${x.id===keep ? 'checked' : ''}>
+      <div><strong>${esc(fullName(x))}</strong>${x.id===keep ? ' <span class="ai-prio alta">da tenere</span>' : ''}
+      <div class="todo-sub">${esc([x.professione, x.azienda].filter(Boolean).join(' · '))}</div>
+      <div class="todo-sub">${esc([x.cellulare && 'cell. '+x.cellulare, x.telefono && 'tel. '+x.telefono, x.email].filter(Boolean).join(' · '))}</div>
+      <div class="todo-sub">${esc(fullAddress(x))}</div>
+      <div class="todo-sub">${nk} attività · ${np} ${np===1 ? 'progetto' : 'progetti'}</div></div></label>`; };
+  return `<div class="card merge-box">
+    <h3>Unisci i due contatti</h3>
+    <div class="fc-note" style="margin-bottom:8px;">Scegli quale tenere: riceve attività, progetti, cantieri segnalati, follow-up, note e i dati che gli mancano (telefono, email, indirizzo…). L'altro viene eliminato.</div>
+    <div class="dup-grid">${card(c)}${card(o)}</div>
+    <div class="todo-actions" style="margin-top:8px;"><button class="btn small" data-merge-go>Unisci</button><button class="btn secondary small" data-merge-back>Scegli un altro</button><button class="btn secondary small" data-merge-cancel>Annulla</button></div>
+  </div>`;
+}
+document.addEventListener('input', e=>{
+  if(e.target.id!=='mergeQ' || !mergeForm) return;
+  const c = contacts.find(x=>x.id===mergeForm.id), l = document.getElementById('mergeList');
+  if(!c || !l) return;
+  const q = e.target.value.trim(), list = mergeCandidates(c, q);
+  l.innerHTML = list.length ? (q ? '' : '<div class="todo-sub" style="margin:6px 0 2px;">Forse è uno di questi:</div>') + list.map(mergeRowHtml).join('') : (q ? '<div class="empty">Nessun contatto trovato.</div>' : '');
+});
+document.addEventListener('change', e=>{
+  if(e.target.name!=='merge-keep' || !mergeForm) return;
+  mergeForm.keep = e.target.value; renderMain();
+});
+document.addEventListener('click', async e=>{
+  const t = e.target.closest && e.target.closest('#mergeBtn,[data-merge-pick],[data-merge-cancel],[data-merge-back],[data-merge-go]');
+  if(!t) return;
+  if(t.id==='mergeBtn'){ mergeForm = { id: selectedId, pick: null, keep: null }; renderMain(); document.getElementById('mergeQ')?.focus(); return; }
+  if(!mergeForm) return;
+  if(t.matches('[data-merge-cancel]')){ mergeForm = null; renderMain(); return; }
+  if(t.matches('[data-merge-back]')){ mergeForm.pick = null; mergeForm.keep = null; renderMain(); return; }
+  if(t.matches('[data-merge-pick]')){ mergeForm.pick = t.dataset.mergePick; mergeForm.keep = null; renderMain(); return; }
+  const sel = document.querySelector('input[name="merge-keep"]:checked');
+  const keep = sel ? sel.value : mergeForm.id, other = [mergeForm.id, mergeForm.pick].find(id=>id!==keep);
+  t.disabled = true; t.textContent = 'Unione in corso…';
+  try{
+    await mergeContacts(keep, [other]);
+    mergeForm = null; selectedId = keep;
+    for(let w=0; w<30 && contacts.some(x=>x.id===other); w++) await new Promise(r=>setTimeout(r, 100));
+  }catch(err){ t.disabled = false; t.textContent = 'Unisci'; alert('Errore durante l\'unione: '+(err.message||err.code||'')); return; }
+  renderMain();
+});
 
 // ---------------------------------------------------------------------------
 // Forecast: solo commesse aperte (ne' perse ne' con ordine confermato). Valore

@@ -1558,6 +1558,31 @@ await test('offerta presentata: mail di invio trascinata -> data della fase e at
   await page.evaluate(() => hideNotice());
 });
 
+await test('unisci con...: dalla scheda, contatto suggerito, tiene quello con piu\' storia e prende i dati mancanti', async () => {
+  await page.evaluate(d => Promise.all([
+    db.collection('contacts').doc('web_ap').set({ nome: '', cognome: 'Studio Apicella - Arch. Apicella e Ing. Redi', professione: 'Architetto', azienda: 'Studio Apicella - Arch. Apicella e Ing. Redi', telefono: '011 9781365', email: 'archapicella@studioapicella.eu', via: 'Corso XXV Aprile 12', citta: 'Rivoli', tag: 'ricerca web', followUp: d + 'T18:00', followUpSetAt: Date.now() - 1000 }),
+    db.collection('contacts').doc('ap1').set({ nome: 'Antonio', cognome: 'Apicella', professione: 'Architetto', azienda: 'Studio Apicella', via: 'Corso XXV Aprile 12', citta: 'RIVOLI' }),
+    db.collection('calls').add({ tipo: 'incontro', contactId: 'ap1', data: '2026-03-11', ora: '10:00', note: 'incontro Apicella', createdAt: Date.now() - 864e5 * 200 }),
+    db.collection('prospetti').doc('pap').set({ nome: 'Studio Apicella', comune: 'Rivoli', provincia: 'TO', stato: 'importato', contactId: 'web_ap' }),
+  ]), daysAgo(-1));
+  await page.waitForFunction(() => contacts.some(c => c.id === 'web_ap') && contacts.some(c => c.id === 'ap1') && calls.some(k => k.note === 'incontro Apicella'));
+  await show_(page, 'detail', "selectedId='web_ap'");
+  await page.click('#mergeBtn');
+  expect(!!(await page.$('#mergeList [data-merge-pick="ap1"]')), 'Apicella Antonio non suggerito');
+  await page.fill('#mergeQ', 'antonio apic');
+  await page.waitForSelector('#mergeList [data-merge-pick="ap1"]');
+  await page.click('#mergeList [data-merge-pick="ap1"]');
+  expect(await page.evaluate(() => document.querySelector('input[name="merge-keep"]:checked').value) === 'ap1', 'da tenere doveva essere il contatto con l\'incontro');
+  await page.click('[data-merge-go]');
+  await page.waitForFunction(() => !contacts.some(c => c.id === 'web_ap'));
+  await settle(page);
+  const st = await page.evaluate(() => ({ c: contacts.find(c => c.id === 'ap1'), sel: selectedId, view, pros: window.__fake.docs('prospetti').find(p => p.id === 'pap').contactId }));
+  expect(st.sel === 'ap1' && st.view === 'detail', 'non resta nella scheda del contatto tenuto: ' + st.sel + ' ' + st.view);
+  expect(st.c.telefono === '011 9781365' && st.c.email === 'archapicella@studioapicella.eu' && st.c.followUp === daysAgo(-1) + 'T18:00' && /ricerca web/.test(st.c.tag || ''), 'dati non portati: ' + JSON.stringify(st.c));
+  expect(st.c.nome === 'Antonio' && st.c.cognome === 'Apicella', 'il nome del contatto tenuto e\' cambiato');
+  expect(st.pros === 'ap1', 'lo studio della ricerca web non punta al contatto tenuto: ' + st.pros);
+});
+
 await test('studi sul territorio: confronto con la rubrica, contatti con follow-up, non interessa', async () => {
   await page.evaluate(() => {
     contactsFresh = false;   // come con la copia sul dispositivo: i contatti si rileggono dal server prima di importare
